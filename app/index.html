@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Domain map</title>
+  <!-- A static copy of the mark, shipped with the app rather than read from the
+       file store: without a rel="icon" the browser goes asking for /favicon.ico,
+       which nothing serves, and the tab icon is wanted before any store request
+       has finished. The header logo is still whatever the settings name. -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/diagram.css">
+</head>
+<body>
+  <!-- Logo, title and footer text all come from the stored data/settings.json. -->
+  <header class="header">
+    <span class="header__brand">
+      <span class="header__logo" id="logo" aria-hidden="true"></span>
+      <h1 class="header__title" id="map-title">Domain map</h1>
+    </span>
+    <span class="header__actions">
+      <!-- The map opens read-only. Edit swaps in the save controls below, and a
+           successful save swaps them back. -->
+      <button class="btn btn--chip" id="edit-mode-toggle" title="Turn on editing">
+        <span class="btn__label">Edit</span>
+      </button>
+      <!-- Cancel unwinds everything done since Edit was pressed and drops back
+           to View mode without writing anything. -->
+      <button class="btn btn--chip" id="cancel-edit" hidden
+              title="Discard the changes made since Edit">
+        <span class="btn__label">Cancel</span>
+      </button>
+      <!-- Changes live in the page until this is pressed. The button writes the
+           version being edited; the triangle beside it opens the others. -->
+      <span class="save" id="save-group" hidden>
+        <button class="btn btn--chip save__now" id="save-map">
+          <span class="btn__label">Save</span>
+        </button>
+        <button class="btn btn--chip btn--chip-icon save__more" id="save-menu-toggle"
+                aria-haspopup="true" aria-expanded="false" aria-controls="save-menu"
+                aria-label="Other versions">▾</button>
+      </span>
+      <div class="save-menu" id="save-menu" role="menu" hidden></div>
+      <button class="btn btn--chip" id="export-map" title="Download the whole map as JSON">Export</button>
+      <button class="btn btn--chip" id="export-svg" title="Download the diagram as an SVG picture">Export SVG</button>
+      <button class="btn btn--chip" id="import-map" title="Replace the map from a JSON file">Import</button>
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+      <button class="btn btn--chip" id="getting-around" title="Keyboard shortcuts and gestures"
+              aria-haspopup="dialog" aria-controls="getting-around-dialog">Getting around</button>
+      <button class="btn btn--chip" id="about" title="What this map is for"
+              aria-haspopup="dialog" aria-controls="about-dialog">About</button>
+      <!-- Who is signed in, and the way out. identity.js names them and shows them;
+           a server with sign-in switched off leaves both hidden. -->
+      <span class="header__user" id="who" hidden></span>
+      <button class="btn btn--chip" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
+    </span>
+  </header>
+
+  <main class="main">
+    <!-- Menu: the same hierarchy that the diagram shows, kept in sync with it. -->
+    <aside class="panel panel--menu" id="menu-panel" aria-label="Domains">
+      <div class="panel__head">
+        <span class="panel__title">Domains</span>
+        <span class="panel__buttons">
+          <button class="btn btn--chip btn--chip-icon" id="collapse-all"
+                  title="Collapse every section" aria-label="Collapse all">
+            <span class="icon" data-icon="icons/collapse-all.svg" aria-hidden="true"></span>
+          </button>
+        </span>
+      </div>
+      <nav class="tree" id="tree"></nav>
+      <!-- Adding is what you do after reading the hierarchy, so the buttons sit
+           under it. Open, they run the width of the panel and say what they do; shut, the
+           rail leaves only the two icons. The shapes follow the tree's swatches:
+           a domain is the round blob, a capability the flatter oval it holds. -->
+      <div class="panel__actions" id="menu-actions">
+        <button class="btn btn--chip btn--chip-icon btn--wide" id="add-domain"
+                title="Add a domain" aria-label="Add a domain">
+          <span class="icon" data-icon="icons/add-domain.svg" aria-hidden="true"></span>
+          <span class="btn__label">Add a domain</span>
+        </button>
+        <button class="btn btn--chip btn--chip-icon btn--wide" id="add-capability"
+                title="Add a capability" aria-label="Add a capability">
+          <span class="icon" data-icon="icons/add-capability.svg" aria-hidden="true"></span>
+          <span class="btn__label">Add a capability</span>
+        </button>
+      </div>
+      <div class="panel__foot">
+        <button class="btn btn--chip btn--wide btn--collapse" id="toggle-menu" aria-pressed="true"
+                aria-controls="menu-panel" title="Collapse the domains panel">
+          <span class="icon" data-icon="icons/collapse.svg" aria-hidden="true"></span>
+          <span class="btn__label">Collapse</span>
+        </button>
+      </div>
+    </aside>
+
+    <section class="stage" id="stage">
+      <svg class="diagram" id="diagram" role="application" aria-label="Domain map diagram">
+        <g id="viewport">
+          <g id="layer-domains"></g>
+          <g id="layer-capabilities"></g>
+          <g id="layer-connectors"></g>
+          <!-- Edit-mode chrome rides above the shapes so it can always be pressed. -->
+          <g id="layer-edit"></g>
+          <g id="layer-draft"></g>
+          <!-- What the pointer is over names itself here: chrome, never terrain. -->
+          <g id="layer-hover"></g>
+          <!-- Renaming happens in place, in a layer render() never replaces. -->
+          <g id="layer-overlay"></g>
+        </g>
+      </svg>
+      <div class="zoom">
+        <button class="btn btn--icon" id="zoom-in" title="Zoom in">+</button>
+        <button class="btn btn--icon" id="zoom-out" title="Zoom out">&minus;</button>
+        <button class="btn btn--icon" id="zoom-fit" title="Fit to screen">&#9723;</button>
+      </div>
+      <p class="hint" id="hint"></p>
+      <!-- Hangs off the kebab on the selected domain: edit, then save or cancel. -->
+      <div class="kebab-menu" id="kebab-menu" role="menu" hidden></div>
+    </section>
+
+    <!-- Details: properties of whatever is selected, anywhere. -->
+    <aside class="panel panel--details" id="details-panel" aria-label="Selection details">
+      <!-- The phone's handle on this panel, where it is a sheet at the foot of the
+           screen rather than a column beside the map. It names what is selected,
+           since shut it is all of the panel left on screen, and it opens and
+           shuts the rest — the job the foot's Collapse toggle does on a wider
+           screen, which is where that one stays. -->
+      <button class="details-bar" id="details-bar" type="button"
+              aria-expanded="true" aria-controls="details-panel"
+              title="Show or hide the details">
+        <span class="details-bar__name" id="details-bar-name">Nothing selected</span>
+        <span class="details-bar__chevron" aria-hidden="true">&#9662;</span>
+      </button>
+      <div class="details" id="details"></div>
+      <!-- Deleting is the last thing you do to a selection, and the most final,
+           so it sits at the bottom away from the controls that only adjust.
+           Resetting a domain's shapes sits above it. The palette belongs to the
+           map rather than to the selection, so Edit palette heads the strip and
+           stays when nothing is selected; the rest come and go with it. -->
+      <div class="panel__actions" id="details-actions">
+        <button class="btn btn--chip btn--chip-icon btn--wide" id="edit-palette"
+                title="Edit the colors the shapes on this map can wear" aria-label="Edit palette"
+                aria-haspopup="dialog" aria-controls="palette-dialog">
+          <span class="icon" data-icon="icons/palette.svg" aria-hidden="true"></span>
+          <span class="btn__label">Edit palette</span>
+        </button>
+        <button class="btn btn--chip btn--chip-icon btn--wide" id="reset-shapes" hidden
+                title="Put this domain and its capabilities back to the default sizes, type and colors"
+                aria-label="Reset shapes">
+          <span class="icon" data-icon="icons/reset.svg" aria-hidden="true"></span>
+          <span class="btn__label">Reset shapes</span>
+        </button>
+        <button class="btn btn--chip btn--chip-icon btn--wide" id="reset-capability-colors" hidden
+                title="Paint every capability in this domain the domain's own color"
+                aria-label="Reset colors">
+          <span class="icon" data-icon="icons/capability-colors.svg" aria-hidden="true"></span>
+          <span class="btn__label">Reset colors</span>
+        </button>
+        <button class="btn btn--chip btn--danger btn--chip-icon btn--wide" id="delete-selected" hidden
+                title="Delete the selection" aria-label="Delete the selection">
+          <span class="icon" data-icon="icons/delete.svg" aria-hidden="true"></span>
+          <span class="btn__label" id="delete-label">Delete</span>
+        </button>
+      </div>
+      <div class="panel__foot">
+        <button class="btn btn--chip btn--wide btn--collapse" id="toggle-details" aria-pressed="true"
+                aria-controls="details-panel" title="Collapse the details panel">
+          <span class="icon" data-icon="icons/collapse.svg" aria-hidden="true"></span>
+          <span class="btn__label">Collapse</span>
+        </button>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <span id="footer-text"></span>
+    <span class="footer__right">
+      <span id="stats"></span>
+      <span id="status" class="footer__status"></span>
+    </span>
+  </footer>
+
+  <!-- The palette editor. The palette belongs to the map rather than to what is
+       selected, so it opens over the whole page; palette.js fills it. -->
+  <dialog class="dialog" id="palette-dialog" aria-labelledby="palette-title"></dialog>
+
+  <!-- Getting around: a sentence on moving about the map, then every shortcut,
+       grouped by what it acts on. It is the only copy, so this is where they
+       are kept up to date. text-dialogs.js opens and shuts it. -->
+  <dialog class="dialog dialog--getting-around" id="getting-around-dialog"
+          aria-labelledby="getting-around-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="getting-around-title">Getting around</h2>
+      <div class="shortcuts">
+        <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right.</p>
+        <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
+
+        <section class="shortcuts__group" aria-labelledby="shortcuts-shapes">
+          <h3 class="shortcuts__heading" id="shortcuts-shapes">Shapes</h3>
+          <table class="keys">
+            <thead>
+              <tr><th scope="col">Key or gesture</th><th scope="col">What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Click a shape</td><td>Select it</td></tr>
+              <tr><td>Esc</td><td>Close the ⋮ menu, or else clear the selection</td></tr>
+              <tr><td>Drag a domain</td><td>Move it, with everything in it</td></tr>
+              <tr><td>Drag a capability</td><td>Move it. Drop it inside a domain to put it there, on another capability to swap the two, or on open ground to leave it loose</td></tr>
+              <tr><td>Drag a domain's title</td><td>Move the title around its domain</td></tr>
+              <tr><td>Drag the bars at either side of a domain's title, while renaming it or in an <strong>Edit</strong> session</td><td>Change the width the title wraps at</td></tr>
+              <tr><td>Double-click a domain's title</td><td>Rename it in place (see below)</td></tr>
+              <tr><td>⋮ at the end of a selected domain's title</td><td><strong>Rename</strong>, or <strong>Edit</strong>: a session of changes that <strong>Cancel</strong> undoes all at once</td></tr>
+              <tr><td>Delete or Backspace</td><td>Delete the selection. Deleting a domain asks first.</td></tr>
+              <tr><td>Ctrl+Z</td><td>Undo</td></tr>
+              <tr><td>Ctrl+B</td><td>Turn bold on or off for the selected domain or capability</td></tr>
+              <tr><td>Ctrl and + / Ctrl and &minus;</td><td>Step the selected capability's font size up or down (= works as +)</td></tr>
+              <tr><td>Shift and + / Shift and &minus;</td><td>Step the selected capability's shape size up or down</td></tr>
+              <tr><td>Ctrl and &lt; / Ctrl and &gt;</td><td>Make the selected capability's oval narrower or wider, in five steps: tall, a little tall, round, a little wide, wide. New capabilities start wide. (Ctrl+, and Ctrl+. work too)</td></tr>
+              <tr><td>] / [</td><td>Bring the selected capability to the front of its stack, or send it to the back. Its stack is the other capabilities in its domain, or the other loose ones.</td></tr>
+              <tr><td>Ctrl+] / Ctrl+[</td><td>Move it forward or back one step</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="shortcuts__group" aria-labelledby="shortcuts-rename">
+          <h3 class="shortcuts__heading" id="shortcuts-rename">Renaming a domain on the map</h3>
+          <table class="keys">
+            <thead>
+              <tr><th scope="col">Key</th><th scope="col">What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Enter</td><td>Save the title</td></tr>
+              <tr><td>Shift+Enter or Ctrl+Enter</td><td>Start a new line in the title</td></tr>
+              <tr><td>Esc</td><td>Cancel and keep the old title</td></tr>
+              <tr><td>Click away</td><td>Save the title</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="shortcuts__group" aria-labelledby="shortcuts-connectors">
+          <h3 class="shortcuts__heading" id="shortcuts-connectors">Connectors</h3>
+          <table class="keys">
+            <thead>
+              <tr><th scope="col">Key or gesture</th><th scope="col">What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Point at or select a capability</td><td>Show its connection points</td></tr>
+              <tr><td>Drag from a connection point to one on another capability</td><td>Draw a connector</td></tr>
+              <tr><td>Click a connection point, then one on another capability</td><td>Draw a connector in two clicks</td></tr>
+              <tr><td>Esc, or click anywhere else</td><td>Drop a connector you have started</td></tr>
+              <tr><td>Click a connector</td><td>Select it</td></tr>
+              <tr><td>Drag an end of the selected connector</td><td>Move that end to another point, or onto another capability</td></tr>
+              <tr><td>Shift+click a curved connector</td><td>Add a bend where you click</td></tr>
+              <tr><td>Drag a bend</td><td>Reshape the line</td></tr>
+              <tr><td>Double-click a bend</td><td>Remove the bend</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="shortcuts__group" aria-labelledby="shortcuts-palette">
+          <h3 class="shortcuts__heading" id="shortcuts-palette">Palette</h3>
+          <p><strong>Edit palette</strong>, at the foot of the details panel, opens the palette editor in the bottom right corner, over a light overlay that leaves the map in view. Pick a swatch, then drag in the color area below the swatches or along the hue strip, or type a hex: the picker and the hex field follow each other as you go. A drag is applied when you let go; the hex field takes Enter to apply the color and Esc to put the old one back. Ctrl-Z undoes a color change, and Esc or Done closes the editor.</p>
+        </section>
+      </div>
+      <div class="dialog__foot dialog__foot--end">
+        <button class="btn btn--chip" type="button" id="getting-around-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- About: the README's first chapter, copied in, so a change to one wants the
+       same change in the other. text-dialogs.js opens and shuts it. -->
+  <dialog class="dialog dialog--about" id="about-dialog" aria-labelledby="about-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="about-title">About Domain map</h2>
+      <div class="about">
+        <p>A shared <strong>map</strong> of your organization, so flow conversations start from context instead of a blank whiteboard.</p>
+        <p>The map is the fixed terrain: your domains and the business capabilities within them, each in a deliberate position. Whereas a diagram's layout is arbitrary — rearrange it and nothing is lost — a map anchors elements geometrically, so position carries meaning, and the terrain stays learnable across teams.</p>
+        <p>Flows are overlays. Trace a payment authorization from checkout through invoicing, financial booking, and settlement, and the route shows which teams are involved and how each participates in the end-to-end flow. Think of Google Maps as the terrain and your planned route as the overlay.</p>
+        <p>Establish the context once. Then draw on top of it — with a marker or digitally — every time after.</p>
+      </div>
+      <div class="dialog__foot dialog__foot--end">
+        <button class="btn btn--chip" type="button" id="about-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

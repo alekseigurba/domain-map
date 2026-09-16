@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Domain map</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body class="login">
+  <!-- Everything else on this server needs a session; this page, its scripts
+       and styles, and the stored branding are the only things that do not. -->
+  <main class="login__card">
+    <span class="login__brand">
+      <span class="login__logo" id="logo" aria-hidden="true"></span>
+      <h1 class="login__title" id="title">Domain map</h1>
+    </span>
+
+    <p class="login__blurb">A shared map of your organization. Sign in to open it.</p>
+
+    <div class="login__actions">
+      <button class="login__button login__button--primary" id="sign-in-microsoft" hidden>
+        <svg class="login__mark" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="1" y="1" width="10" height="10" fill="#f25022"></rect>
+          <rect x="13" y="1" width="10" height="10" fill="#7fba00"></rect>
+          <rect x="1" y="13" width="10" height="10" fill="#00a4ef"></rect>
+          <rect x="13" y="13" width="10" height="10" fill="#ffb900"></rect>
+        </svg>
+        Login with Microsoft
+      </button>
+
+      <button class="login__button" id="sign-in-dev" hidden>Bypass (dev)</button>
+    </div>
+
+    <p class="login__note" id="note" role="status"></p>
+  </main>
+
+  <footer class="login__footer" id="footer-text"></footer>
+
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>

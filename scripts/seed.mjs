@@ -1,0 +1,61 @@
+// A fresh store is empty, and an empty store means a blank page. This fills it
+// once from `seed/`, and then never touches it again, so a restart against a
+// real volume leaves real work alone.
+//
+// `seed/` mirrors the store's key space exactly — `seed/data/icons/gear.svg`
+// becomes the object `data/icons/gear.svg` — so what ships as the example map is
+// a matter of which files are in that folder, not of anything written here.
+// Each folder is filled only when the store has nothing in it yet — counting
+// what sits in the folder itself, not what its subfolders hold — so a store
+// that has maps but no icons still gets the icons, and one that has maps but no
+// settings file still gets the settings file.
+
+import { readdir, readFile } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
+
+import { listObjects, writeObject } from './file-store.mjs';
+
+/** Every file under `dir`, as store keys grouped by the prefix they sit in. */
+async function groupByPrefix(dir) {
+  const groups = new Map();
+
+  async function walk(current) {
+    for (const entry of await readdir(current, { withFileTypes: true })) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile()) {
+        const key = relative(dir, full).split(sep).join('/');
+        const prefix = key.slice(0, key.lastIndexOf('/') + 1);
+        groups.set(prefix, [...(groups.get(prefix) ?? []), { key, path: full }]);
+      }
+    }
+  }
+
+  try {
+    await walk(dir);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  return groups;
+}
+
+/** What the store holds directly in `prefix`, ignoring the folders below it. */
+async function directlyUnder(storageDir, prefix) {
+  const objects = await listObjects(storageDir, prefix);
+  return objects.filter((object) => !object.key.slice(prefix.length).includes('/'));
+}
+
+export async function seedStore(storageDir, seedDir) {
+  const seeded = [];
+
+  for (const [prefix, files] of await groupByPrefix(seedDir)) {
+    if ((await directlyUnder(storageDir, prefix)).length > 0) continue;
+    for (const file of files) {
+      await writeObject(storageDir, file.key, await readFile(file.path));
+    }
+    seeded.push(`${files.length} file${files.length === 1 ? '' : 's'} under ${prefix}`);
+  }
+
+  return seeded;
+}

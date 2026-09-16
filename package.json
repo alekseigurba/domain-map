@@ -1,0 +1,8 @@
+{
+  "name": "domain-map",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=dev.env scripts/serve.mjs app 8000"
+  }
+}

@@ -1,0 +1,194 @@
+/* Design system: the raw tokens, with a semantic layer on top naming what each
+   one does here. The prose version lives in /docs/design-system.md — keep the two in
+   step. */
+
+:root {
+  /* --- raw colours --------------------------------------------------------- */
+  --r-vanguard-100: #e5ebe3;
+  --r-vanguard-200: #cbd7c6;
+  --r-vanguard-300: #86a27b;
+  --r-vanguard-400: #527a42;   /* the brand green */
+  --r-vanguard-500: #456637;
+  --r-vanguard-600: #37522c;
+
+  --r-haze-200: #f3f1f0;
+  --r-haze-300: #ece9e8;
+  --r-haze-400: #e7e4e2;
+  --r-haze-500: #d4d1cf;
+  --r-haze-600: #bfbdbb;
+
+  /* haze tinted toward the brand green: the chrome's surfaces and lines */
+  --r-sage-200: #f1f4ef;
+  --r-sage-300: #eaeee7;
+  --r-sage-400: #e4e9e1;
+  --r-sage-500: #d3dbcf;
+  --r-sage-600: #bcc6b7;
+
+  --r-charcoal-200: #c9c9c9;
+  --r-charcoal-300: #686868;
+  --r-charcoal-400: #282828;
+  --r-charcoal-500: #141414;
+  --r-charcoal-600: #000000;
+
+  --r-neutral-white: #ffffff;
+  --r-azure-400: #014bb3;
+  --r-dark-azure-100: #d6e6ff;
+  --r-amethyst-400: #4925cb;
+  --r-dark-amethyst-100: #e6d4ff;
+  --r-ember-400: #ef706b;
+  --r-orange-400: #ff7429;
+  --r-red-400: #b00c15;
+  --r-red-100: #fef6f6;
+  --r-green-400: #298535;
+  --r-blue-400: #3e5c73;
+  --r-focused-400: #0071e3;
+
+  /* --- type ---------------------------------------------------------------- */
+  /* the display face: the page title and every label drawn inside the map
+  (domain titles, capability text), so it carries the map's character and
+  has to stay legible when the SVG scales it down. */
+  --font-heading: "Poppins";
+
+  /* the reading face: body copy and all the chrome — panels, controls, tables, the footer.*/
+  --font-text: "Poppins";
+
+  --fs-200: 13px;
+  --fs-300: 14px;
+  --fs-400: 16px;
+  --fs-500: 22px;
+  --fs-600: 28px;
+  --fs-700: 36px;
+  --fs-800: 46px;
+  --fs-900: 56px;
+
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-semibold: 600;
+
+  --lh-xs: 1.1;
+  --lh-s: 1.2;
+  --lh-m: 1.5;
+  --lh-l: 1.7;
+
+  /* --- spacing, radius, icons ---------------------------------------------- */
+  --space-025: 0.25rem;  /* 4px */
+  --space-050: 0.5rem;   /* 8px */
+  --space-075: 0.75rem;  /* 12px */
+  --space-100: 1rem;     /* 16px */
+  --space-150: 1.5rem;   /* 24px */
+  --space-200: 2rem;     /* 32px */
+
+  --radius-s: 0.25rem;
+  --radius-m: 0.5rem;
+  --radius-l: 0.75rem;
+  --radius-xl: 1rem;
+
+  --icon-s: 16px;
+  --icon-m: 24px;
+  --icon-l: 32px;
+
+  /* --- what they mean here -------------------------------------------------- */
+  --ink: var(--r-charcoal-400);
+  --ink-soft: var(--r-charcoal-300);
+  --ink-invert: var(--r-neutral-white);
+  --paper: var(--r-neutral-white);   /* the stage — the lightest surface */
+  --chrome: var(--r-sage-200);       /* header, footer, sidebars — a shade darker */
+  --chrome-hover: var(--r-sage-400);
+  --line: var(--r-sage-500);
+  --line-strong: var(--r-sage-600);
+  --selection: var(--r-focused-400);
+  --selected-row: var(--r-vanguard-200); /* a step past the hover, which is sage too */
+  --danger: var(--r-red-100);
+
+  /* Chrome runs on the text face at the two smallest steps. */
+  --fs-xs: var(--fs-200);
+  --fs-s: var(--fs-300);
+  --fs-m: var(--fs-500);
+
+  /* Minimal, consistent spacing, taken from the scale above. */
+  --gap-1: var(--space-025);
+  --gap-2: var(--space-050);
+  --gap-3: var(--space-075);
+  --gap-4: var(--space-100);
+
+  /* The stock palette: 24 shape fills, in the order the swatch grid shows them —
+     six across, four down, each column one family: greens, blues, pinks and
+     purples, yellows, oranges and browns, reds. A 12 or 18 swatch palette keeps
+     the top two or three rows, so every family stays in it. */
+  --c1:  #86a27b;
+  --c2:  #7fc6d8;
+  --c3:  #e8bbd5;
+  --c4:  #fede49;
+  --c5:  #b06a46;
+  --c6:  #f57a8c;
+
+  --c7:  #51a45c;
+  --c8:  #3c94a3;
+  --c9:  #a1a4ec;
+  --c10: #fee986;
+  --c11: #d36e3b;
+  --c12: #e08aac;
+
+  --c13: #77bc80;
+  --c14: #5985ab;
+  --c15: #a86cd1;
+  --c16: #d3b23b;
+  --c17: #f2c3aa;
+  --c18: #f66598;
+
+  --c19: #0d9c08;
+  --c20: #aedbe6;
+  --c21: #a85bad;
+  --c22: #f1982b;
+  --c23: #9f4e4e;
+  --c24: #d86161;
+
+  /* Shape ink */
+  --capability-border: rgba(40, 40, 40, 0.22);
+  --capability-border-width: 6px;
+  /* Both are grey: a line says where a relationship runs, and the colour on the
+     map belongs to the shapes. They are told apart by weight and tone instead —
+     a public line crosses a boundary and is drawn dark and fine, an internal one
+     is plumbing within a domain and is drawn broad and pale, so it reads as
+     something the shapes sit on rather than something between them. */
+  --connector-public: #757575;
+  --connector-public-width: 5px;
+  --connector-internal: #9a9a9a;
+  --connector-internal-width: 7px;
+  /* A picked line stops being terrain for as long as it is picked: it is drawn
+     heavier than either of them, so it is unmistakable among the lines it
+     crosses. */
+  --connector-selected-width: 11px;
+  --snap-r: 3.2px;
+  /* Domain opacity is per domain, set on the shape itself — not a token. */
+
+  /* Chrome controls: every sidebar button is one of these. */
+  --chip-h: 24px;
+  --chip-radius: var(--radius-m);
+  --rail-w: 28px;             /* what is left of a collapsed panel */
+}
+
+* { box-sizing: border-box; }
+
+/* A `display` rule in author CSS beats the UA's [hidden] { display: none },
+   so anything flex or grid would stay on screen while marked hidden. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-text);
+  font-size: var(--fs-400);
+  line-height: var(--lh-m);
+  color: var(--ink);
+  background: var(--paper);
+  overflow: hidden; /* the map fits the screen; nothing scrolls but the panels */
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  color: var(--ink);
+}

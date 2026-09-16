@@ -1,0 +1,397 @@
+/* The stage: terrain first, overlays on top, as little chrome as possible. */
+
+.stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;      /* pan/zoom is handled here, not by the browser */
+  user-select: none;
+  cursor: grab;
+}
+
+.diagram[data-panning="true"] { cursor: grabbing; }
+.diagram[data-connecting="true"] { cursor: crosshair; }
+
+.zoom {
+  position: absolute;
+  right: var(--gap-3);
+  bottom: var(--gap-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-1);
+}
+
+.hint {
+  position: absolute;
+  left: var(--gap-3);
+  bottom: var(--gap-3);
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+
+/* --- domains ------------------------------------------------------------- */
+
+.domain { cursor: move; }
+
+/* fill-opacity is set per domain — each one carries its own transparency. */
+.domain__blob {
+  stroke: none;
+  stroke-width: 5;
+  transition: stroke-opacity 110ms linear;
+}
+
+.domain__title {
+  font-family: var(--font-heading);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+/* A solid rim, not a dashed one: hover shows the outline, selection commits to it. */
+.domain--hover .domain__blob {
+  stroke: var(--line-strong);
+  stroke-opacity: 0.9;
+}
+
+.domain--selected .domain__blob {
+  stroke: var(--selection);
+  stroke-width: 7;
+  stroke-opacity: 1;
+}
+
+.slot {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+  pointer-events: none;
+}
+
+/* The "+" slot is chrome, not terrain. Out of focus it is not drawn at all and
+   takes up no room; the blob grows around it when the domain comes into focus. */
+.add-slot { pointer-events: all; }
+
+/* --slot-ink is set per domain: the blob it sits on may be pale or near-black. */
+.slot--add {
+  fill: transparent; /* clickable interior, invisible ink */
+  stroke: var(--slot-ink, var(--line-strong));
+  stroke-opacity: 0.6;
+  cursor: pointer;
+  /* `.slot` above sets pointer-events: none, and a rule that matches this
+     element beats the `all` it would inherit from .add-slot — so say it here. */
+  pointer-events: all;
+}
+
+.add-slot:hover .slot--add { stroke-opacity: 1; }
+
+.slot__plus {
+  fill: var(--slot-ink, var(--ink-soft));
+  fill-opacity: 0.85;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+/* --- capabilities -------------------------------------------------------- */
+
+.cap { cursor: move; }
+.cap--dragging { opacity: 0.85; }
+
+.cap__oval {
+  stroke: var(--capability-border);
+  stroke-width: var(--capability-border-width);
+}
+
+.cap__text {
+  font-family: var(--font-heading);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.cap--selected .cap__oval {
+  stroke: var(--selection);
+  stroke-opacity: 0.9;
+}
+
+/* Flattened to the same black the title is drawn in: brightness(0) takes any
+   drawing to black and keeps its transparency. Line icons come through as
+   themselves; a full-colour one comes through as a silhouette. */
+.cap__icon {
+  filter: brightness(0);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* --- connectors ---------------------------------------------------------- */
+
+/* A line that crosses a domain boundary is a public event and reads loud; one
+   that stays inside a domain is plumbing and stays quiet. Each scope sets its
+   own weight on the group, so the rim under the line can be drawn from it. */
+.connector {
+  stroke-linecap: round;
+  stroke-width: var(--connector-width);
+  fill: none;
+}
+
+.connector--public {
+  --connector-width: var(--connector-public-width);
+}
+
+.connector--public .connector { stroke: var(--connector-public); }
+
+.connector--internal {
+  --connector-width: var(--connector-internal-width);
+}
+
+.connector--internal .connector { stroke: var(--connector-internal); }
+
+/* An anchored line stays on the points it was put on. It is drawn no
+   differently for it: where a line runs is the map's meaning, and dashing it
+   would say something about the terrain that anchoring does not mean. */
+
+.connector__hit {
+  stroke: transparent;
+  stroke-width: 18;
+  fill: none;
+  cursor: pointer;
+}
+
+/* A line has no inside to outline, so its rim is drawn under it and shows as a
+   border either side. Nothing is drawn there until the line is hovered or
+   picked — the width is held steady so the target cannot shift under the
+   pointer. */
+.connector__rim {
+  fill: none;
+  stroke: none;
+  stroke-linecap: round;
+  stroke-width: calc(var(--connector-width) + 6px);
+  pointer-events: none;
+}
+
+/* Hover outlines a line the way it outlines a domain, saying only that this is
+   what a press would take. A domain is outlined against its own pale fill and a
+   sage rim is enough there; a line is grey to begin with, so its rim is the
+   page's ink — anything lighter reads as the line having got fatter. */
+.connector--hover .connector__rim {
+  stroke: var(--ink);
+  stroke-opacity: 0.75;
+}
+
+/* Selection commits to the blue, and to a weight neither scope uses, so a
+   picked line is unmistakable among the lines it crosses. Its rim turns to
+   paper: the line runs over domains and other lines, and a band of the stage's
+   own colour is what holds it clear of them. */
+.connector--selected {
+  --connector-width: var(--connector-selected-width);
+}
+
+.connector--selected .connector { stroke: var(--selection); }
+
+.connector--selected .connector__rim {
+  stroke: var(--paper);
+  stroke-opacity: 0.9;
+}
+
+.connector--draft {
+  stroke: var(--selection);
+  stroke-width: var(--connector-public-width);
+  stroke-linecap: round;
+  stroke-dasharray: 9 7;
+  fill: none;
+  pointer-events: none;
+}
+
+/* --- the hovered line's name ---------------------------------------------- */
+
+/* Chrome, not ink: it is counter-scaled in the render so it keeps one size on
+   screen, and it never takes the pointer off the line it belongs to. */
+.connector-label { pointer-events: none; }
+
+.connector-label__plate {
+  fill: var(--paper);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.connector-label__text {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  fill: var(--ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* --- connection snap points ---------------------------------------------- */
+
+/* A generous invisible target around each small visible dot. */
+.snap-hit {
+  fill: transparent;
+  pointer-events: none;
+  cursor: crosshair;
+}
+
+.cap:hover .snap-hit,
+.cap--selected .snap-hit,
+.diagram[data-connecting="true"] .snap-hit { pointer-events: all; }
+
+.snap {
+  fill: var(--paper);
+  stroke: var(--connector-public);
+  stroke-width: 1.5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 90ms linear;
+}
+
+.cap:hover .snap,
+.cap--selected .snap,
+.diagram[data-connecting="true"] .snap { opacity: 1; }
+
+.snap-point:hover .snap,
+.snap--active {
+  fill: var(--selection);
+  stroke: var(--selection);
+  opacity: 1;
+}
+
+/* --- moving the title and the lobes --------------------------------------- */
+
+/* The title's lobe: invisible, but the thing you take hold of. */
+.title-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: move;
+}
+
+/* Edit mode outlines every lobe, so it is clear what can be dragged. */
+.lobe-handle { pointer-events: none; }
+
+.lobe-handle__ring {
+  fill: none;
+  stroke: var(--selection);
+  stroke-width: 3;
+  stroke-opacity: 0.55;
+  stroke-dasharray: 10 8;
+}
+
+/* --- moving a line's ends -------------------------------------------------- */
+
+/* Only the selected line shows them, so they can be pressed on sight. */
+.line-end__hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.line-end__dot {
+  fill: var(--paper);
+  stroke: var(--selection);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.line-end--held .line-end__hit { cursor: grabbing; }
+.line-end--held .line-end__dot { fill: var(--selection); }
+
+/* The bends of a curved line. Hollow, so they read as handles on the line
+   rather than as points on the map. */
+.bend__hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.bend__dot {
+  fill: var(--paper);
+  stroke: var(--selection);
+  stroke-width: 2;
+  stroke-opacity: 0.8;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.bend:hover .bend__dot { stroke-opacity: 1; }
+.bend--held .bend__hit { cursor: grabbing; }
+.bend--held .bend__dot { fill: var(--selection); }
+
+/* --- the title's text area ------------------------------------------------- */
+
+/* The dash and stroke widths are set per render, in screen pixels divided back
+   out through the zoom — naming them here would override that. */
+.title-width__area {
+  fill: none;
+  stroke: var(--selection);
+  stroke-opacity: 0.5;
+  pointer-events: none;
+}
+
+.title-width__hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: ew-resize;
+}
+
+.title-width__bar {
+  fill: var(--selection);
+  fill-opacity: 0.85;
+  stroke: var(--paper);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.title-width__grip:hover .title-width__bar { fill-opacity: 1; }
+
+/* --- renaming, on the shape itself ----------------------------------------- */
+
+.title-editor { overflow: visible; }
+
+/* Sized and weighted from the layout, so what you type is what gets drawn. The
+   box is exactly as tall as its lines, which is what leaves the text centred. */
+.title-editor__input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: 2px solid var(--selection);
+  outline-offset: 4px;
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-heading);
+  text-align: center;
+  resize: none;
+  overflow: hidden;
+}
+
+/* --- the kebab ------------------------------------------------------------- */
+
+/* Rides at the end of the title, and only once the domain is selected. */
+.kebab { cursor: pointer; }
+
+.kebab__hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.kebab__dot {
+  fill: var(--slot-ink, var(--ink));
+  fill-opacity: 0.65;
+  pointer-events: none;
+}
+
+.kebab:hover .kebab__dot,
+.kebab--open .kebab__dot { fill-opacity: 1; }

@@ -1,0 +1,1131 @@
+/* Header / main / footer, with two collapsible panels flanking the stage.
+   Everything but the stage sits on --chrome, a shade darker than the paper.
+   Sizes, spacing, radii and weights all come from the design tokens.
+
+   One breakpoint, at the foot of this file: a phone held upright. The stylesheet
+   is the only place it is written down, and hands the answer to the script in
+   --phone, so that "is this the phone layout" is asked of the layout itself
+   rather than of a media query copied into main.js. */
+
+:root { --phone: 0; }
+
+body {
+  display: grid;
+  /* One column, capped at the screen. Without the minmax the column is sized by
+     the widest thing in the page — the header's row of chips — so on any screen
+     narrower than that the rows all grow past the viewport and carry the details
+     panel off the right-hand edge, where nothing scrolls to reach it. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+
+.header,
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-075);
+  padding: var(--space-050) var(--space-100);
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+}
+
+.footer {
+  border-bottom: none;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-200);
+  line-height: var(--lh-m);
+  color: var(--ink-soft);
+}
+
+.footer__right {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-4);
+}
+
+.footer__status { font-variant-numeric: tabular-nums; }
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-025);
+}
+
+.header__user {
+  margin-left: var(--space-050);
+  font-size: var(--fs-200);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* Signed in through the bypass: say so where it cannot be missed. */
+.header__user[data-method="bypass"] {
+  padding: 0 var(--space-050);
+  border-radius: var(--radius-s);
+  background: var(--r-orange-400);
+  color: var(--ink-invert);
+}
+
+/* Save and its triangle are one control, so they meet without a seam. */
+.save {
+  display: inline-flex;
+  align-items: center;
+}
+
+.save__now { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+.save__more {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  font-size: 9px;
+}
+
+/* Unsaved work is the one thing in this header worth interrupting for. */
+.header .save__now[data-dirty="true"] {
+  background: var(--r-orange-400);
+  color: var(--ink-invert);
+}
+
+/* Hangs under the triangle. Fixed, because the header does not scroll and a
+   long list of versions would otherwise be cut off by it. */
+.save-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-1);
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  width: max-content;
+  min-width: 230px;
+  max-width: 320px;
+  padding: var(--space-075);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+}
+
+.save-menu__title {
+  margin: var(--gap-1) 0 0;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.save-menu__title:first-child { margin-top: 0; }
+
+/* A version reads as a row: what it is called, and when it was last written.
+   The name takes whatever width is left over — that, not the chip's own
+   centring, is what holds the name at the left and the time at the right. */
+.save-menu__item {
+  gap: var(--gap-3);
+  width: 100%;
+  text-align: left;
+}
+
+/* Cut a long name short rather than let it push the time off the row. */
+.save-menu__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-menu__when {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.save-menu__new {
+  display: flex;
+  gap: var(--gap-1);
+}
+
+.save-menu__new .field__input { min-width: 0; }
+.save-menu__new .btn { flex: none; }
+
+.header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-3);
+  min-width: 0;
+}
+
+.header__logo {
+  font-size: var(--icon-m);
+  line-height: 1;
+}
+
+.header__logo img {
+  display: block;
+  height: var(--icon-m);
+  width: auto;
+}
+
+/* The one heading on the page, so the one place the heading face is used. */
+.header__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--fs-500);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-s);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The two panels are the same width. */
+.main {
+  display: grid;
+  grid-template-columns: var(--menu-w, 250px) 1fr var(--details-w, 250px);
+  min-height: 0;
+}
+
+/* Collapsed leaves a rail behind, so the toggle stays reachable. */
+.main[data-menu="collapsed"] { --menu-w: var(--rail-w); }
+.main[data-details="collapsed"] { --details-w: var(--rail-w); }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--chrome);
+}
+
+.panel--menu { border-right: 1px solid var(--line); }
+.panel--details { border-left: 1px solid var(--line); }
+
+/* A row of actions at the foot of a panel: what you do to what is above it. */
+.panel__actions {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: var(--gap-1);
+  margin-top: auto;
+  padding: var(--space-050);
+  border-top: 1px solid var(--line);
+}
+
+/* The menu's buttons keep their words and icon to the right, the other way
+   round from the details panel: label first, icon last. */
+.panel--menu .btn--wide { justify-content: flex-end; }
+.panel--menu .btn--wide .icon { order: 1; }
+
+/* Shut, both panels keep their actions and lose everything else — the tree and
+   the fields are what you folded the panel away to be rid of; adding a shape
+   and deleting one are what you still reach for. */
+.main[data-menu="collapsed"] .panel--menu > .panel__head,
+.main[data-menu="collapsed"] .panel--menu > .tree,
+.main[data-details="collapsed"] .panel--details > .details { display: none; }
+
+/* In the rail there is room for the icon and nothing else. */
+.main[data-menu="collapsed"] .panel--menu .panel__actions,
+.main[data-details="collapsed"] .panel--details .panel__actions {
+  align-items: center;
+  padding: var(--gap-2) 0;
+}
+
+.main[data-menu="collapsed"] .panel--menu .btn__label,
+.main[data-details="collapsed"] .panel--details .btn__label { display: none; }
+
+.main[data-menu="collapsed"] .panel--menu .btn--wide,
+.main[data-details="collapsed"] .panel--details .btn--wide {
+  width: var(--chip-h);
+  justify-content: center;
+  padding: 0;
+}
+
+/* The title, then the controls that act on the whole of the body at the far
+   end. No divider under it: the tree reads straight on from its heading. */
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-2);
+  padding: var(--space-050) var(--space-050) var(--space-025);
+}
+
+/* The chips overhang the row, so the title alone sets its height and the tree
+   starts as close under it as a section's rows start under a tree caption. */
+.panel__head .btn {
+  margin-block: calc((var(--fs-200) * var(--lh-m) - var(--chip-h)) / 2);
+}
+
+.panel__head + .tree { padding-top: 0; }
+
+.panel__title {
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.panel__buttons {
+  display: flex;
+  flex: none;
+  gap: var(--gap-1);
+}
+
+/* No auto margin: the actions above already take the slack, and a second one
+   would split it and float them mid-rail once the body is folded away. */
+.panel__foot {
+  display: flex;
+  padding: var(--space-050);
+  border-top: 1px solid var(--line);
+}
+
+/* View mode hides the actions, and with them the margin that held the foot
+   down; folded, nothing else would, and the toggle would rise to the top. */
+.panel__actions[hidden] + .panel__foot { margin-top: auto; }
+
+.main[data-menu="collapsed"] .panel--menu .panel__foot,
+.main[data-details="collapsed"] .panel--details .panel__foot {
+  justify-content: center;
+  padding: var(--gap-2) 0;
+  border-top: none;
+}
+
+/* The details panel's handle on a phone, and nothing anywhere else: a column
+   beside the map needs no handle, it has the whole panel to look at. */
+.details-bar { display: none; }
+
+/* --- buttons ------------------------------------------------------------- */
+
+.btn {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  border-radius: var(--radius-s);
+  padding: var(--space-025) var(--space-050);
+  font-size: var(--fs-200);
+  line-height: var(--lh-s);
+  cursor: pointer;
+}
+
+.btn:hover { background: var(--chrome-hover); }
+.btn[aria-pressed="false"] { color: var(--ink-soft); }
+
+/* View mode: the action still shows, so the panel reads the same, but it is
+   inert and dimmed until Edit is on. pointer-events keeps :hover from firing
+   at all, rather than fighting it with another background. */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Every sidebar control — actions and collapse alike — is one of these. */
+.btn--chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--chip-h);
+  min-width: var(--chip-h);
+  padding: 0 var(--space-050);
+  border-radius: var(--chip-radius);
+  background: var(--paper);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.btn--danger:hover { background: var(--danger); }
+
+/* A chip holding an icon instead of a word: square, and the same square as the
+   collapse toggle, so they read as one set where they meet in the rail. Not to
+   be confused with .btn--icon, which is the larger control the stage uses. */
+.btn--chip-icon {
+  width: var(--chip-h);
+  padding: 0;
+}
+
+/* The same button opened out: the icon keeps its place and the label follows. */
+.btn--wide {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--gap-2);
+  padding: 0 var(--space-050);
+}
+
+.btn--wide .icon { flex: none; }
+.btn__label { white-space: nowrap; }
+
+.btn--collapse .icon,
+.btn--chip-icon .icon {
+  width: var(--icon-s);
+  height: var(--icon-s);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The details icon mirrors the menu one, and each flips to point the way the
+   panel would move if pressed. */
+.panel--details .btn--collapse .icon,
+.panel--menu .btn--collapse[aria-pressed="false"] .icon { transform: scaleX(-1); }
+.panel--details .btn--collapse[aria-pressed="false"] .icon { transform: none; }
+
+.btn--icon {
+  width: var(--icon-l);
+  height: var(--icon-l);
+  padding: 0;
+  border-radius: var(--radius-s);
+  font-size: var(--fs-400);
+  line-height: 1;
+  background: var(--paper);
+}
+
+/* In the chrome a button is the surface it sits on until it is pointed at: no
+   fill of its own, and a border only under the pointer or keyboard focus. */
+.header .btn,
+.panel .btn {
+  border-color: transparent;
+  background: transparent;
+}
+
+.header .btn:hover,
+.header .btn:focus-visible,
+.panel .btn:hover,
+.panel .btn:focus-visible { border-color: var(--line-strong); }
+
+/* Deleting still warns before the click lands. */
+.panel .btn--danger:hover { background: var(--danger); }
+
+/* --- hierarchy tree ------------------------------------------------------ */
+
+.tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--gap-2) 0;
+}
+
+.tree__group + .tree__group { margin-top: var(--gap-1); }
+
+/* The sections after the domains — unassigned capabilities, connectors —
+   are the only rows straight under the tree, and stand apart from what is above. */
+.tree > * + .tree__row { margin-top: var(--gap-3); }
+
+.tree__row { display: flex; align-items: center; }
+
+/* Caret column, kept even when a domain has nothing to fold, so labels line up. */
+.tree__toggle {
+  flex: none;
+  width: 14px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.tree__toggle[aria-expanded="false"] { transform: rotate(-90deg); }
+.tree__toggle:disabled { visibility: hidden; }
+
+.tree__item {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-025) var(--space-075) var(--space-025) var(--space-050);
+  border: none;
+  background: transparent;
+  font-size: var(--fs-200);
+  line-height: var(--lh-s);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree__item:hover { background: var(--chrome-hover); }
+.tree__item[aria-selected="true"] {
+  background: var(--selected-row);
+  font-weight: var(--fw-semibold);
+}
+.tree__item--depth-1 { padding-left: 22px; }
+.tree__item--depth-2 { padding-left: 40px; }
+.tree__row--depth-1 .tree__caption { padding-left: 22px; }
+
+/* The icon carries the shape's own colour, and its silhouette says which kind. */
+.tree__swatch {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.tree__swatch--domain { border-radius: 58% 42% 46% 54% / 50% 56% 44% 50%; }
+.tree__swatch--capability { height: 8px; border-radius: 50%; }
+
+.tree__swatch--connector {
+  height: 0;
+  border: none;
+  border-top: 3px solid var(--connector-public);
+  border-radius: 2px;
+}
+
+.tree__label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tree__caption {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-050) var(--space-075) var(--space-025) var(--space-050);
+  overflow: hidden;
+  font-size: var(--fs-200);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+}
+
+/* --- details ------------------------------------------------------------- */
+
+.details {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-075);
+  font-size: var(--fs-200);
+}
+
+.field { margin-bottom: var(--gap-4); }
+
+.field__label {
+  display: block;
+  margin-bottom: var(--space-025);
+  font-size: var(--fs-200);
+  color: var(--ink-soft);
+}
+
+/* Every control in the panel is the same size — the title is not special. */
+.field__input,
+.field__select {
+  width: 100%;
+  padding: var(--space-025) var(--space-050);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+  font-size: var(--fs-200);
+  line-height: var(--lh-m);
+}
+
+/* Edit mode: what is actually being typed reads in full black, a stronger cue
+   than the enabled border alone that this value is live. */
+.details .field__input:not(:disabled, .field__input--quiet) { color: var(--r-charcoal-600); }
+
+/* View mode: the text fields stay live — a caret goes in them, words are
+   selected, copied and scrolled — but nothing typed is kept, so they hold the
+   quieter grey of something being read rather than written, and the panel still
+   says at a glance which mode it is in. */
+.details .field__input--quiet {
+  color: var(--ink-soft);
+  border-color: var(--line);
+  background: transparent;
+}
+
+/* A short choice sits beside its label: one row, not two. The controls share a
+   width, so they line up down the section. */
+.field--inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-2);
+}
+
+.field--inline .field__label {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.field--inline .field__select { flex: 0 0 55%; width: auto; }
+
+.field__check {
+  margin: 0;
+  accent-color: var(--selection);
+  cursor: pointer;
+}
+
+/* A value to read, not edit: the controls' own ink, without their box. */
+.field__value {
+  color: var(--ink);
+  word-break: break-word;
+}
+
+/* The icon row: what is on the shape now, what else there is, and a way to add
+   to the folder the list comes from. */
+.icon-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-1);
+}
+
+.icon-picker .field__select { min-width: 0; }
+.icon-picker .btn { flex: none; }
+
+.icon-picker__preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--chip-h);
+  height: var(--chip-h);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+}
+
+.icon-picker__preview img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+/* Typed, but not a colour yet — say so without throwing the value away. */
+.field__input--bad {
+  border-color: var(--r-red-400);
+  outline-color: var(--r-red-400);
+}
+
+/* Sized in details.js to whatever it holds, up to eight lines: a handle of its
+   own would only be undone by the next keystroke. */
+.field__input--area {
+  resize: none;
+  min-height: 44px;
+  line-height: 1.35;
+}
+
+.section + .section { margin-top: var(--gap-3); }
+
+/* An accordion: the heading is the control that opens its own panel. */
+.section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  width: 100%;
+  margin: 0;
+  padding: var(--gap-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.section__title::before {
+  content: "▾";
+  font-size: 9px;
+  line-height: 1;
+}
+
+.section__title[aria-expanded="false"]::before { content: "▸"; }
+.section__title:hover { color: var(--ink); }
+
+.section__body { padding-top: var(--gap-3); }
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+}
+
+.slider__input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--selection);
+}
+
+.slider__value {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--gap-2);
+}
+
+.swatch {
+  aspect-ratio: 1;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.swatch[aria-pressed="true"] { outline: 2px solid var(--selection); outline-offset: 1px; }
+
+/* View mode: every field still shows what the selection holds, just not
+   open to changing it. */
+.field__input:disabled,
+.field__select:disabled,
+.field__check:disabled,
+.slider__input:disabled,
+.swatch:disabled {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
+.details__empty { color: var(--ink-soft); }
+
+.details__meta {
+  margin-top: var(--gap-4);
+  padding-top: var(--gap-3);
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+/* --- the kebab menu -------------------------------------------------------- */
+
+/* Hangs off the kebab on the selected domain; the diagram positions it. */
+.kebab-menu {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  gap: var(--gap-1);
+  padding: var(--gap-1);
+  transform: translateX(-50%);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--paper);
+  box-shadow: 0 2px 8px rgb(40 40 40 / 12%);
+}
+
+/* --- the palette editor ---------------------------------------------------- */
+
+/* A modal rather than a popover in the panel: the palette belongs to the map,
+   whatever happens to be selected. A native <dialog>, so the page behind is
+   inert, Esc shuts it and focus goes back to the button that opened it.
+
+   It sits in the bottom right corner, 20px in, over a scrim light enough that
+   the map stays readable: the point of editing a colour is watching the shapes
+   that wear it change. One narrow column, tall rather than wide, so it stands
+   over the details panel and leaves the diagram all but clear. The dialog
+   carries no padding of its own, so a click whose target is the dialog itself
+   can only have landed on the backdrop. */
+.dialog {
+  --dialog-inset: 20px;
+  inset: auto var(--dialog-inset) var(--dialog-inset) auto;
+  width: min(260px, calc(100vw - 2 * var(--dialog-inset)));
+  max-height: calc(100vh - 2 * var(--dialog-inset));
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 24%);
+}
+
+.dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog::backdrop { background: rgb(20 20 20 / 8%); }
+
+/* About is the same modal, pinned instead to the top right corner under the
+   button that opens it, and wider: it holds a few paragraphs of prose rather
+   than a column of controls. */
+.dialog--about {
+  inset: var(--dialog-inset) var(--dialog-inset) auto auto;
+  width: min(420px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+.dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-100);
+  font-size: var(--fs-200);
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.dialog__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-2);
+  padding-top: var(--gap-3);
+  border-top: 1px solid var(--line);
+}
+
+/* A lone button shutting the dialog sits where Done does in the palette editor. */
+.dialog__foot--end { justify-content: flex-end; }
+
+/* Prose, so a step up from the controls' 13px, with room between the lines. */
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-3);
+  font-size: var(--fs-300);
+  line-height: var(--lh-m);
+}
+
+.about p { margin: 0; }
+
+/* Getting around is the same modal again, centered on the page, since it is
+   read on its own rather than beside anything, and wide: its tables' cells are
+   sentences, and narrow they would run to a column of words. */
+.dialog--getting-around {
+  inset: 0;
+  margin: auto;
+  width: min(720px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+/* A sentence on moving about the map, then the shortcuts in groups, each a
+   small heading over its table. At the prose size, like About. */
+.shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-3);
+  font-size: var(--fs-300);
+  line-height: var(--lh-m);
+}
+
+.shortcuts p { margin: 0; }
+
+/* Groups stand further apart than the paragraphs, so each reads as one. */
+.shortcuts__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-1);
+  margin-top: var(--gap-3);
+}
+
+.shortcuts__heading {
+  margin: 0;
+  font-size: var(--fs-300);
+  font-weight: var(--fw-semibold);
+}
+
+/* Keys and gestures on the left, what they do on the right, a rule between
+   rows. At the prose size, like About, since every cell is a sentence. */
+.keys {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-300);
+  line-height: var(--lh-m);
+}
+
+.keys th,
+.keys td {
+  padding: var(--gap-2) var(--gap-3) var(--gap-2) 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.keys th:last-child,
+.keys td:last-child { padding-right: 0; }
+
+.keys th {
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.keys td { border-top: 1px solid var(--line); }
+.keys tbody tr:first-child td { border-top: none; }
+.keys td:first-child { width: 42%; }
+
+/* The link endings are typed, so they are set as code, and may break
+   anywhere rather than push the table wider than the dialog. */
+.keys code {
+  padding: 0 var(--gap-1);
+  border-radius: var(--radius-s);
+  background: var(--chrome);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+/* The palette first, then the picker for the one colour chosen from it. */
+.palette-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+}
+
+.palette-editor__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  min-width: 0;
+}
+
+.palette-editor__label {
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.palette-editor__sizes {
+  display: flex;
+  gap: var(--gap-1);
+  margin-bottom: var(--gap-2);
+}
+
+.palette-size { flex: 1 1 0; }
+
+/* The size in force is filled in, not merely outlined: among three identical
+   chips a border alone does not say which one you are on. */
+.palette-size--on {
+  background: var(--selection);
+  border-color: var(--selection);
+  color: var(--ink-invert);
+  font-weight: var(--fw-semibold);
+}
+
+.palette-size--on:hover { background: var(--selection); }
+
+/* Always open, never behind a button. Saturation runs across the area and
+   brightness up it, over the pure hue the strip below is set to (--hue, from
+   script). The thumb may hang past the edge, so nothing here clips. */
+.picker__area {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background:
+    linear-gradient(to top, #000, rgb(0 0 0 / 0)),
+    linear-gradient(to right, #fff, rgb(255 255 255 / 0)),
+    var(--hue, #f00);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.picker__area:focus-visible,
+.picker__hue:focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+
+.picker__thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--r-neutral-white);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+/* A range input, so the keyboard comes free; only the look is its own. */
+.picker__hue {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  margin: var(--gap-1) 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: linear-gradient(to right,
+    #f00, #ff0 16.67%, #0f0 33.33%, #0ff 50%, #00f 66.67%, #f0f 83.33%, #f00);
+  cursor: pointer;
+}
+
+.picker__hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--r-neutral-white);
+  border-radius: 50%;
+  background: var(--hue, #f00);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
+}
+
+.picker__hue::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--r-neutral-white);
+  border-radius: 50%;
+  background: var(--hue, #f00);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
+}
+
+.picker__hue::-moz-range-track { background: transparent; }
+
+.picker__hex {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+}
+
+.picker__chip {
+  flex: none;
+  width: var(--chip-h);
+  height: var(--chip-h);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+}
+
+.picker__hex .field__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- a phone, held upright ------------------------------------------------ */
+
+/* Portrait on a screen this narrow there is no room for a column at either side
+   of the map, so the map takes the width. The hierarchy panel goes — the diagram
+   is already the view of the same thing — and so does the footer, whose counts
+   and status are the least of what the map is owed. The details panel stays,
+   because what is selected is the one thing the map itself cannot say, but it
+   comes back as a sheet across the foot of the screen: a bar naming the
+   selection, which opens over the map to show its fields and shuts back down to
+   the bar. It is the same data-details state as the wide layout's fold, so the
+   bar and the Collapse toggle in the panel's own foot are one switch. */
+@media (max-width: 640px) and (orientation: portrait) {
+  :root { --phone: 1; }
+
+  /* A phone's toolbars slide in and out of the way and 100vh does not notice,
+     which would leave the foot of the sheet under them. */
+  body { height: 100dvh; }
+
+  /* The header's chips run to twice the width of a screen this narrow, and a row
+     that overflows leaves Sign out and About off the edge for good — the page
+     itself does not scroll. So the brand takes a row of its own and the chips
+     take the next one, where they stay one row and are swiped along. Two rows,
+     whatever arrives later: the identity chip lengthens the strip rather than
+     wrapping it, so the stage is not resized under a map already fitted to it. */
+  .header { flex-wrap: wrap; }
+
+  .header__actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  /* The chips keep their own width and the strip scrolls past them: left to
+     shrink, they squeeze the words out of sight instead. */
+  .header__actions > * { flex: none; }
+
+  .panel--menu,
+  .footer { display: none; }
+
+  /* The corner the hint sits in is a finger's width from the zoom stack here,
+     and what it has to say — scroll, and press Edit — is a desk's advice. */
+  .hint { display: none; }
+
+  /* The sheet is a row of the layout rather than something floating over it, so
+     the map keeps a stage of its own to be fitted to and the zoom stack never
+     ends up underneath it. The row snaps between its two heights, as the panels
+     either side of a wide map do: animating it would leave the stage still
+     growing when the map is first fitted to it, and the map off centre. */
+  .main {
+    --bar-h: 40px;
+    --sheet-h: 50dvh;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) var(--sheet-h);
+  }
+
+  /* Shut, the row is the bar's own height and the hairline above it, which it
+     has to find room for as well. */
+  .main[data-details="collapsed"] { --sheet-h: calc(var(--bar-h) + 1px); }
+
+  /* It sits under the map rather than beside it, so the line, the corners and
+     the lift are all at its top edge. */
+  .panel--details {
+    border-left: none;
+    border-top: 1px solid var(--line);
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    box-shadow: 0 -2px 12px rgb(0 0 0 / 10%);
+  }
+
+  /* The bar is the switch here, so the foot's toggle stands down. */
+  .panel--details > .panel__foot { display: none; }
+
+  /* Shut, the sheet is the bar and nothing else. The fields the wide layout's
+     rail already drops; the actions would ride on below the edge, where the
+     panel's overflow cuts them off — reachable by keyboard, and scrolling the
+     bar out of its own sheet when they were reached. */
+  .main[data-details="collapsed"] .panel--details > .panel__actions { display: none; }
+
+  .details-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap-2);
+    flex: none;
+    height: var(--bar-h);
+    padding: 0 var(--space-075);
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: var(--fs-200);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  /* What is selected, in the map's own words, cut short rather than wrapped. */
+  .details-bar__name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Pointing the way the sheet would move if pressed, like the collapse icon.
+     The one thing here that moves: it changes nothing about the layout, so the
+     map is not being measured while it runs. */
+  .details-bar__chevron {
+    flex: none;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--ink-soft);
+    transition: transform 180ms ease;
+  }
+
+  .main[data-details="collapsed"] .details-bar__chevron { transform: rotate(180deg); }
+
+  /* A field under 16px is a field the phone zooms the whole page in on when it
+     is tapped, and leaves zoomed. The sheet's controls are the only ones a
+     phone types into, so they are the ones that step up. */
+  .details .field__input,
+  .details .field__select {
+    font-size: var(--fs-400);
+  }
+}

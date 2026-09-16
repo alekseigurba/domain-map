@@ -1,0 +1,25 @@
+services:
+  domain-map:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      STORAGE_DIR: /store
+      PORT: 8000
+      # Sign-in is switched off for now: this stack lets everyone straight in.
+      # Drop AUTH_ENABLED to bring the gate back, and the sign-in screen then
+      # offers Bypass (dev), which the image refuses unless NODE_ENV says
+      # development. For Microsoft sign-in instead, drop all three and set
+      # AUTH_TENANT_ID, AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and
+      # AUTH_SESSION_SECRET.
+      AUTH_ENABLED: "false"
+      NODE_ENV: development
+      AUTH_DEV_BYPASS: "true"
+    # Everything the app stores sits under one folder -- the versions, the icons
+    # and the settings -- so one volume at one mount point keeps all of it.
+    volumes:
+      - domain-map-data:/store/data
+    restart: unless-stopped
+
+volumes:
+  domain-map-data:

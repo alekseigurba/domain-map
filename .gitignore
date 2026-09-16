@@ -1,0 +1,8 @@
+.DS_Store
+.env
+node_modules
+# The live file store. Rebuilt from seed/ on the next start.
+/storage/
+/exclude/
+# What package.sh writes.
+/dist/

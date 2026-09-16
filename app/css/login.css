@@ -1,0 +1,110 @@
+/* The sign-in screen. Same tokens as the map, laid out as one quiet card. */
+
+.login {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  min-height: 100vh;
+  overflow: auto; /* tokens.css pins the map's body; a short window still needs to reach the buttons */
+  background: var(--chrome);
+}
+
+.login__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-100);
+  width: min(380px, calc(100vw - var(--space-200)));
+  padding: var(--space-200);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgb(40 40 40 / 8%);
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-075);
+}
+
+.login__logo {
+  font-size: var(--icon-m);
+  line-height: 1;
+}
+
+.login__logo img {
+  display: block;
+  height: var(--icon-m);
+  width: auto;
+}
+
+.login__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: var(--fs-600);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-s);
+}
+
+.login__blurb {
+  margin: 0;
+  font-size: var(--fs-300);
+  line-height: var(--lh-m);
+  color: var(--ink-soft);
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-050);
+}
+
+.login__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-050);
+  min-height: 44px;
+  padding: 0 var(--space-100);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--paper);
+  font-size: var(--fs-400);
+  cursor: pointer;
+}
+
+.login__button:hover { background: var(--chrome-hover); }
+.login__button:disabled { opacity: 0.55; cursor: default; }
+
+.login__button--primary {
+  border-color: var(--r-vanguard-400);
+  background: var(--r-vanguard-400);
+  color: var(--ink-invert);
+}
+
+.login__button--primary:hover { background: var(--r-vanguard-500); }
+
+.login__mark {
+  width: var(--icon-s);
+  height: var(--icon-s);
+  flex: none;
+}
+
+.login__note {
+  margin: 0;
+  min-height: var(--fs-400);
+  font-size: var(--fs-200);
+  line-height: var(--lh-m);
+  color: var(--ink-soft);
+}
+
+.login__note[data-tone="error"] { color: var(--r-red-400); }
+
+/* The bypass is a door with no lock; say so where it is pressed. */
+.login__note[data-tone="warn"] { color: var(--r-orange-400); }
+
+.login__footer {
+  padding: var(--space-100);
+  font-size: var(--fs-200);
+  color: var(--ink-soft);
+}

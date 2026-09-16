@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <path d="M2.8 4.4h10.4"></path>
+  <path d="M6.4 4.4V2.9h3.2v1.5"></path>
+  <path d="M4.2 4.4l.7 8.4a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.4"></path>
+  <line x1="6.8" y1="6.8" x2="6.8" y2="11.2"></line>
+  <line x1="9.2" y1="6.8" x2="9.2" y2="11.2"></line>
+</svg>

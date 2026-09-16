@@ -1,0 +1,28 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- A globe with nodes radiating from it: the domain map, in one mark. -->
+  <g fill="none" stroke="#527A42" stroke-width="2.6" stroke-linecap="round">
+    <circle cx="32" cy="32" r="15"/>
+    <ellipse cx="32" cy="32" rx="7.2" ry="15"/>
+    <path d="M17 32H47"/>
+    <path d="M18.73 25Q32 21.5 45.27 25"/>
+    <path d="M18.73 39Q32 42.5 45.27 39"/>
+  </g>
+  <g fill="none" stroke="#527A42" stroke-width="3" stroke-linecap="round">
+    <path d="M51.5 32L57 32"/>
+    <circle cx="60.3" cy="32" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M45.79 45.79L49.68 49.68"/>
+    <circle cx="52.01" cy="52.01" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M32 51.5L32 57"/>
+    <circle cx="32" cy="60.3" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M18.21 45.79L14.32 49.68"/>
+    <circle cx="11.99" cy="52.01" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M12.5 32L7 32"/>
+    <circle cx="3.7" cy="32" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M18.21 18.21L14.32 14.32"/>
+    <circle cx="11.99" cy="11.99" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M32 12.5L32 7"/>
+    <circle cx="32" cy="3.7" r="3.6" fill="#527A42" stroke="none"/>
+    <path d="M45.79 18.21L49.68 14.32"/>
+    <circle cx="52.01" cy="11.99" r="3.6" fill="#527A42" stroke="none"/>
+  </g>
+</svg>
