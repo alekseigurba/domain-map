@@ -1,8 +1,36 @@
 {
   "name": "domain-map",
-  "private": true,
+  "version": "1.0.0",
+  "description": "A shared map of your organization: domains and business capabilities in deliberate positions, with flows drawn on top.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alekseigurba/domain-map.git"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./scripts/server.mjs",
+    "./app/*": "./app/*",
+    "./seed/*": "./seed/*",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "domain-map": "./scripts/serve.mjs",
+    "create-domain-map-app": "./scripts/create-app.mjs"
+  },
+  "files": [
+    "app",
+    "scripts",
+    "seed",
+    "tests",
+    "BRANDING.md",
+    "design-system.md"
+  ],
   "scripts": {
-    "start": "node --env-file=dev.env scripts/serve.mjs app 8000"
+    "start": "node --env-file=dev.env scripts/serve.mjs app 8000",
+    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/auth.test.mjs"
   }
 }

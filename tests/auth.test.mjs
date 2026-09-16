@@ -200,7 +200,7 @@ try {
     page.status === 302 && page.headers.get('location') === '/login.html?returnUrl=%2F', page.headers.get('location'));
   const api = await get(app, '/api/files?prefix=data/');
   check('the API answers a stranger with 401', api.status === 401 && (await api.json()).error);
-  check('so does a stored map', (await get(app, '/api/files/data/versions/pay-credit-domain.json')).status === 401);
+  check('so does a stored map', (await get(app, '/api/files/data/versions/bnpl-example.json')).status === 401);
   check('and the app\'s own scripts', (await get(app, '/js/main.js')).status === 302);
 
   for (const path of ['/login.html', '/js/login.js', '/css/login.css', '/css/tokens.css', '/css/fonts.css',
@@ -211,7 +211,7 @@ try {
     (await fetch(`${app.base}/api/files/data/settings.json`, { method: 'PUT', body: '{}' })).status === 401);
   check('a public prefix does not open a private file by ..',
     (await get(app, '/fonts/..%2Findex.html')).status === 302
-    && (await get(app, '/api/files/data/brand/..%2Fversions%2Fpay-credit-domain.json')).status === 401);
+    && (await get(app, '/api/files/data/brand/..%2Fversions%2Fbnpl-example.json')).status === 401);
 
   const anonymous = await (await get(app, '/auth/me')).json();
   check('/auth/me offers Microsoft and not the bypass',

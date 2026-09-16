@@ -1,0 +1,19 @@
+/* Deliberately empty. This is the last stylesheet both pages load, and the one
+   file a consumer is expected to replace: put a copy at `<brand-dir>/css/brand.css`
+   and the server serves that instead of this one.
+
+   Everything the app draws itself with is a custom property on :root in
+   tokens.css, so redefining them here is the whole of a visual rebrand — no
+   build, no fork. The map's own 24 shape fills are among them: geometry.js
+   reads --c1 … --c24 back out of the stylesheet, so they follow too.
+
+   :root {
+     --r-vanguard-400: #7b2d8e;
+     --font-heading: "Acme Grotesk";
+     --font-text: "Acme Grotesk";
+     --c1: #7b2d8e;
+   }
+
+   Because the palette is read once when the module first runs, this has to stay
+   a <link> in the head rather than a stylesheet injected later. BRANDING.md has
+   the rest, including the fonts. */

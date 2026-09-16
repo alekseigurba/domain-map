@@ -22,7 +22,8 @@ const SCOPE = 'openid profile email';
 
 /** What has to load before anyone has signed in: the sign-in page and what it is drawn with. */
 const PUBLIC_FILES = new Set([
-  '/login.html', '/js/login.js', '/css/fonts.css', '/css/tokens.css', '/css/login.css', '/favicon.svg',
+  '/login.html', '/js/login.js', '/css/fonts.css', '/css/tokens.css', '/css/login.css',
+  '/css/brand.css', '/favicon.svg',
 ]);
 const PUBLIC_PREFIXES = ['/fonts/'];
 /** The sign-in page wears the map's branding, and branding is stored. Read-only. */

@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 const { validate, fromDocument, toDocument, stringify } =
   await import('../app/js/document.js');
 
-const path = new URL('../seed/data/versions/pay-credit-domain.json', import.meta.url);
+const path = new URL('../seed/data/versions/bnpl-example.json', import.meta.url);
 const text = await readFile(path, 'utf8');
 const seed = JSON.parse(text);
 
@@ -94,9 +94,15 @@ for (const domain of seed.domains) {
   check(`${domain.key}: lobes keep their distance`,
     inside.length < 2 || closest >= CAPABILITY_GAP, `${Math.round(closest)} apart — ${pair}`);
 
-  const positions = inside.map((c) => shapeOf(c).order ?? 0);
-  check(`${domain.key}: no two capabilities share a position`,
-    new Set(positions).size === positions.length);
+  // Order is a paint order, not a numbered seat: store.js sorts on it and breaks
+  // ties on the key, so two lobes in one domain may share a number and still
+  // stack the same way every time. What the file owes the app is an index it can
+  // read back and write out unchanged.
+  const badOrder = inside.find((c) => {
+    const order = shapeOf(c).order ?? 0;
+    return !Number.isInteger(order) || order < 0;
+  });
+  check(`${domain.key}: every lobe carries a stack order`, !badOrder, badOrder?.key);
 }
 
 // --- the wiring between domains ---
@@ -105,9 +111,18 @@ const crossing = seed.connectors.filter((k) => domainOf.get(k.from) !== domainOf
 check('the example wires domains to each other', crossing.length > 0,
   `${crossing.length} of ${seed.connectors.length} connectors cross a boundary`);
 
-const pairs = seed.connectors.map((k) => [k.from, k.to].sort().join(' – '));
-const repeated = pairs.find((p, i) => pairs.indexOf(p) !== i);
-check('no two connectors join the same pair', !repeated, repeated);
+// One pair may carry more than one line, because two capabilities can have more
+// than one thing to say to each other, and document.js refuses only a line that
+// joins a capability to itself. What would be a mistake is the same line twice,
+// so the pair is read together with the words on it.
+const lines = seed.connectors.map((k) => `${[k.from, k.to].sort().join(' – ')}: ${k.description ?? ''}`);
+const repeated = lines.find((line, i) => lines.indexOf(line) !== i);
+check('no connector is drawn twice', !repeated, repeated);
+
+// A line here is there to explain the crossing it makes, so a silent one is two
+// lobes wired together with nothing said about why.
+const silent = seed.connectors.find((k) => !k.description?.trim());
+check('every connector says something', !silent, silent && `${silent.from} – ${silent.to}`);
 
 console.log(failures === 0 ? '\nAll seed checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

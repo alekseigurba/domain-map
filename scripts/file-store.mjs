@@ -68,3 +68,17 @@ export async function listObjects(storageDir, prefix = '') {
   objects.sort((a, b) => a.key.localeCompare(b.key));
   return objects;
 }
+
+/**
+ * The three calls above, bound to one directory — the shape the server asks for
+ * and the whole of what it needs. Anything else offering `read`, `write` and
+ * `list` can be handed to `createDomainMapServer` in its place.
+ */
+export function fileStore(storageDir) {
+  const dir = resolve(storageDir);
+  return {
+    read: (key) => readObject(dir, key),
+    write: (key, body) => writeObject(dir, key, body),
+    list: (prefix = '') => listObjects(dir, prefix),
+  };
+}

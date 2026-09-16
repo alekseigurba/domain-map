@@ -2,9 +2,21 @@
 // late: nothing complains when a shape is added, only when the map it was saved
 // into is opened again. So check them against the rules the importer uses.
 //   node tests/defaults.test.mjs
+//
+// A consumer whose brand directory carries its own copy of defaults.js can
+// check it with the same rules by naming it, which is what keeps an overlay
+// honest across an upgrade:
+//   node node_modules/domain-map/tests/defaults.test.mjs brand/js/defaults.js
 
-import { DOMAIN_SHAPE, CAPABILITY_SHAPE } from '../app/js/defaults.js';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { validateDomain, validateCapability } from '../app/js/rules.js';
+
+const target = process.argv[2]
+  ? pathToFileURL(resolve(process.argv[2])).href
+  : new URL('../app/js/defaults.js', import.meta.url).href;
+const { DOMAIN_SHAPE, CAPABILITY_SHAPE } = await import(target);
 
 let failures = 0;
 const check = (label, condition, detail = '') => {

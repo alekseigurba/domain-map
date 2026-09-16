@@ -13,7 +13,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
-import { listObjects, writeObject } from './file-store.mjs';
+// Only `list` and `write` of the store contract, so a seed lands in whatever
+// store the server was given, not only in a directory on disk.
 
 /** Every file under `dir`, as store keys grouped by the prefix they sit in. */
 async function groupByPrefix(dir) {
@@ -41,18 +42,18 @@ async function groupByPrefix(dir) {
 }
 
 /** What the store holds directly in `prefix`, ignoring the folders below it. */
-async function directlyUnder(storageDir, prefix) {
-  const objects = await listObjects(storageDir, prefix);
+async function directlyUnder(store, prefix) {
+  const objects = await store.list(prefix);
   return objects.filter((object) => !object.key.slice(prefix.length).includes('/'));
 }
 
-export async function seedStore(storageDir, seedDir) {
+export async function seedStore(store, seedDir) {
   const seeded = [];
 
   for (const [prefix, files] of await groupByPrefix(seedDir)) {
-    if ((await directlyUnder(storageDir, prefix)).length > 0) continue;
+    if ((await directlyUnder(store, prefix)).length > 0) continue;
     for (const file of files) {
-      await writeObject(storageDir, file.key, await readFile(file.path));
+      await store.write(file.key, await readFile(file.path));
     }
     seeded.push(`${files.length} file${files.length === 1 ? '' : 's'} under ${prefix}`);
   }
