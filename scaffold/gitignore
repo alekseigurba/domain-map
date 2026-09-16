@@ -1,0 +1,5 @@
+node_modules
+.env
+.DS_Store
+# The live file store. Rebuilt from seed/ on the next start.
+/storage/

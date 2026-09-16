@@ -1,0 +1,51 @@
+/* The visual rebrand, entire. This is the last stylesheet the app loads, so
+   anything redefined here wins over the package's tokens.
+
+   The map's shape colours are --c1 … --c24, read back out of the stylesheet by
+   the app itself, so they rebrand along with the chrome. The seed map below
+   deliberately carries no palette of its own, which is what lets it follow
+   these. Once someone edits the palette in the app, that map keeps its own copy
+   and stops following them. */
+
+:root {
+  /* The brand colour, wherever the chrome asks for one. */
+  --r-brand-400: {{brandColor}};
+  --r-brand-300: {{brandColor}};
+  --r-brand-200: #e5dcea;
+
+  /* The map's own fills. Replace all 24 to own the palette outright; the ones
+     left alone keep the package's. */
+  --c1: {{brandColor}};
+}
+
+/* The brand colour alone does not reach the panels. --chrome, --chrome-hover,
+   --line and --line-strong come from the `sage` scale, which ships as a neutral
+   tinted toward the package's default green — so overriding only --r-brand-400
+   leaves faintly green panels behind your buttons. Retint these four to finish
+   the job; the numbers below are a starting point, not a computed match.
+
+:root {
+  --r-sage-200: #f4f1f5;
+  --r-sage-400: #ebe4ed;
+  --r-sage-500: #dbcfdd;
+  --r-sage-600: #c6b7c9;
+}
+*/
+
+/* A typeface of your own: drop the woff2 files in brand/fonts/, declare them
+   here, and name them. The package serves /fonts/ before sign-in, so the
+   sign-in page gets them too.
+
+@font-face {
+  font-family: 'Acme Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/acme-grotesk-400.woff2') format('woff2');
+}
+
+:root {
+  --font-heading: 'Acme Grotesk';
+  --font-text: 'Acme Grotesk';
+}
+*/

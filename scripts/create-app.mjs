@@ -20,21 +20,28 @@ const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
 );
 
-/** Where a consumer's package.json should point to get this exact version. */
-function dependencySpec() {
-  const url = packageJson.repository?.url ?? '';
-  const match = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
-  if (!match) return `^${packageJson.version}`;
-  const [, owner, repo] = match;
-  // A git tag, not a registry range: there is no build step, so npm can install
-  // straight from the tag, and a consumer gets a version they pinned on purpose.
-  const tag = `#v${packageJson.version}`;
+/** This package's own source, so the specs below name a repo rather than a blank. */
+const source = (() => {
+  const match = (packageJson.repository?.url ?? '').match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+  return match ? { owner: match[1], repo: match[2] } : null;
+})();
+
+/** How a consumer installs this package at `tag`, over https or, for a private repo, ssh. */
+function installSpec(tag, ssh) {
   // The `github:` shorthand resolves to an unauthenticated https URL, which a
   // private repo refuses. SSH uses whatever key the developer already pushes
   // with, so `--ssh` is the flag to pass when the source repo is private.
-  return flags.ssh
-    ? `git+ssh://git@github.com/${owner}/${repo}.git${tag}`
-    : `github:${owner}/${repo}${tag}`;
+  return ssh
+    ? `git+ssh://git@github.com/${source.owner}/${source.repo}.git#${tag}`
+    : `github:${source.owner}/${source.repo}#${tag}`;
+}
+
+/** Where a consumer's package.json should point to get this exact version. */
+function dependencySpec() {
+  if (!source) return `^${packageJson.version}`;
+  // A git tag, not a registry range: there is no build step, so npm can install
+  // straight from the tag, and a consumer gets a version they pinned on purpose.
+  return installSpec(`v${packageJson.version}`, flags.ssh);
 }
 
 // `--title` and `--color` take a value; `--force` does not. Walking the list
@@ -75,284 +82,101 @@ try {
 
 // --- what gets written --------------------------------------------------------
 
-const files = {
-  'package.json': `${JSON.stringify({
-    name: slug,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    engines: { node: '>=22' },
-    scripts: {
-      start: 'node server.mjs',
-      'start:dev': 'node --env-file=dev.env server.mjs',
-    },
-    dependencies: { 'domain-map': dependencySpec() },
-  }, null, 2)}\n`,
-
-  'server.mjs': `// The whole integration. Everything else in this repo is content: what the map
-// looks like (brand/) and what it starts life as (seed/).
-import { createDomainMapServer } from 'domain-map';
-import { fileURLToPath } from 'node:url';
-
-const here = (path) => fileURLToPath(new URL(path, import.meta.url));
-
-const server = createDomainMapServer({
-  // Files here shadow the package's own, so anything under its app/ can be
-  // replaced without forking. BRANDING.md in the package says which files are
-  // supported; everything else there is internal and may move between versions.
-  brandDir: here('brand'),
-  // Replaces the package's example map outright, rather than merging with it.
-  seedDir: here('seed'),
-});
-
-const port = Number(process.env.PORT ?? 8000);
-server.listen(port, () => console.log(\`${title} on http://localhost:\${port}\`));
-`,
-
-  'brand/css/brand.css': `/* The visual rebrand, entire. This is the last stylesheet the app loads, so
-   anything redefined here wins over the package's tokens.
-
-   The map's shape colours are --c1 … --c24, read back out of the stylesheet by
-   the app itself, so they rebrand along with the chrome. The seed map below
-   deliberately carries no palette of its own, which is what lets it follow
-   these. Once someone edits the palette in the app, that map keeps its own copy
-   and stops following them. */
-
-:root {
-  /* The brand colour, wherever the chrome asks for one. */
-  --r-brand-400: ${brandColor};
-  --r-brand-300: ${brandColor};
-  --r-brand-200: #e5dcea;
-
-  /* The map's own fills. Replace all 24 to own the palette outright; the ones
-     left alone keep the package's. */
-  --c1: ${brandColor};
-}
-
-/* The brand colour alone does not reach the panels. --chrome, --chrome-hover,
-   --line and --line-strong come from the \`sage\` scale, which ships as a neutral
-   tinted toward the package's default green — so overriding only --r-brand-400
-   leaves faintly green panels behind your buttons. Retint these four to finish
-   the job; the numbers below are a starting point, not a computed match.
-
-:root {
-  --r-sage-200: #f4f1f5;
-  --r-sage-400: #ebe4ed;
-  --r-sage-500: #dbcfdd;
-  --r-sage-600: #c6b7c9;
-}
-*/
-
-/* A typeface of your own: drop the woff2 files in brand/fonts/, declare them
-   here, and name them. The package serves /fonts/ before sign-in, so the
-   sign-in page gets them too.
-
-@font-face {
-  font-family: 'Acme Grotesk';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('../fonts/acme-grotesk-400.woff2') format('woff2');
-}
-
-:root {
-  --font-heading: 'Acme Grotesk';
-  --font-text: 'Acme Grotesk';
-}
-*/
-`,
-
-  'brand/favicon.svg': favicon(brandColor),
-
-  // `seed/` mirrors the store's key space exactly: seed/data/x becomes the
-  // object data/x. It fills a fresh store once and is never consulted again, so
-  // editing these files does not disturb a map anyone has worked on.
-  'seed/data/settings.json': `${JSON.stringify({
-    logo: null,
-    logoSrc: 'api/files/data/brand/logo.svg',
-    logoAlt: title,
-    title,
-    footer: 'Maintained by the architecture team',
-  }, null, 2)}\n`,
-
-  'seed/data/brand/logo.svg': logo(brandColor),
-
-  [`seed/data/versions/${slug}.json`]: `${JSON.stringify(starterMap(title), null, 2)}\n`,
-
-  'dev.env': `# What \`npm run start:dev\` runs with: sign-in switched off, so every page and
-# every API call goes straight through. Drop AUTH_ENABLED to bring the gate
-# back. For Microsoft sign-in, set AUTH_TENANT_ID, AUTH_CLIENT_ID,
-# AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET instead.
-AUTH_ENABLED=false
-NODE_ENV=development
-AUTH_DEV_BYPASS=true
-STORAGE_DIR=storage
-`,
-
-  Dockerfile: `FROM node:22-alpine
-
-WORKDIR /srv
-
-# The package installs from a git tag, so git has to be here for \`npm ci\`.
-RUN apk add --no-cache git openssh-client
-
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
-
-# If the package repo is private, the build needs a key instead. Swap the line
-# above for these two and build with \`docker build --ssh default .\`:
-#
-#   RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
-#   RUN --mount=type=ssh npm ci --omit=dev
-
-# Only what this repo owns. The app itself comes from node_modules.
-COPY server.mjs ./
-COPY brand ./brand
-COPY seed ./seed
-
-ENV NODE_ENV=production
-ENV STORAGE_DIR=/store
-ENV PORT=8000
-
-EXPOSE 8000
-VOLUME ["/store/data"]
-
-CMD ["node", "server.mjs"]
-`,
-
-  'docker-compose.yml': `services:
-  ${slug}:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      STORAGE_DIR: /store
-      PORT: 8000
-      # Sign-in is off in this stack. Drop these three and set AUTH_TENANT_ID,
-      # AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET for Entra ID.
-      AUTH_ENABLED: "false"
-      NODE_ENV: development
-      AUTH_DEV_BYPASS: "true"
-    # Everything the app stores sits under one folder, so one volume holds the
-    # maps, the version history and the uploaded icons.
-    volumes:
-      - ${slug}-data:/store/data
-    restart: unless-stopped
-
-volumes:
-  ${slug}-data:
-`,
-
-  '.dockerignore': `node_modules\nstorage\n.git\n`,
-
-  '.gitignore': `node_modules\n.env\n.DS_Store\n# The live file store. Rebuilt from seed/ on the next start.\n/storage/\n`,
-
-  'README.md': `# ${title}
-
-Built on [domain-map](${packageJson.repository?.url?.replace(/^git\+/, '').replace(/\.git$/, '') ?? 'domain-map'}), installed as a package. This repo holds only what is ours: the branding and the starting map.
-
-\`\`\`bash
-npm install
-npm run start:dev
-\`\`\`
-
-Then open <http://localhost:8000>.
-
-## What is in here
-
-| Path | What it is |
-| --- | --- |
-| \`server.mjs\` | The whole integration — ten lines that point the package at the two folders below. |
-| \`brand/css/brand.css\` | Token overrides: colours, typeface, the map's 24 shape fills. |
-| \`brand/favicon.svg\` | The tab icon. Any file under \`brand/\` shadows the package's copy of it. |
-| \`seed/data/settings.json\` | Header logo, page title and footer text. |
-| \`seed/data/versions/\` | The map a fresh store starts with. |
-
-\`seed/\` fills an empty store **once**. After that the store is the source of truth, so editing these files does not change a map anyone has worked on — that is deliberate. To start over, delete the store (\`rm -rf storage\`, or \`docker compose down -v\`).
-
-## Upgrading
-
-\`\`\`bash
-npm install domain-map@github:OWNER/REPO#v1.1.0
+// The upgrade command the consumer's README carries. A version they do not have
+// yet, but this package's real owner and repo, so it is something to run rather
+// than a template to fill in.
+const upgradeExample = source
+  ? `npm install domain-map@${installSpec('v1.1.0', false)}
 # or, if that repo is private:
-npm install domain-map@git+ssh://git@github.com/OWNER/REPO.git#v1.1.0
-\`\`\`
+npm install domain-map@${installSpec('v1.1.0', true)}`
+  : 'npm install domain-map@^1.1.0';
 
-Read the package's BRANDING.md first. Files under \`brand/\` that are not on its supported list — anything in \`brand/js/\`, in particular — can break on an upgrade, because they shadow the app's internals.
-`,
+// Every file a scaffolded repo starts with is a real file in the package rather
+// than a template literal in here, so each one can be read and edited as the
+// file it will become. Two directories feed it: scaffold/, the repo's own
+// skeleton, and the package's seed/, which is the starting map itself.
+const SCAFFOLD_DIR = new URL('../scaffold/', import.meta.url);
+const SEED_DIR = new URL('../seed/', import.meta.url);
+
+// npm rewrites a packed `.gitignore` to `.npmignore`, and a dotted name would
+// also apply to this repo's own git rather than waiting to be copied. They are
+// stored undotted and get their dot on the way out.
+const DOTTED = { gitignore: '.gitignore', dockerignore: '.dockerignore' };
+
+/** The colour the package's own seed art is drawn in — its default --r-brand-400. */
+const SEED_BRAND_COLOR = /#527a42/gi;
+
+const values = {
+  title,
+  slug,
+  brandColor,
+  // JSON files take the quoted form, so a title with a quote in it stays valid.
+  titleJson: JSON.stringify(title),
+  dependencySpecJson: JSON.stringify(dependencySpec()),
+  upgradeExample,
+  packageUrl: packageJson.repository?.url?.replace(/^git\+/, '').replace(/\.git$/, '') ?? 'domain-map',
 };
 
-// --- the starter content ------------------------------------------------------
-
-function favicon(color) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="${color}"/>
-  <circle cx="16" cy="16" r="7" fill="none" stroke="#fff" stroke-width="2.5"/>
-  <circle cx="16" cy="16" r="2.5" fill="#fff"/>
-</svg>
-`;
+/** `{{name}}` → its value. An unknown name is a broken template, not a blank. */
+function fill(text, path) {
+  return text.replace(/\{\{(\w+)\}\}/g, (_, name) => {
+    if (!(name in values)) throw new Error(`scaffold/${path}: no value for {{${name}}}`);
+    return values[name];
+  });
 }
 
-function logo(color) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img">
-  <circle cx="20" cy="20" r="18" fill="${color}" opacity="0.15"/>
-  <circle cx="20" cy="20" r="9" fill="none" stroke="${color}" stroke-width="3"/>
-  <circle cx="20" cy="20" r="3" fill="${color}"/>
-</svg>
-`;
+/** Every file under `dir`, as text, keyed by its path relative to it. */
+async function walk(dir, prefix = '') {
+  const out = {};
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue; // .DS_Store and anything like it
+    const at = new URL(entry.isDirectory() ? `${entry.name}/` : entry.name, dir);
+    if (entry.isDirectory()) Object.assign(out, await walk(at, `${prefix}${entry.name}/`));
+    else out[prefix + entry.name] = await readFile(at, 'utf8');
+  }
+  return out;
 }
+
+const { fromDocument, toDocument, stringify } = await import('../app/js/document.js');
 
 /**
- * Two domains and the capabilities in them — enough to show what the map is for
- * and to be worth deleting. No `palette`, on purpose: a map without one follows
- * the stylesheet, so this one wears brand.css until someone edits its colours.
+ * The package's own seed, made this repo's own: the same settings, the same
+ * logo, the same icons and the same example map, rather than a second set
+ * written out here that would drift from what the package actually ships.
+ *
+ * Three things are answered to the flags on the way through. A map's `palette`
+ * is dropped, because a map without one reads --c1 … --c24 back out of the
+ * stylesheet, which is what lets brand.css recolour it; it is round-tripped
+ * through the app's own reader and writer at the same time, so the file matches
+ * what a save writes and a consumer's first save is not a diff of the whole map.
+ * The art is drawn in the package's default green, so that one colour becomes
+ * --color. And the title is the one thing here that is a name rather than
+ * content, so --title replaces it.
  */
-function starterMap(mapTitle) {
-  const domain = (key, name, position, color) => ({
-    key,
-    title: name,
-    shape: { position, titlePosition: '0,-210', color, size: 48, weight: 'regular', titleScale: 1, opacity: 20 },
-  });
-  const capability = (key, parent, name, position, color, description) => ({
-    key,
-    domain: parent,
-    title: name,
-    description,
-    shape: { position, color, size: 32, weight: 'regular', scale: 1, stretch: 2, order: 0 },
-  });
-
-  return {
-    version: 1,
-    title: mapTitle,
-    domains: [
-      domain('customer', 'Customer', '0,0', 1),
-      domain('operations', 'Operations', '1000,0', 2),
-    ],
-    capabilities: [
-      // A key is the slug of the title: the app derives it that way when a map is
-      // loaded, so a seed that disagrees gets quietly rewritten on the first save.
-      capability('identity-access', 'customer', 'Identity & access', '-150,-60', 1,
-        'Who someone is, and what they are allowed to do.'),
-      capability('customer-profile', 'customer', 'Customer profile', '160,60', 1,
-        'What we know about a customer, and who may change it.'),
-      capability('fulfilment', 'operations', 'Fulfilment', '-150,-60', 2,
-        'Getting what was promised to the person who was promised it.'),
-      capability('support', 'operations', 'Support', '160,60', 2,
-        'Putting things right when they go wrong.'),
-    ],
-    connectors: [
-      {
-        from: 'customer-profile',
-        to: 'support',
-        description: 'Support reads the profile to answer for the account in front of them.',
-        fromPoint: 6,
-        toPoint: 18,
-        lineStyle: 'straight',
-        anchored: false,
-      },
-    ],
-  };
+function asSeed(path, text) {
+  if (/^data\/versions\/.+\.json$/.test(path)) {
+    return `${stringify(toDocument(fromDocument({ ...JSON.parse(text), palette: null })))}\n`;
+  }
+  if (path === 'data/settings.json') {
+    return `${JSON.stringify({ ...JSON.parse(text), logoAlt: title, title }, null, 2)}\n`;
+  }
+  if (path.endsWith('.svg')) return text.replace(SEED_BRAND_COLOR, brandColor);
+  return text;
 }
+
+const files = {
+  ...Object.fromEntries(
+    Object.entries(await walk(SCAFFOLD_DIR))
+      .map(([path, text]) => [
+        path.replace(/(^|\/)([^/]+)$/, (_, dir, name) => dir + (DOTTED[name] ?? name)),
+        fill(text, path),
+      ]),
+  ),
+  ...Object.fromEntries(
+    Object.entries(await walk(SEED_DIR))
+      .map(([path, text]) => [`seed/${path}`, asSeed(path, text)]),
+  ),
+};
 
 // --- write it out -------------------------------------------------------------
 

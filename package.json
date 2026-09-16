@@ -24,6 +24,7 @@
   "files": [
     "app",
     "scripts",
+    "scaffold",
     "seed",
     "tests",
     "BRANDING.md",

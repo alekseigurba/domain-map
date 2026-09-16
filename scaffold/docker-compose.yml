@@ -1,0 +1,21 @@
+services:
+  {{slug}}:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      STORAGE_DIR: /store
+      PORT: 8000
+      # Sign-in is off in this stack. Drop these three and set AUTH_TENANT_ID,
+      # AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET for Entra ID.
+      AUTH_ENABLED: "false"
+      NODE_ENV: development
+      AUTH_DEV_BYPASS: "true"
+    # Everything the app stores sits under one folder, so one volume holds the
+    # maps, the version history and the uploaded icons.
+    volumes:
+      - {{slug}}-data:/store/data
+    restart: unless-stopped
+
+volumes:
+  {{slug}}-data:
