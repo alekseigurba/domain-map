@@ -43,10 +43,10 @@ Section and panel headings are uppercase, semibold, `0.1em` tracking, in
 
 ## Color
 
-The raw scales are declared verbatim as `--r-*`: vanguard 100–600, haze 200–600,
+The raw scales are declared verbatim as `--r-*`: brand 100–600, haze 200–600,
 sage 200–600, charcoal 200–600, azure, amethyst, ember, orange, blue, red, green,
-focused, neutral-white. Sage is haze tinted toward the brand green, so the chrome
-carries the brand without competing with the map's fills. Everything else names
+focused, neutral-white. Brand is the one scale a deployment replaces with its own; sage is haze tinted
+toward it, so the chrome carries the brand without competing with the map's fills. Everything else names
 what a color does here.
 
 | Token | Raw | Where |
@@ -58,7 +58,7 @@ what a color does here.
 | `--ink` / `--ink-soft` | charcoal-400 / charcoal-300 | text, secondary text |
 | `--ink-invert` | neutral-white | text on a filled control |
 | `--selection` | focused-400 | selection outlines, active controls |
-| `--selected-row` | vanguard-200 | the selected row in the tree, a step past the sage hover |
+| `--selected-row` | brand-200 | the selected row in the tree, a step past the sage hover |
 | `--danger` | red-100 | the delete button's hover |
 
 Unsaved work is the one thing in the header worth interrupting for, so the Save

@@ -1,15 +1,17 @@
 /* Design system: the raw tokens, with a semantic layer on top naming what each
-   one does here. The prose version lives in /docs/design-system.md — keep the two in
+   one does here. The prose version lives in design-system.md at the repo root — keep the two in
    step. */
 
 :root {
   /* --- raw colours --------------------------------------------------------- */
-  --r-vanguard-100: #e5ebe3;
-  --r-vanguard-200: #cbd7c6;
-  --r-vanguard-300: #86a27b;
-  --r-vanguard-400: #527a42;   /* the brand green */
-  --r-vanguard-500: #456637;
-  --r-vanguard-600: #37522c;
+  --r-brand-100: #e5ebe3;
+  --r-brand-200: #cbd7c6;
+  --r-brand-300: #86a27b;
+  --r-brand-400: #527a42;   /* the brand colour, green by default. This is the
+                              one raw scale a deployment is expected to replace;
+                              BRANDING.md says how. */
+  --r-brand-500: #456637;
+  --r-brand-600: #37522c;
 
   --r-haze-200: #f3f1f0;
   --r-haze-300: #ece9e8;
@@ -97,7 +99,7 @@
   --line: var(--r-sage-500);
   --line-strong: var(--r-sage-600);
   --selection: var(--r-focused-400);
-  --selected-row: var(--r-vanguard-200); /* a step past the hover, which is sage too */
+  --selected-row: var(--r-brand-200); /* a step past the hover, which is sage too */
   --danger: var(--r-red-100);
 
   /* Chrome runs on the text face at the two smallest steps. */

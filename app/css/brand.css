@@ -8,7 +8,7 @@
    reads --c1 … --c24 back out of the stylesheet, so they follow too.
 
    :root {
-     --r-vanguard-400: #7b2d8e;
+     --r-brand-400: #7b2d8e;
      --font-heading: "Acme Grotesk";
      --font-text: "Acme Grotesk";
      --c1: #7b2d8e;

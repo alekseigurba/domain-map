@@ -2,7 +2,12 @@
 // Writes a consumer repo: one that installs this package and supplies its own
 // brand and its own starting map, rather than forking it.
 //
-//   npx create-domain-map-app acme-domain-map --title "Acme domain map"
+// The bin name is not the package name, so npx has to be told which package it
+// lives in — `npx create-domain-map-app` alone would look for a package of that
+// name on the npm registry, and there is none:
+//
+//   npx --package=github:OWNER/REPO create-domain-map-app acme-domain-map
+//   npx --package=git+ssh://git@github.com/OWNER/REPO.git create-domain-map-app acme  # private
 //
 // What it writes is deliberately small — a ten-line server, a stylesheet of
 // token overrides, and a seed folder — because that is the whole of what a
@@ -19,11 +24,17 @@ const packageJson = JSON.parse(
 function dependencySpec() {
   const url = packageJson.repository?.url ?? '';
   const match = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+  if (!match) return `^${packageJson.version}`;
+  const [, owner, repo] = match;
   // A git tag, not a registry range: there is no build step, so npm can install
   // straight from the tag, and a consumer gets a version they pinned on purpose.
-  return match
-    ? `github:${match[1]}/${match[2]}#v${packageJson.version}`
-    : `^${packageJson.version}`;
+  const tag = `#v${packageJson.version}`;
+  // The `github:` shorthand resolves to an unauthenticated https URL, which a
+  // private repo refuses. SSH uses whatever key the developer already pushes
+  // with, so `--ssh` is the flag to pass when the source repo is private.
+  return flags.ssh
+    ? `git+ssh://git@github.com/${owner}/${repo}.git${tag}`
+    : `github:${owner}/${repo}${tag}`;
 }
 
 // `--title` and `--color` take a value; `--force` does not. Walking the list
@@ -41,7 +52,7 @@ for (let i = 2; i < process.argv.length; i++) {
 const flag = (name) => (typeof flags[name] === 'string' ? flags[name] : null);
 const target = positional[0];
 if (!target) {
-  console.error('Usage: create-domain-map-app <directory> [--title "Acme domain map"] [--color "#7b2d8e"] [--force]');
+  console.error('Usage: create-domain-map-app <directory> [--title "Acme domain map"] [--color "#7b2d8e"] [--ssh] [--force]');
   process.exit(1);
 }
 
@@ -109,14 +120,28 @@ server.listen(port, () => console.log(\`${title} on http://localhost:\${port}\`)
 
 :root {
   /* The brand colour, wherever the chrome asks for one. */
-  --r-vanguard-400: ${brandColor};
-  --r-vanguard-300: ${brandColor};
-  --r-vanguard-200: #e5dcea;
+  --r-brand-400: ${brandColor};
+  --r-brand-300: ${brandColor};
+  --r-brand-200: #e5dcea;
 
   /* The map's own fills. Replace all 24 to own the palette outright; the ones
      left alone keep the package's. */
   --c1: ${brandColor};
 }
+
+/* The brand colour alone does not reach the panels. --chrome, --chrome-hover,
+   --line and --line-strong come from the \`sage\` scale, which ships as a neutral
+   tinted toward the package's default green — so overriding only --r-brand-400
+   leaves faintly green panels behind your buttons. Retint these four to finish
+   the job; the numbers below are a starting point, not a computed match.
+
+:root {
+  --r-sage-200: #f4f1f5;
+  --r-sage-400: #ebe4ed;
+  --r-sage-500: #dbcfdd;
+  --r-sage-600: #c6b7c9;
+}
+*/
 
 /* A typeface of your own: drop the woff2 files in brand/fonts/, declare them
    here, and name them. The package serves /fonts/ before sign-in, so the
@@ -169,10 +194,16 @@ STORAGE_DIR=storage
 WORKDIR /srv
 
 # The package installs from a git tag, so git has to be here for \`npm ci\`.
-RUN apk add --no-cache git
+RUN apk add --no-cache git openssh-client
 
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
+
+# If the package repo is private, the build needs a key instead. Swap the line
+# above for these two and build with \`docker build --ssh default .\`:
+#
+#   RUN mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+#   RUN --mount=type=ssh npm ci --omit=dev
 
 # Only what this repo owns. The app itself comes from node_modules.
 COPY server.mjs ./
@@ -243,6 +274,8 @@ Then open <http://localhost:8000>.
 
 \`\`\`bash
 npm install domain-map@github:OWNER/REPO#v1.1.0
+# or, if that repo is private:
+npm install domain-map@git+ssh://git@github.com/OWNER/REPO.git#v1.1.0
 \`\`\`
 
 Read the package's BRANDING.md first. Files under \`brand/\` that are not on its supported list — anything in \`brand/js/\`, in particular — can break on an upgrade, because they shadow the app's internals.

@@ -6,8 +6,8 @@
 //
 // Who may sign in is not decided here. The Entra enterprise application
 // requires assignment, so Entra refuses a token to anyone who is not assigned
-// to it, and the app accepts any token Entra issues for it. Managing that is in
-// docs/EntraID-Authentication.MD.
+// to it, and the app accepts any token Entra issues for it — so access is
+// managed by who is assigned to the application in Entra, not by anything here.
 
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto';
 import { posix } from 'node:path';
@@ -82,7 +82,9 @@ export function readConfig(env) {
   } else if (config.bypass) {
     warnings.push('The development sign-in bypass is ON: anyone who can reach this server can change the map.');
   } else if (!config.microsoft) {
-    warnings.push('No sign-in method is configured, so nobody can open the map. See docs/EntraID-Authentication.MD.');
+    warnings.push('No sign-in method is configured, so nobody can open the map. '
+      + 'Set AUTH_TENANT_ID, AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET '
+      + 'for Microsoft sign-in, or AUTH_ENABLED=false to let everyone in.');
   }
 
   return { ...config, warnings };

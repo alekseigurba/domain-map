@@ -77,12 +77,12 @@
 .login__button:disabled { opacity: 0.55; cursor: default; }
 
 .login__button--primary {
-  border-color: var(--r-vanguard-400);
-  background: var(--r-vanguard-400);
+  border-color: var(--r-brand-400);
+  background: var(--r-brand-400);
   color: var(--ink-invert);
 }
 
-.login__button--primary:hover { background: var(--r-vanguard-500); }
+.login__button--primary:hover { background: var(--r-brand-500); }
 
 .login__mark {
   width: var(--icon-s);

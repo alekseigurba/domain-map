@@ -27,6 +27,7 @@
     "seed",
     "tests",
     "BRANDING.md",
+    "LICENSE",
     "design-system.md"
   ],
   "scripts": {

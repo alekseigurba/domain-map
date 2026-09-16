@@ -7,7 +7,14 @@ stays here and moves forward with the version you pin.
 ## Start a repo
 
 ```bash
-npx create-domain-map-app acme-domain-map --title "Acme domain map" --color "#7b2d8e"
+# The bin lives inside the `domain-map` package, so npx has to be told where to
+# find it: `npx create-domain-map-app` on its own looks for a package of that
+# name on the npm registry, and there is none.
+npx --package=github:alekseigurba/domain-map create-domain-map-app acme-domain-map \
+  --title "Acme domain map" --color "#7b2d8e"
+
+# Add --ssh if you keep your own fork private: the repo it writes then depends
+# on a git+ssh URL rather than the https one.
 cd acme-domain-map
 npm install
 npm run start:dev
@@ -70,10 +77,28 @@ Every visual decision is a custom property on `:root` in the package's
 
 ```css
 :root {
-  --r-vanguard-400: #7b2d8e;   /* the brand colour, throughout the chrome */
+  --r-brand-400: #7b2d8e;   /* the brand colour, throughout the chrome */
   --font-heading: "Acme Grotesk";
   --font-text: "Acme Grotesk";
   --c1: #7b2d8e;               /* swatch 1 of the map's 24 shape fills */
+}
+```
+
+`--r-brand-100` … `--r-brand-600` is the one raw scale meant to be replaced;
+everything else in the chrome is named for what it is (haze, sage, charcoal) and
+stays put.
+
+One thing that catches people: the panel surfaces and dividers come from `sage`,
+which ships as haze tinted toward the *default* green. Override `--r-brand-400`
+alone and you get your colour on the buttons but faintly green panels behind
+them. For a thorough rebrand, retint those four as well:
+
+```css
+:root {
+  --r-sage-200: #f4f1f5;   /* --chrome: header, footer, both sidebars */
+  --r-sage-400: #ebe4ed;   /* --chrome-hover */
+  --r-sage-500: #dbcfdd;   /* --line */
+  --r-sage-600: #c6b7c9;   /* --line-strong */
 }
 ```
 

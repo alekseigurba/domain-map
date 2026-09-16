@@ -47,7 +47,10 @@ That deletes every saved version and every uploaded icon. The next start finds a
 Another repo can install this as a package and supply its own branding, rather than forking it. Scaffold one:
 
 ```bash
-npx create-domain-map-app acme-domain-map --title "Acme domain map" --color "#7b2d8e"
+# npx needs the package named explicitly: the bin lives inside `domain-map`,
+# and there is no `create-domain-map-app` package on the npm registry.
+npx --package=github:alekseigurba/domain-map create-domain-map-app acme-domain-map \
+  --title "Acme domain map" --color "#7b2d8e"
 ```
 
 That writes a repo holding only what is yours -- a ten-line server, a `brand/` folder of token overrides and a `seed/` folder with your starting map -- and installs the app from a git tag. [BRANDING.md](BRANDING.md) is the contract: which files a consumer may override, which are internal, and how the palette follows the stylesheet.

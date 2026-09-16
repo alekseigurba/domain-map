@@ -11,7 +11,7 @@ COPY seed ./seed
 
 # Production refuses the sign-in bypass whatever else is set. Sign-in itself is
 # configured at run time: AUTH_TENANT_ID, AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and
-# AUTH_SESSION_SECRET, as in docs/EntraID-Authentication.MD.
+# AUTH_SESSION_SECRET.
 ENV NODE_ENV=production
 ENV STORAGE_DIR=/store
 ENV PORT=8000
