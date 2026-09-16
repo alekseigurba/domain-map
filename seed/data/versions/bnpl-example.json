@@ -31,27 +31,27 @@
     {
       "key": "customer-merchant-management",
       "title": "Customer\n& Merchant Management",
-      "shape": { "position": "4304,-1115", "titlePosition": "186,2", "color": 1, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
+      "shape": { "position": "4322,-1139", "titlePosition": "187,-18", "color": 3, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
     },
     {
       "key": "credit-risk-assessment",
-      "title": "Credit &\nRisk Assessment",
-      "shape": { "position": "2733,-991", "titlePosition": "-205,-18", "color": 2, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
+      "title": "Credit & Risk\nAssessment",
+      "shape": { "position": "2733,-991", "titlePosition": "-152,-19", "color": 9, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 824, "opacity": 20 }
     },
     {
       "key": "checkout-order-processing",
       "title": "Checkout & Order Processing",
-      "shape": { "position": "3437,-1127", "titlePosition": "111,-187", "color": 3, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 451, "opacity": 20 }
+      "shape": { "position": "3437,-1127", "titlePosition": "111,-187", "color": 1, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 451, "opacity": 20 }
     },
     {
       "key": "treasury-merchant-settlements",
       "title": "Treasury &\nMerchant\nSettlements",
-      "shape": { "position": "4263,-286", "titlePosition": "101,111", "color": 5, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 605, "opacity": 20 }
+      "shape": { "position": "4201,-279", "titlePosition": "112,159", "color": 5, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 605, "opacity": 20 }
     },
     {
       "key": "core-ledger-repayment",
       "title": "Core Ledger & Repayment",
-      "shape": { "position": "3276,-141", "titlePosition": "-198,65", "color": 4, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
+      "shape": { "position": "3302,-137", "titlePosition": "-247,40", "color": 2, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
     }
   ],
   "capabilities": [
@@ -60,84 +60,84 @@
       "domain": "customer-merchant-management",
       "title": "Identity & Access",
       "description": "Handles user registration, authentication, permissions, and profile management for both consumers and merchants",
-      "shape": { "position": "193,199", "color": 1, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "193,199", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
     },
     {
       "key": "merchant-onboarding",
       "domain": "customer-merchant-management",
       "title": "Merchant Onboarding",
       "description": "Manages merchant registration, store API integrations, product catalogs, risk categorization, and fee agreements",
-      "shape": { "position": "-80,221", "color": 1, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "-80,221", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
     },
     {
       "key": "customer-profile",
       "domain": "customer-merchant-management",
       "title": "Customer Profile",
       "description": "Maintains customer states, payment history, saved cards, and preferences",
-      "shape": { "position": "-112,4", "color": 1, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "-112,4", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
     },
     {
       "key": "kyc-aml-compliance",
       "domain": "credit-risk-assessment",
       "title": "KYC / AML Compliance",
       "description": "Validates user identity (Know Your Customer) and runs Anti-Money Laundering checks during onboarding",
-      "shape": { "position": "-169,199", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 0 }
+      "shape": { "position": "-169,199", "color": 9, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 0 }
     },
     {
       "key": "fraud-detection",
       "domain": "credit-risk-assessment",
       "title": "Fraud Detection",
       "description": "Evaluates device fingerprints, transaction patterns, and behavioral data to prevent identity theft",
-      "shape": { "position": "199,136", "color": 2, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 1 }
+      "shape": { "position": "199,136", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 1 }
     },
     {
       "key": "limit-management",
       "domain": "credit-risk-assessment",
       "title": "Limit Management",
       "description": "Dynamically calculates and adjusts the maximum credit limit a customer can borrow",
-      "shape": { "position": "-114,-200", "color": 2, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 2 }
+      "shape": { "position": "-114,-200", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 2 }
     },
     {
       "key": "underwriting-engine",
       "domain": "credit-risk-assessment",
       "title": "Underwriting Engine",
       "description": "Evaluates creditworthiness in milliseconds using internal data, credit bureaus, and alternative data",
-      "shape": { "position": "238,-117", "color": 2, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 3 }
+      "shape": { "position": "238,-117", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 3 }
     },
     {
       "key": "payment-authorization",
       "domain": "checkout-order-processing",
       "title": "Payment Authorization",
       "description": "Integrates into merchant websites via SDKs/APIs to offer BNPL payment options at the point of sale",
-      "shape": { "position": "105,22", "color": 3, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 0 }
+      "shape": { "position": "105,22", "color": 1, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 0 }
     },
     {
       "key": "order-management",
       "domain": "checkout-order-processing",
       "title": "Order Management",
       "description": "Tracks order lifecycle events (created, authorized, captured, shipped, cancelled)",
-      "shape": { "position": "-69,301", "color": 3, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 1 }
+      "shape": { "position": "-69,301", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 1 }
     },
     {
       "key": "virtual-card-issuance",
       "domain": "checkout-order-processing",
       "title": "Virtual Card Issuance",
       "description": "Generates single-use credit card numbers (e.g., via Visa/Mastercard networks) for checkout at non-partner merchants",
-      "shape": { "position": "306,220", "color": 3, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
+      "shape": { "position": "306,220", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
     },
     {
       "key": "merchant-settlement",
       "domain": "treasury-merchant-settlements",
       "title": "Merchant Settlement",
       "description": "Calculates payouts owed to merchants after deducting BNPL transaction fees (merchant discount rate), managing the payout queue",
-      "shape": { "position": "-214,-213", "color": 5, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 1 }
+      "shape": { "position": "-185,-265", "color": 5, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 1 }
     },
     {
       "key": "dispute-refund-management",
       "domain": "treasury-merchant-settlements",
       "title": "Dispute & Refund Management",
       "description": "Processes customer chargebacks, returns, and merchant refunds, automatically adjusting loan balances",
-      "shape": { "position": "113,-109", "color": 5, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
+      "shape": { "position": "-18,-72", "color": 5, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
     },
     {
       "key": "treasury-liquidity",
@@ -151,28 +151,28 @@
       "domain": "core-ledger-repayment",
       "title": "Collections & Delinquency",
       "description": "Manages dunning processes, late fees, automated reminders, and handoffs to external collection agencies",
-      "shape": { "position": "-461,-112", "color": 4, "size": 32, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 0 }
+      "shape": { "position": "-461,-112", "color": 2, "size": 32, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 0 }
     },
     {
       "key": "loan-management",
       "domain": "core-ledger-repayment",
       "title": "Loan Management",
       "description": "Structures individual purchases into specific loan agreements (e.g., Pay-in-4, monthly installments) with precise payment schedules",
-      "shape": { "position": "-301,-340", "color": 4, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 1 }
+      "shape": { "position": "-335,-373", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 1 }
     },
     {
       "key": "payment-gateway-integration",
       "domain": "core-ledger-repayment",
       "title": "Payment Gateway Integration",
       "description": "Interfaces with external processors (Stripe, Adyen, ACH) to charge cards or bank accounts for repayments",
-      "shape": { "position": "302,-357", "color": 4, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
+      "shape": { "position": "134,25", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
     },
     {
       "key": "ledger-engine",
       "domain": "core-ledger-repayment",
       "title": "Ledger Engine",
       "description": "Serves as the immutable financial system of record tracking debits, credits, and account balances",
-      "shape": { "position": "174,4", "color": 4, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 3 }
+      "shape": { "position": "73,-247", "color": 2, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 3 }
     }
   ],
   "connectors": [
@@ -199,9 +199,9 @@
       "to": "order-management",
       "description": "[The Core Purchase Path]  The checkout UI acts as the upstream feeder. It hands off finalized shopping carts to the Order Domain, which assumes ownership of the state machine (e.g., changing from Pending to Authorized).",
       "fromPoint": 8,
-      "toPoint": 20,
+      "toPoint": 19,
       "lineStyle": "straight",
-      "anchored": false
+      "anchored": true
     },
     {
       "from": "virtual-card-issuance",
@@ -216,8 +216,8 @@
       "from": "payment-gateway-integration",
       "to": "ledger-engine",
       "description": "Every time a scheduled card charge or ACH pull succeeds or fails, the Gateway publishes an event that the Ledger consumes to maintain its strict, double-entry financial system of record.",
-      "fromPoint": 7,
-      "toPoint": 19,
+      "fromPoint": 18,
+      "toPoint": 5,
       "lineStyle": "straight",
       "anchored": false
     },
@@ -226,7 +226,7 @@
       "to": "collections-delinquency",
       "description": "The moment a loan installment crosses its due date without a corresponding \"paid\" event, Loan Management automatically flags the asset as delinquent and transfers custody to the Collections engine.",
       "fromPoint": 7,
-      "toPoint": 20,
+      "toPoint": 19,
       "lineStyle": "straight",
       "anchored": true
     },
@@ -236,7 +236,7 @@
       "description": "[The Core Purchase Path] During checkout, the engine fires a blocking, synchronous request to the Underwriting and Fraud services. The transaction cannot proceed until Risk returns an approval or denial within a ~200ms SLA.",
       "fromPoint": 12,
       "toPoint": 0,
-      "lineStyle": "curved",
+      "lineStyle": "straight",
       "anchored": false
     },
     {
@@ -245,7 +245,7 @@
       "description": "[The Core Purchase Path] During checkout, the engine fires a blocking, synchronous request to the Underwriting and Fraud services. The transaction cannot proceed until Risk returns an approval or denial within a ~200ms SLA.",
       "fromPoint": 11,
       "toPoint": 23,
-      "lineStyle": "curved",
+      "lineStyle": "straight",
       "anchored": false
     },
     {
@@ -254,15 +254,15 @@
       "description": "[The Core Purchase Path] Once an order is authorized, the Order Domain sends the finalized transaction details to Loan Management. This domain breaks the total cost into an explicit amortization schedule (e.g., 4 equal parts).",
       "fromPoint": 9,
       "toPoint": 21,
-      "lineStyle": "curved",
-      "anchored": false
+      "lineStyle": "straight",
+      "anchored": true
     },
     {
       "from": "loan-management",
       "to": "ledger-engine",
       "description": "[The Core Purchase Path] Loan Management cannot operate in a silo. Every generated payment schedule must create a corresponding asset/liability entry in the Ledger Engine to lock in the accounting balance.",
       "fromPoint": 2,
-      "toPoint": 14,
+      "toPoint": 13,
       "lineStyle": "straight",
       "anchored": false
     },
@@ -270,35 +270,35 @@
       "from": "order-management",
       "to": "merchant-settlement",
       "description": "[The Settlement & Payout Path] When a merchant ships a physical product, the Order Domain fires a Captured event. This event tells Merchant Settlement that it is officially time to queue up the money owed to the retailer.",
-      "fromPoint": 1,
-      "toPoint": 14,
-      "lineStyle": "curved",
-      "anchored": false
+      "fromPoint": 2,
+      "toPoint": 13,
+      "lineStyle": "straight",
+      "anchored": true
     },
     {
       "from": "merchant-settlement",
       "to": "merchant-onboarding",
       "description": "[The Settlement & Payout Path] To calculate the exact payout, the Settlement engine must reach into the Onboarding domain to fetch the specific merchant's contract details (e.g., deducting a 3.5% Merchant Discount Rate fee from the total).",
-      "fromPoint": 19,
+      "fromPoint": 20,
       "toPoint": 8,
-      "lineStyle": "curved",
+      "lineStyle": "straight",
       "anchored": false
     },
     {
       "from": "dispute-refund-management",
       "to": "ledger-engine",
       "description": "If a customer initiates a return, the Dispute domain calculates the refund structure. It instructs Loan Management to rewrite or cancel future installments and orders the Ledger to balance the books.",
-      "fromPoint": 10,
-      "toPoint": 23,
+      "fromPoint": 12,
+      "toPoint": 0,
       "lineStyle": "curved",
-      "anchored": true
+      "anchored": false
     },
     {
       "from": "dispute-refund-management",
       "to": "loan-management",
       "description": "[The Post-Purchase Lifecycle] If a customer initiates a return, the Dispute domain calculates the refund structure. It instructs Loan Management to rewrite or cancel future installments and orders the Ledger to balance the books.",
-      "fromPoint": 11,
-      "toPoint": 1,
+      "fromPoint": 13,
+      "toPoint": 23,
       "lineStyle": "curved",
       "anchored": true
     },
@@ -317,7 +317,7 @@
       "description": "[Personalization & Auto-fill] o maximize conversion rates, the Checkout Engine queries the Customer Profile to pull saved shipping addresses, phone numbers, and preferred payment methods. This allows for a \"one-click\" checkout experience.\n[Risk Mitigation] The Checkout Engine checks the historical tenure of the customer profile. A brand-new profile created 2 minutes ago triggers high-risk workflows, whereas a 5-year-old profile with a history of on-time payments bypasses heavy verification.",
       "fromPoint": 12,
       "toPoint": 0,
-      "lineStyle": "curved",
+      "lineStyle": "straight",
       "anchored": false
     },
     {
@@ -326,15 +326,15 @@
       "description": "[Feature Flags & Branding] The Checkout UI dynamically adjusts based on the merchant’s profile. For example, it checks the merchant's contract to see if they support Pay-in-4, Long-term Financing (0% APR), or both, and displays the correct promotional messaging on the store's product page.",
       "fromPoint": 13,
       "toPoint": 1,
-      "lineStyle": "curved",
+      "lineStyle": "straight",
       "anchored": false
     },
     {
       "from": "customer-profile",
       "to": "payment-gateway-integration",
       "description": "[Auto-Debit] When an installment is due, the Repayment engine pulls the active, tokenized payment method (e.g., a debit card or ACH token) securely saved within the Customer Profile to execute the automated clearing house or card charge.",
-      "fromPoint": 8,
-      "toPoint": 22,
+      "fromPoint": 9,
+      "toPoint": 21,
       "lineStyle": "curved",
       "anchored": true
     },
@@ -342,9 +342,9 @@
       "from": "merchant-onboarding",
       "to": "dispute-refund-management",
       "description": "[The Chargeback Link] If a customer demands a refund because an item never arrived, the Dispute/Repayments system checks the Merchant Profile to see their specific return policies, settlement reserve requirements, and automated dispute resolution workflows.",
-      "fromPoint": 5,
-      "toPoint": 17,
-      "lineStyle": "curved",
+      "fromPoint": 7,
+      "toPoint": 18,
+      "lineStyle": "straight",
       "anchored": false
     }
   ]
