@@ -1,7 +1,8 @@
 // Who may change the map. There are two roles for the whole site: an owner can
 // open any version, edit, save, delete and publish; a viewer sees the published
 // version and nothing else. Owners are a list of email addresses, read from
-// OWNER_EMAILS — nothing about roles is asked of Entra ID yet.
+// OWNER_EMAILS — nothing about roles is asked of Entra ID yet. An empty list
+// names nobody in particular, so everyone who signs in is an owner.
 
 export const OWNER = 'owner';
 export const VIEWER = 'viewer';
@@ -21,6 +22,7 @@ export function roleOf(user, { required, owners }) {
   if (!required) return OWNER;
   if (!user) return VIEWER;
   if (user.method === 'bypass') return OWNER;
+  if (owners.size === 0) return OWNER;
   const names = [user.username, user.email].filter(Boolean).map((name) => name.toLowerCase());
   return names.some((name) => owners.has(name)) ? OWNER : VIEWER;
 }

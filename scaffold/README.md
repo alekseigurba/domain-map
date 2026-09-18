@@ -33,7 +33,7 @@ npm run start:dev
 
 ## Who may edit
 
-Everyone who signs in sees the published version. `OWNER_EMAILS` says who may do more than look: open any version, edit, save, delete and publish. With sign-in off, as in `dev.env`, everyone is an owner.
+Everyone who signs in sees the published version. `OWNER_EMAILS` says who may do more than look: open any version, edit, save, delete and publish. Left empty, everyone who signs in is an owner. With sign-in off, as in `dev.env`, everyone is an owner too.
 
 ## Upgrading
 

@@ -29,8 +29,10 @@ file store under `STORAGE_DIR`, so a deployment has a volume and a database.
 
 `OWNER_EMAILS` — a comma-separated list of the people who may open any version,
 edit, save, delete and publish. Everyone else who signs in sees the published
-version and nothing else. With sign-in off, everyone is an owner, which is what
-makes `npm run start:dev` work with no configuration at all.
+version and nothing else. Left empty, it names nobody in particular and everyone
+who signs in is an owner; the server warns about that at startup. With sign-in
+off, everyone is an owner too, which is what makes `npm run start:dev` work with
+no configuration at all.
 
 ## What you may override
 

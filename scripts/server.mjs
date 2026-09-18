@@ -102,7 +102,8 @@ function readBody(request) {
  * @param {string}   [options.databaseUrl] The Postgres the versions live in. Defaults to
  *                                        `$DATABASE_URL`, and the server does not start without one.
  * @param {string|string[]} [options.owners] Who may edit and publish, by email. Defaults to
- *                                        `$OWNER_EMAILS`, comma-separated.
+ *                                        `$OWNER_EMAILS`, comma-separated. Empty, everyone who
+ *                                        signs in may.
  * @param {object}   [options.auth]       A `{ handle, user, required, warnings }` of your own, for
  *                                        a provider that is not Entra ID. `user(request)` answers
  *                                        with `{ name, username, email }` or null.
@@ -147,7 +148,7 @@ export function createDomainMapServer(options = {}) {
   if (required && typeof auth.user !== 'function') {
     warnings.push('The auth given has no user(request), so nobody can be told apart: everyone is a viewer.');
   } else if (required && owners.size === 0) {
-    warnings.push('OWNER_EMAILS is empty: whoever signs in can view the published map, and nobody can edit it.');
+    warnings.push('OWNER_EMAILS is empty: everyone who signs in is an owner, and can edit and publish the map.');
   }
 
   /** Who is asking, and what they may do. */

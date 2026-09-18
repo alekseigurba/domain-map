@@ -9,7 +9,8 @@ services:
       # The versions of the map live here.
       DATABASE_URL: postgres://{{slug}}:{{slug}}@postgres:5432/{{slug}}
       # Who may edit and publish, by the email they sign in with. Everyone else
-      # sees the published map. With sign-in off, as here, everyone may edit.
+      # sees the published map. Empty, or with sign-in off as here, everyone
+      # may edit.
       OWNER_EMAILS: ""
       # Sign-in is off in this stack. Drop these three and set AUTH_TENANT_ID,
       # AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET for Entra ID.

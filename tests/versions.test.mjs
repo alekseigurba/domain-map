@@ -227,6 +227,15 @@ try {
   check('a version saved with nobody signed in has nobody to name', anonymous.status === 201 && anonymous.body.createdBy === null);
   await open.stop();
 
+  // --- no owners named ---
+  const unnamed = await startServer({ storage, databaseUrl: database.url, env: { OWNER_EMAILS: '' } });
+  check('with OWNER_EMAILS empty, everyone who signs in is an owner',
+    (await as(unnamed, VIEWER, 'GET', '/api/me')).body.role === 'owner');
+  check('and can list the versions', (await as(unnamed, VIEWER, 'GET', '/api/versions')).status === 200);
+  check('nobody signed in still gets nothing', (await as(unnamed, null, 'GET', '/api/published')).status === 401);
+  check('and the server says so at startup', unnamed.log().includes('everyone who signs in is an owner'), unnamed.log());
+  await unnamed.stop();
+
   // --- a store from before versions moved into Postgres ---
   const oldStore = await mkdtemp(join(tmpdir(), 'domain-map-upgrade-'));
   const upgraded = await throwawayDatabase('upgrade');

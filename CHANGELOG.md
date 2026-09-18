@@ -5,6 +5,15 @@ What changed in each release, newest first. A release is a version in
 package" in the [README](README.md). A release with more to say than fits here
 has a page of its own under [docs/releases/](docs/releases/).
 
+## Unreleased
+
+### Changed
+
+- An empty `OWNER_EMAILS` makes everyone who signs in an owner, where before it
+  left nobody able to edit. The server still warns about it at startup. A
+  deployment that relied on an empty list to keep the map read-only needs to
+  name its owners now.
+
 ## 1.0.0 — 2026-09-16
 
 Version 1.
