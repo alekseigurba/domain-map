@@ -6,6 +6,10 @@ services:
     environment:
       STORAGE_DIR: /store
       PORT: 8000
+      DATABASE_URL: postgres://domainmap:domainmap@postgres:5432/domainmap
+      # Who may edit and publish, by the email they sign in with. With sign-in
+      # off, as here, everyone may.
+      OWNER_EMAILS: ""
       # Sign-in is switched off for now: this stack lets everyone straight in.
       # Drop AUTH_ENABLED to bring the gate back, and the sign-in screen then
       # offers Bypass (dev), which the image refuses unless NODE_ENV says
@@ -15,11 +19,34 @@ services:
       AUTH_ENABLED: "false"
       NODE_ENV: development
       AUTH_DEV_BYPASS: "true"
-    # Everything the app stores sits under one folder -- the versions, the icons
-    # and the settings -- so one volume at one mount point keeps all of it.
+    # Icons, the logo and the settings are files under one folder, so one
+    # volume at one mount point keeps all of them. The versions are in Postgres.
     volumes:
       - domain-map-data:/store/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # The versions of the map. Published on 5432 as well, so `npm start` on the
+  # host can use it: `docker compose up -d postgres`, then `npm start`.
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: domainmap
+      POSTGRES_PASSWORD: domainmap
+      POSTGRES_DB: domainmap
+    volumes:
+      - domain-map-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U domainmap -d domainmap"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     restart: unless-stopped
 
 volumes:
   domain-map-data:
+  domain-map-db:

@@ -82,14 +82,14 @@ try {
 
 // --- what gets written --------------------------------------------------------
 
-// The upgrade command the consumer's README carries. A version they do not have
-// yet, but this package's real owner and repo, so it is something to run rather
-// than a template to fill in.
+// The upgrade command the consumer's README carries. This package's real owner
+// and repo at the version being scaffolded from, so it is something to run
+// rather than a template to fill in.
 const upgradeExample = source
-  ? `npm install domain-map@${installSpec('v1.1.0', false)}
+  ? `npm install domain-map@${installSpec(`v${packageJson.version}`, false)}
 # or, if that repo is private:
-npm install domain-map@${installSpec('v1.1.0', true)}`
-  : 'npm install domain-map@^1.1.0';
+npm install domain-map@${installSpec(`v${packageJson.version}`, true)}`
+  : `npm install domain-map@^${packageJson.version}`;
 
 // Every file a scaffolded repo starts with is a real file in the package rather
 // than a template literal in here, so each one can be read and edited as the
@@ -191,5 +191,6 @@ console.log('Next:');
 console.log(`  cd ${target}`);
 console.log('  git init && git add -A && git commit -m "Scaffold from domain-map"');
 console.log('  npm install');
+console.log('  npm run db          # Postgres, where the versions of the map live');
 console.log('  npm run start:dev\n');
 console.log(`Then edit brand/css/brand.css and seed/data/settings.json to make it yours.`);

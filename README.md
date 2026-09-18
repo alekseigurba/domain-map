@@ -13,24 +13,30 @@ Establish the context once. Then draw on top of it -- with a marker or digitally
 ## Run it
 
 ```bash
-# run wih Node
-npm start
-
-# or with Docker, which keeps the map, the icons and the settings in one volume
+# everything in Docker: the app, and the Postgres its versions live in
 docker compose up
+
+# or with Node, against that same Postgres
+docker compose up -d postgres
+npm install
+npm start
 ```
 
 Then open <http://localhost:8000>.
+
+The versions of the map are rows in Postgres, so `DATABASE_URL` has to point at
+one — `dev.env` points at the compose one. The icons, the logo and the settings
+stay as files under `STORAGE_DIR`.
 
 ## Stop it
 
 `Ctrl+C` stops the container in the foreground. From another terminal, or after `docker compose up -d`:
 
 ```bash
-# remove the container but keep the `domain-map-data` volume
+# remove the containers but keep the volumes: the icons, the settings and the versions
 docker compose down
 
-# remove the volume too
+# remove the volumes too, and the map goes back to the example
 docker compose down -v
 ```
 
@@ -45,3 +51,57 @@ npx --package=github:alekseigurba/domain-map create-domain-map-app acme-domain-m
 That writes a repo holding only what is yours -- a ten-line server, a `brand/` folder of token overrides and a `seed/` folder with your starting map -- and installs the app from a git tag. [BRANDING.md](BRANDING.md) is the contract: which files a consumer may override, which are internal, and how the palette follows the stylesheet.
 
 The `Dockerfile` and `docker-compose.yml` in this repo run the example app. A consumer repo gets its own, which installs the package instead of copying `app/`.
+
+## Publish a version of this package
+
+Consumers install this package from a **git tag**, so a release is a version in
+`package.json` and a tag of the same name. There is no build step and nothing
+goes to the npm registry.
+
+Notes live in the repo, not only on the tag:
+
+- [CHANGELOG.md](CHANGELOG.md) is the index — a section per version, newest
+  first, and an `## Unreleased` section at the top to write into as you go.
+- [docs/releases/](docs/releases/) holds a page per release that needs more than
+  a list: what broke, and how to upgrade a repo built on this package.
+  [2.0.0](docs/releases/2.0.0.md) is one; most releases will not need one.
+
+```bash
+# 1. Move the Unreleased entries under a heading for the version, with today's
+#    date, and write docs/releases/<version>.md if the release earns one.
+npm version 2.0.1 --no-git-tag-version   # writes package.json + lockfile
+npm test
+git commit -am "Release 2.0.1"
+git tag v2.0.1
+git push origin main --tags
+```
+
+A consumer then upgrades with the tag, and `create-domain-map-app` pins new
+repos to whichever version it was run from:
+
+```bash
+npm install domain-map@github:alekseigurba/domain-map#v2.0.1
+```
+
+### Trying one out first
+
+A prerelease is the same thing with a `-pre` version, which sorts **before** the
+release it leads to, so nothing picks it up by accident:
+
+```bash
+npm version 2.1.0-pre.1 --no-git-tag-version
+git commit -am "2.1.0-pre.1" && git tag v2.1.0-pre.1 && git push origin main --tags
+```
+
+Point one repo at it — a staging copy, not the one everyone uses:
+
+```bash
+npm install domain-map@github:alekseigurba/domain-map#v2.1.0-pre.1
+
+# or scaffold a throwaway repo from it, pinned to that tag
+npx --package=github:alekseigurba/domain-map#v2.1.0-pre.1 create-domain-map-app trial
+```
+
+Keep going as `-pre.2`, `-pre.3`, and when it holds up, release the version
+itself. Tags are cheap; moving one that someone has installed is not, so cut a
+new one instead.

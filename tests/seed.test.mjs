@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 const { validate, fromDocument, toDocument, stringify } =
   await import('../app/js/document.js');
 
-const path = new URL('../seed/data/versions/bnpl-example.json', import.meta.url);
+const path = new URL('../seed/data/versions/v1.json', import.meta.url);
 const text = await readFile(path, 'utf8');
 const seed = JSON.parse(text);
 

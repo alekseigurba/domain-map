@@ -54,103 +54,94 @@ body {
   gap: var(--space-025);
 }
 
-.header__user {
-  margin-left: var(--space-050);
-  font-size: var(--fs-200);
+/* Unsaved work is the one thing in this header worth interrupting for. */
+.header .save-now[data-dirty="true"] {
+  background: var(--r-orange-400);
+  color: var(--ink-invert);
+}
+
+/* Versions says which one is open, so an owner always knows what Save writes
+   over. The name is cut short rather than let it push the chips about. */
+.version-chip { gap: var(--gap-2); }
+
+.version-chip__label {
   color: var(--ink-soft);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.version-chip__name {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A small solid tag: Published, and the version open in this tab. */
+.badge {
+  display: inline-block;
+  padding: 1px var(--gap-2);
+  border-radius: var(--radius-s);
+  background: var(--r-brand-400);
+  color: var(--ink-invert);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.4;
   white-space: nowrap;
 }
 
-/* Signed in through the bypass: say so where it cannot be missed. */
-.header__user[data-method="bypass"] {
-  padding: 0 var(--space-050);
-  border-radius: var(--radius-s);
-  background: var(--r-orange-400);
-  color: var(--ink-invert);
-}
-
-/* Save and its triangle are one control, so they meet without a seam. */
-.save {
-  display: inline-flex;
-  align-items: center;
-}
-
-.save__now { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-
-.save__more {
-  margin-left: -1px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  font-size: 9px;
-}
-
-/* Unsaved work is the one thing in this header worth interrupting for. */
-.header .save__now[data-dirty="true"] {
-  background: var(--r-orange-400);
-  color: var(--ink-invert);
-}
-
-/* Hangs under the triangle. Fixed, because the header does not scroll and a
-   long list of versions would otherwise be cut off by it. */
-.save-menu {
-  position: fixed;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-1);
-  max-height: calc(100vh - 60px);
-  overflow-y: auto;
-  width: max-content;
-  min-width: 230px;
-  max-width: 320px;
-  padding: var(--space-075);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-m);
-  background: var(--paper);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
-}
-
-.save-menu__title {
-  margin: var(--gap-1) 0 0;
-  font-size: var(--fs-200);
-  font-weight: var(--fw-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.badge--quiet {
+  background: var(--chrome);
   color: var(--ink-soft);
 }
 
-.save-menu__title:first-child { margin-top: 0; }
-
-/* A version reads as a row: what it is called, and when it was last written.
-   The name takes whatever width is left over — that, not the chip's own
-   centring, is what holds the name at the left and the time at the right. */
-.save-menu__item {
-  gap: var(--gap-3);
-  width: 100%;
-  text-align: left;
-}
-
-/* Cut a long name short rather than let it push the time off the row. */
-.save-menu__name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.save-menu__when {
+/* Who is looking: initials in a circle, or a silhouette with nobody to name. */
+.avatar {
+  display: inline-grid;
+  place-items: center;
   flex: none;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-soft);
+  width: calc(var(--chip-h) + 4px);
+  height: calc(var(--chip-h) + 4px);
+  margin-left: var(--space-025);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--r-brand-400);
+  color: var(--ink-invert);
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  cursor: pointer;
 }
 
-.save-menu__new {
-  display: flex;
-  gap: var(--gap-1);
+button.avatar:hover,
+button.avatar:focus-visible { border-color: var(--ink-soft); }
+
+.avatar__silhouette {
+  width: 70%;
+  height: 70%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
-.save-menu__new .field__input { min-width: 0; }
-.save-menu__new .btn { flex: none; }
+.avatar[data-named="true"] .avatar__silhouette,
+.avatar:not([data-named="true"]) .avatar__initials { display: none; }
+
+/* Signed in through the bypass: say so where it cannot be missed. */
+.avatar[data-method="bypass"] { background: var(--r-orange-400); }
+
+.avatar--large {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  font-size: var(--fs-400);
+  cursor: default;
+}
 
 .header__brand {
   display: flex;
@@ -790,6 +781,160 @@ body {
 /* A lone button shutting the dialog sits where Done does in the palette editor. */
 .dialog__foot--end { justify-content: flex-end; }
 
+/* The profile popup hangs in the top right corner, under the avatar, like
+   About: narrow, since it holds a name and a handful of buttons. */
+.dialog--profile {
+  inset: var(--dialog-inset) var(--dialog-inset) auto auto;
+  width: min(300px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-4);
+}
+
+.profile__who { min-width: 0; }
+
+.profile__name,
+.profile__email,
+.profile__role,
+.profile__bypass { margin: 0; }
+
+.profile__name {
+  font-size: var(--fs-300);
+  font-weight: var(--fw-semibold);
+  overflow-wrap: anywhere;
+}
+
+.profile__email {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.profile__bypass {
+  padding: var(--gap-1) var(--gap-2);
+  border-radius: var(--radius-s);
+  background: var(--r-orange-400);
+  color: var(--ink-invert);
+}
+
+/* Close keeps the right-hand end whether or not Sign out is there. */
+.dialog--profile .dialog__foot > :last-child { margin-left: auto; }
+
+/* Versions is centred, like Getting around, and wide enough for a row to read
+   as one line: the name, when and by whom, and what can be done with it. */
+.dialog--versions {
+  inset: 0;
+  margin: auto;
+  width: min(680px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+.versions__note {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.versions__note[data-error="true"] { color: #8c2f18; }
+
+/* On a phone the table keeps its columns and scrolls sideways instead. */
+.versions__scroll {
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.versions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-200);
+  line-height: var(--lh-m);
+}
+
+.versions th,
+.versions td {
+  padding: var(--gap-2) var(--gap-3) var(--gap-2) 0;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.versions th {
+  font-weight: var(--fw-semibold);
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.versions td { border-top: 1px solid var(--line); }
+.versions tbody tr:first-child td { border-top: none; }
+
+/* The version open in this tab, picked out the way a selected row is. */
+.versions tr[data-open="true"] td { background: var(--chrome); }
+.versions tr[data-open="true"] td:first-child { padding-left: var(--gap-2); }
+
+.versions__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.versions__when { font-variant-numeric: tabular-nums; }
+
+.versions__by {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+}
+
+.versions__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap-1);
+}
+
+.versions td:last-child { padding-right: 0; }
+
+/* Said over the empty stage, in the middle of it, when there is no map to show.
+   Above the zoom stack, which is the only other thing floating over the stage. */
+.notice {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap-3);
+  width: min(420px, calc(100% - 2 * var(--space-100)));
+  height: max-content;
+  padding: var(--space-100);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.notice[hidden] { display: none; }
+
+.notice__title {
+  margin: 0;
+  font-size: var(--fs-400);
+  font-weight: var(--fw-semibold);
+}
+
+.notice__text {
+  margin: 0;
+  font-size: var(--fs-300);
+  line-height: var(--lh-m);
+}
+
+/* The way out is a chip like any other, not a blue underlined link. */
+.notice .btn {
+  color: inherit;
+  text-decoration: none;
+}
+
 /* Prose, so a step up from the controls' 13px, with room between the lines. */
 .about {
   display: flex;
@@ -1127,5 +1272,50 @@ body {
   .details .field__input,
   .details .field__select {
     font-size: var(--fs-400);
+  }
+}
+
+/* Four columns do not fit a phone, and a row whose buttons are off the right
+   edge is a row that cannot be acted on. Each one becomes a small card instead:
+   the name, then when and by whom, then what can be done with it. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .versions thead { display: none; }
+
+  .versions,
+  .versions tbody,
+  .versions td { display: block; }
+
+  .versions tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-2);
+    padding: var(--gap-2) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .versions tbody tr:first-child { border-top: none; }
+
+  .versions td {
+    padding: 0;
+    border: none;
+  }
+
+  /* The name takes a line of its own; the two smaller facts share the next. */
+  .versions td:first-child,
+  .versions td:last-child { flex: 1 1 100%; }
+
+  .versions__when,
+  .versions__by { color: var(--ink-soft); }
+
+  .versions__actions { justify-content: flex-start; }
+
+  /* The row is the card now, so it carries the mark of the one that is open. */
+  .versions tr[data-open="true"] td { background: none; }
+
+  .versions tr[data-open="true"] {
+    padding-left: var(--gap-2);
+    background: var(--chrome);
+    border-radius: var(--radius-s);
   }
 }

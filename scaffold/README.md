@@ -4,10 +4,12 @@ Built on [domain-map]({{packageUrl}}), installed as a package. This repo holds o
 
 ```bash
 npm install
+npm run db          # Postgres in Docker, where the versions of the map live
 npm run start:dev
 ```
 
-Then open <http://localhost:8000>.
+Then open <http://localhost:8000>. `docker compose up` runs the whole thing
+instead, app and database together.
 
 ## What is in here
 
@@ -17,10 +19,15 @@ Then open <http://localhost:8000>.
 | `brand/css/brand.css` | Token overrides: colours, typeface, the map's 24 shape fills. |
 | `brand/favicon.svg` | The tab icon. Any file under `brand/` shadows the package's copy of it. |
 | `seed/data/settings.json` | Header logo, page title and footer text. |
-| `seed/data/versions/bnpl-example.json` | The map a fresh store starts with — an example to replace with your own. |
+| `seed/data/versions/v1.json` | The map to start from — an example to replace with your own. |
 | `seed/data/icons/` | The icon library a fresh store starts with. |
+| `DEPLOY.md` | Running this on Azure Container Apps, with Postgres beside it. |
 
-`seed/` fills an empty store **once**. After that the store is the source of truth, so editing these files does not change a map anyone has worked on — that is deliberate. To start over, delete the store (`rm -rf storage`, or `docker compose down -v`).
+`seed/` fills an empty store **once**, and its `data/versions/` fills an empty database once. After that the store and the database are the source of truth, so editing these files does not change a map anyone has worked on — that is deliberate. To start over, delete both (`rm -rf storage`, or `docker compose down -v`).
+
+## Who may edit
+
+Everyone who signs in sees the published version. `OWNER_EMAILS` says who may do more than look: open any version, edit, save, delete and publish. With sign-in off, as in `dev.env`, everyone is an owner.
 
 ## Upgrading
 

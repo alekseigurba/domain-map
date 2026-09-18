@@ -24,9 +24,10 @@
       <h1 class="header__title" id="map-title">Domain map</h1>
     </span>
     <span class="header__actions">
-      <!-- The map opens read-only. Edit swaps in the save controls below, and a
-           successful save swaps them back. -->
-      <button class="btn btn--chip" id="edit-mode-toggle" title="Turn on editing">
+      <!-- The map opens read-only. Edit is an owner's: it swaps in Cancel and
+           Save, and a successful save swaps them back. A viewer sees none of
+           the three. -->
+      <button class="btn btn--chip" id="edit-mode-toggle" title="Turn on editing" hidden>
         <span class="btn__label">Edit</span>
       </button>
       <!-- Cancel unwinds everything done since Edit was pressed and drops back
@@ -35,29 +36,38 @@
               title="Discard the changes made since Edit">
         <span class="btn__label">Cancel</span>
       </button>
-      <!-- Changes live in the page until this is pressed. The button writes the
-           version being edited; the triangle beside it opens the others. -->
-      <span class="save" id="save-group" hidden>
-        <button class="btn btn--chip save__now" id="save-map">
-          <span class="btn__label">Save</span>
-        </button>
-        <button class="btn btn--chip btn--chip-icon save__more" id="save-menu-toggle"
-                aria-haspopup="true" aria-expanded="false" aria-controls="save-menu"
-                aria-label="Other versions">▾</button>
-      </span>
-      <div class="save-menu" id="save-menu" role="menu" hidden></div>
+      <!-- Changes live in the page until this is pressed. It writes the version
+           that is open; Versions saves the map as a new one. -->
+      <button class="btn btn--chip save-now" id="save-map" hidden>
+        <span class="btn__label">Save</span>
+      </button>
+      <!-- An owner's: which version is open, and the dialog that opens,
+           publishes and deletes versions. -->
+      <button class="btn btn--chip version-chip" id="versions" hidden
+              title="Versions: open, save as new, publish or delete"
+              aria-haspopup="dialog" aria-controls="versions-dialog">
+        <span class="version-chip__label">Version</span>
+        <span class="version-chip__name" id="version-name">Versions</span>
+        <span class="badge" id="version-published" hidden>Published</span>
+      </button>
       <button class="btn btn--chip" id="export-map" title="Download the whole map as JSON">Export</button>
       <button class="btn btn--chip" id="export-svg" title="Download the diagram as an SVG picture">Export SVG</button>
-      <button class="btn btn--chip" id="import-map" title="Replace the map from a JSON file">Import</button>
+      <button class="btn btn--chip" id="import-map" title="Replace the map from a JSON file" hidden>Import</button>
       <input type="file" id="import-file" accept="application/json,.json" hidden>
       <button class="btn btn--chip" id="getting-around" title="Keyboard shortcuts and gestures"
               aria-haspopup="dialog" aria-controls="getting-around-dialog">Getting around</button>
       <button class="btn btn--chip" id="about" title="What this map is for"
               aria-haspopup="dialog" aria-controls="about-dialog">About</button>
-      <!-- Who is signed in, and the way out. identity.js names them and shows them;
-           a server with sign-in switched off leaves both hidden. -->
-      <span class="header__user" id="who" hidden></span>
-      <button class="btn btn--chip" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
+      <!-- Who is looking. It opens the profile popup, which names them and
+           holds the way out; identity.js fills it. -->
+      <button class="avatar" id="profile" type="button" data-avatar
+              aria-haspopup="dialog" aria-controls="profile-dialog" aria-label="Profile">
+        <span class="avatar__initials"></span>
+        <svg class="avatar__silhouette" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="9" r="4"/>
+          <path d="M4.5 20.5c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5"/>
+        </svg>
+      </button>
     </span>
   </header>
 
@@ -120,6 +130,13 @@
         <button class="btn btn--icon" id="zoom-fit" title="Fit to screen">&#9723;</button>
       </div>
       <p class="hint" id="hint"></p>
+      <!-- Said over an empty stage when there is no map to show: a version this
+           person may not open, or nothing published yet. -->
+      <div class="notice" id="notice" role="status" hidden>
+        <h2 class="notice__title" id="notice-title"></h2>
+        <p class="notice__text" id="notice-text"></p>
+        <a class="btn btn--chip" id="notice-link" href="./" hidden>Open the published map</a>
+      </div>
       <!-- Hangs off the kebab on the selected domain: edit, then save or cancel. -->
       <div class="kebab-menu" id="kebab-menu" role="menu" hidden></div>
     </section>
@@ -185,6 +202,60 @@
       <span id="status" class="footer__status"></span>
     </span>
   </footer>
+
+  <!-- Versions: every version of the map, for an owner to open, publish or
+       delete, and the way to save the map as a new one. main.js fills the rows
+       each time it opens. -->
+  <dialog class="dialog dialog--versions" id="versions-dialog" aria-labelledby="versions-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="versions-title">Versions</h2>
+      <p class="versions__note" id="versions-note" hidden></p>
+      <div class="versions__scroll">
+        <table class="versions">
+          <thead>
+            <tr>
+              <th scope="col">Version</th>
+              <th scope="col">Last saved</th>
+              <th scope="col">Saved by</th>
+              <th scope="col" aria-label="Actions"></th>
+            </tr>
+          </thead>
+          <tbody id="versions-rows"></tbody>
+        </table>
+      </div>
+      <div class="dialog__foot">
+        <button class="btn btn--chip" type="button" id="save-as-new"
+                title="Save the map as it is now as the next version">Save as new</button>
+        <button class="btn btn--chip" type="button" id="versions-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The profile popup, under the avatar: who is signed in, what they may do,
+       and the way out. identity.js fills it. -->
+  <dialog class="dialog dialog--profile" id="profile-dialog" aria-labelledby="profile-name">
+    <div class="dialog__body">
+      <div class="profile">
+        <span class="avatar avatar--large" data-avatar aria-hidden="true">
+          <span class="avatar__initials"></span>
+          <svg class="avatar__silhouette" viewBox="0 0 24 24">
+            <circle cx="12" cy="9" r="4"/>
+            <path d="M4.5 20.5c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5"/>
+          </svg>
+        </span>
+        <div class="profile__who">
+          <p class="profile__name" id="profile-name"></p>
+          <p class="profile__email" id="profile-email" hidden></p>
+        </div>
+      </div>
+      <p class="profile__role" id="profile-role"></p>
+      <p class="profile__bypass" id="profile-bypass" hidden>Signed in through the development bypass.</p>
+      <div class="dialog__foot">
+        <button class="btn btn--chip" type="button" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
+        <button class="btn btn--chip" type="button" id="profile-close">Close</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- The palette editor. The palette belongs to the map rather than to what is
        selected, so it opens over the whole page; palette.js fills it. -->

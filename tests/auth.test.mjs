@@ -1,6 +1,8 @@
 // Sign-in, checked against the real server: the gate, the development bypass,
 // and the whole Entra ID code flow against a stand-in for Entra that issues
-// signed ID tokens. No tenant needed, and nothing the project stores is touched.
+// signed ID tokens. No tenant needed, and nothing the project stores is touched:
+// each server gets a scratch store and a throwaway database.
+//   docker compose up -d postgres
 //   node tests/auth.test.mjs
 
 import { spawn } from 'node:child_process';
@@ -12,6 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readConfig, safeReturnUrl, seal, unseal } from '../scripts/auth.mjs';
+import { throwawayDatabase } from './support/database.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -127,9 +130,10 @@ async function freePort() {
 async function startServer(env) {
   const port = await freePort();
   const storage = await mkdtemp(join(tmpdir(), 'domain-map-auth-'));
+  const database = await throwawayDatabase('auth');
   const child = spawn(process.execPath, ['scripts/serve.mjs', 'app', String(port)], {
     cwd: root,
-    env: { PATH: process.env.PATH, STORAGE_DIR: storage, PORT: String(port), ...env },
+    env: { PATH: process.env.PATH, STORAGE_DIR: storage, DATABASE_URL: database.url, PORT: String(port), ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
@@ -150,6 +154,7 @@ async function startServer(env) {
     async stop() {
       child.kill();
       await rm(storage, { recursive: true, force: true });
+      await database.drop();
     },
   };
 }
@@ -200,7 +205,7 @@ try {
     page.status === 302 && page.headers.get('location') === '/login.html?returnUrl=%2F', page.headers.get('location'));
   const api = await get(app, '/api/files?prefix=data/');
   check('the API answers a stranger with 401', api.status === 401 && (await api.json()).error);
-  check('so does a stored map', (await get(app, '/api/files/data/versions/bnpl-example.json')).status === 401);
+  check('so does a stored map', (await get(app, '/api/files/data/versions/v1.json')).status === 401);
   check('and the app\'s own scripts', (await get(app, '/js/main.js')).status === 302);
 
   for (const path of ['/login.html', '/js/login.js', '/css/login.css', '/css/tokens.css', '/css/fonts.css',
@@ -211,7 +216,7 @@ try {
     (await fetch(`${app.base}/api/files/data/settings.json`, { method: 'PUT', body: '{}' })).status === 401);
   check('a public prefix does not open a private file by ..',
     (await get(app, '/fonts/..%2Findex.html')).status === 302
-    && (await get(app, '/api/files/data/brand/..%2Fversions%2Fbnpl-example.json')).status === 401);
+    && (await get(app, '/api/files/data/brand/..%2Fversions%2Fv1.json')).status === 401);
 
   const anonymous = await (await get(app, '/auth/me')).json();
   check('/auth/me offers Microsoft and not the bypass',

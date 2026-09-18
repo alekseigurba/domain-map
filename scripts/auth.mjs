@@ -8,6 +8,8 @@
 // requires assignment, so Entra refuses a token to anyone who is not assigned
 // to it, and the app accepts any token Entra issues for it — so access is
 // managed by who is assigned to the application in Entra, not by anything here.
+// Nor is what they may do once in: `user` hands the session to the server, and
+// scripts/roles.mjs decides who is an owner.
 
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto';
 import { posix } from 'node:path';
@@ -347,6 +349,9 @@ export function createAuth(env = process.env) {
       startSession(request, response, {
         name: claims.name ?? claims.preferred_username ?? 'Signed in',
         username: claims.preferred_username ?? claims.email ?? null,
+        // Only there when the tenant issues it, and not always the same as
+        // the sign-in name: owners are matched against either one.
+        email: claims.email ?? null,
         method: 'microsoft',
       });
       redirect(response, safeReturnUrl(pending.returnUrl));
@@ -356,18 +361,23 @@ export function createAuth(env = process.env) {
     }
   }
 
+  /** Whoever the request's session belongs to, or null: nobody signed in, or sign-in off. */
+  const user = (request) => (config.enabled
+    ? unseal(config.sessionSecret, readCookies(request.headers.cookie)[SESSION_COOKIE])
+    : null);
+
   async function handle(request, response, url) {
     const path = posix.normalize(decodeURIComponent(url.pathname));
     const route = `${request.method} ${path}`;
-    const user = config.enabled ? unseal(config.sessionSecret, readCookies(request.headers.cookie)[SESSION_COOKIE]) : null;
 
     if (route === 'GET /auth/me') {
+      const who = user(request);
       sendJson(response, 200, {
         required: config.enabled,
-        authenticated: !config.enabled || Boolean(user),
-        name: user?.name ?? null,
-        username: user?.username ?? null,
-        method: user?.method ?? null,
+        authenticated: !config.enabled || Boolean(who),
+        name: who?.name ?? null,
+        username: who?.username ?? null,
+        method: who?.method ?? null,
         options: { microsoft: config.microsoft, bypass: config.bypass },
       });
       return true;
@@ -402,7 +412,7 @@ export function createAuth(env = process.env) {
     // Using a session does not extend it: however busy someone is, they go back
     // through Entra within AUTH_SESSION_HOURS, and that is where removed access
     // takes effect. Entra usually signs them straight back in.
-    if (user) return false;
+    if (user(request)) return false;
 
     if (path === '/api' || path.startsWith('/api/')) {
       sendJson(response, 401, { error: 'Sign in to use this map.' });
@@ -412,5 +422,5 @@ export function createAuth(env = process.env) {
     return true;
   }
 
-  return { warnings: config.warnings, handle };
+  return { warnings: config.warnings, handle, user, required: config.enabled };
 }

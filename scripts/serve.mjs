@@ -15,8 +15,8 @@ const server = createDomainMapServer({
 const port = Number(process.env.PORT ?? process.argv[3] ?? 8000);
 
 server.listen(port, () => {
-  const { root, brandDir, storageDir } = server.config;
+  const { root, brandDir, storageDir, database } = server.config;
   console.log(`Serving ${root} at http://localhost:${port}`);
   if (brandDir) console.log(`Branding from ${brandDir}`);
-  console.log(`Storing files in ${storageDir}`);
+  console.log(`Storing files in ${storageDir}, and versions in Postgres at ${database}`);
 });

@@ -11,7 +11,8 @@ import {
 } from './store.js';
 import { fromDocument, toDocument, stringify, validate } from './document.js';
 import * as files from './files.js';
-import { showIdentity, signingIn } from './identity.js';
+import { showIdentity, signingIn, whoAmI } from './identity.js';
+import * as api from './versions.js';
 import { diagramSvg } from './svg-export.js';
 import {
   initDiagram, render, fitToScreen, zoomBy, centerOn, cancelDraft, viewportCenter, resolvedPoints,
@@ -32,12 +33,6 @@ import {
 } from './geometry.js';
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE } from './defaults.js';
 import * as undoStack from './history.js';
-
-/** Versions are files under one prefix; a version's name is its file name. */
-const VERSIONS_PREFIX = 'data/versions/';
-
-/** Which version this browser had open last, so a reload comes back to it. */
-const LAST_VERSION = 'domain-map:version';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
 const SETTINGS_KEY = 'data/settings.json';
@@ -75,49 +70,63 @@ async function run(label, work) {
 // --- versions, and saving to them --------------------------------------------
 
 // Editing happens in this page and nowhere else: changes are held in memory
-// until Save is pressed, and then the whole map is written to one version. A
-// version is just a file, and its name is the file's name.
+// until Save is pressed, and then the whole map is written to the version that
+// is open. The versions live on the server, and one of them is published: that
+// is the map everyone lands on, and the only one a viewer ever sees.
 
-/** The version being edited, and whether it has changes it has not been given. */
-let currentVersion = null;
+/** What this person may do, 'owner' or 'viewer'. Nothing until the server has said. */
+let role = null;
+const isOwner = () => role === 'owner';
+
+/**
+ * The version on screen, as `{ name, updatedAt }` — the second is sent back
+ * with a save, so the server can refuse it if somebody saved in between — and
+ * whether it has changes it has not been given. No version at all when nothing
+ * is published yet and an owner is starting from a blank map.
+ */
+let current = null;
 let dirty = false;
 
-const nameOf = (key) => key.slice(VERSIONS_PREFIX.length).replace(/\.json$/, '');
-const keyFor = (name) => `${VERSIONS_PREFIX}${name}.json`;
+/** Which version is published, as last heard from the server. */
+let publishedName = null;
+const isPublished = (name) => name != null && name === publishedName;
 
 const saveButton = document.getElementById('save-map');
-const saveMenuButton = document.getElementById('save-menu-toggle');
-const saveMenu = document.getElementById('save-menu');
-const saveGroup = document.getElementById('save-group');
 const editModeButton = document.getElementById('edit-mode-toggle');
 const cancelButton = document.getElementById('cancel-edit');
-
-/** Every version on the server, newest first. */
-async function listVersions() {
-  const objects = await files.listFiles(VERSIONS_PREFIX);
-  return objects
-    .filter((object) => object.key.endsWith('.json') && !nameOf(object.key).includes('/'))
-    .sort((a, b) => b.lastModified.localeCompare(a.lastModified));
-}
+const versionsButton = document.getElementById('versions');
+const importButton = document.getElementById('import-map');
 
 function showSaveState() {
-  const name = currentVersion ? nameOf(currentVersion) : 'no version';
-  saveButton.querySelector('.btn__label').textContent = 'Save';
+  const name = current?.name ?? null;
   saveButton.dataset.dirty = String(dirty);
-  saveButton.disabled = !currentVersion;
-  saveButton.title = dirty
-    ? `Unsaved changes — press to write them to "${name}"`
-    : `Saved to "${name}"`;
-  saveMenuButton.title = `Version "${name}" — save to another one, or open one`;
-  saveGroup.hidden = !editMode;
+  saveButton.disabled = !current;
+  if (!current) saveButton.title = 'Nothing to save over yet: Versions saves this map as a new one';
+  else if (dirty) saveButton.title = `Unsaved changes — press to write them to "${name}"`;
+  else saveButton.title = `Saved to "${name}"`;
+  saveButton.hidden = !editMode;
   cancelButton.hidden = !editMode;
-  editModeButton.hidden = editMode;
+  editModeButton.hidden = editMode || !isOwner();
+
+  // An owner's only: a viewer has one version, and nothing to put in it.
+  versionsButton.hidden = !isOwner();
+  importButton.hidden = !isOwner();
+  document.getElementById('version-name').textContent = name ?? 'Not saved yet';
+  document.getElementById('version-published').hidden = !isPublished(name);
 }
 
 function markDirty() {
   dirty = true;
   showSaveState();
   keepSession();
+}
+
+/** The address names the version open, unless it is the published one: that one keeps the clean URL. */
+function showVersionInUrl() {
+  const url = new URL(location.href);
+  if (current && !isPublished(current.name)) url.searchParams.set('version', current.name);
+  else url.searchParams.delete('version');
+  if (url.href !== location.href) history.replaceState(null, '', url);
 }
 
 // --- view vs edit --------------------------------------------------------
@@ -135,9 +144,9 @@ function applyEditMode() {
   document.getElementById('menu-actions').hidden = !editMode;
   document.getElementById('details-actions').hidden = !editMode;
   document.getElementById('import-map').disabled = !editMode;
-  hint.textContent = editMode
-    ? 'Drag to pan · scroll to zoom · click a connection point to start a connector'
-    : 'Drag to pan · scroll to zoom · press Edit to make changes';
+  if (editMode) hint.textContent = 'Drag to pan · scroll to zoom · click a connection point to start a connector';
+  else if (isOwner()) hint.textContent = 'Drag to pan · scroll to zoom · press Edit to make changes';
+  else hint.textContent = 'Drag to pan · scroll to zoom';
   showSaveState();
   showSelectionActions();
 }
@@ -170,215 +179,310 @@ async function cancelEdit() {
   status(undone ? `Discarded ${undone} change${undone === 1 ? '' : 's'}` : 'Nothing to discard');
 }
 
-/** Write the map as it stands to one version, and continue editing that one. */
-async function saveTo(key) {
-  closeSaveMenu();
+/** "Sep 18, 14:02", for when a version was saved. */
+const savedAt = (iso) => new Date(iso)
+  .toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+const documentText = () => stringify(toDocument(store));
+
+/** Written: `version` is the one on screen now, with nothing left unsaved in it. */
+function saved(version) {
+  current = { name: version.name, updatedAt: version.updatedAt };
+  if (version.published) publishedName = version.name;
+  dirty = false;
+  showVersionInUrl();
+  showSaveState();
+  keepSession();
+  undoStack.dropMark(EDIT_MARK); // kept, not undone: nothing left to cancel back to
+  setEditMode(false);
+}
+
+/**
+ * Write the map to the version that is open. Over the published one it asks
+ * first, since everyone will see the change. And if somebody else saved the
+ * version after this tab opened it, the server refuses, and a new version is
+ * offered instead of writing over their work. Answers whether it saved.
+ */
+async function save({ ask = true } = {}) {
+  if (!current) return false;
+  const { name } = current;
+  if (ask && isPublished(name)
+      && !confirm(`"${name}" is the published version: everyone will see this change. Save it?`)) return false;
+
   status('Saving…');
   try {
-    await files.putFile(key, stringify(toDocument(store)), 'application/json');
-    currentVersion = key;
-    remember(key);
-    dirty = false;
-    showSaveState();
-    keepSession();
-    status(`Saved to "${nameOf(key)}"`);
-    undoStack.dropMark(EDIT_MARK); // kept, not undone: nothing left to cancel back to
-    setEditMode(false);
+    saved(await api.saveVersion(name, documentText(), current.updatedAt));
+    status(`Saved to "${name}"`);
+    return true;
+  } catch (error) {
+    if (error.status !== 409 || !error.version) {
+      status(`Could not save: ${error.message}`, true);
+      return false;
+    }
+    const who = error.version.updatedBy?.name ?? error.version.updatedBy?.email ?? 'Someone';
+    const when = savedAt(error.version.updatedAt);
+    status(`Not saved: ${who} saved "${name}" at ${when}, after you opened it.`, true);
+    if (!confirm(`${who} saved "${name}" at ${when}, after you opened it, and saving now would write `
+      + 'over their changes.\n\nSave your map as a new version instead?')) return false;
+    return saveAsNew();
+  }
+}
+
+/** The map as it stands, saved as a new version, one number past the last. That is the one open from then on. */
+async function saveAsNew() {
+  status('Saving…');
+  try {
+    const version = await api.createVersion(documentText());
+    saved(version);
+    status(`Saved as "${version.name}"`);
+    return true;
   } catch (error) {
     status(`Could not save: ${error.message}`, true);
+    return false;
   }
 }
 
-function remember(key) {
-  try {
-    localStorage.setItem(LAST_VERSION, key);
-  } catch {
-    /* the version is saved; this browser just will not reopen it by default */
-  }
-}
-
-/** A name no version has yet, so creating one never overwrites another. */
-function freeName(wanted, taken) {
-  if (!taken.includes(wanted)) return wanted;
-  for (let n = 2; n < 1000; n++) {
-    if (!taken.includes(`${wanted}-${n}`)) return `${wanted}-${n}`;
-  }
-  return `${wanted}-${Date.now()}`;
-}
-
-async function saveAsNewVersion(label) {
-  const wanted = slugify(label);
-  const taken = (await listVersions()).map((object) => nameOf(object.key));
-  await saveTo(keyFor(freeName(wanted, taken)));
-}
-
-/** A version's document, read and checked, along with the text it was read from. */
-async function readVersion(key) {
-  const response = await files.getFile(key);
-  if (!response) throw new Error(`"${nameOf(key)}" is not on the server.`);
-
-  const text = await response.text();
+/** A version's document, read and checked. */
+function readDocument(version) {
   let document_;
   try {
-    document_ = JSON.parse(text);
+    document_ = JSON.parse(version.document);
   } catch (error) {
-    throw new Error(`"${nameOf(key)}" is not valid JSON: ${error.message}`);
+    throw new Error(`"${version.name}" is not valid JSON: ${error.message}`);
   }
-
   const error = validate(document_);
-  if (error) throw new Error(`"${nameOf(key)}" is not a valid map: ${error}`);
-  return { text, document_ };
+  if (error) throw new Error(`"${version.name}" is not a valid map: ${error}`);
+  return document_;
 }
 
 /** Put a version on screen as a fresh start, with nothing in it to undo. */
-function showVersion(key, document_) {
+function showVersion(version) {
+  const document_ = readDocument(version);
+  hideNotice();
   undoStack.clear(); // its inverse operations name records that are gone
   applyMap(fromDocument(document_));
-  currentVersion = key;
-  remember(key);
+  current = { name: version.name, updatedAt: version.updatedAt };
+  if (version.published) publishedName = version.name;
   dirty = false;
   setEditMode(false); // a fresh version opens for browsing, not mid-edit
+  showVersionInUrl();
   showSaveState();
   keepSession();
 }
 
-/** Open a version, replacing what is on screen with what it holds. */
-async function openVersion(key) {
-  const { document_ } = await readVersion(key);
-  showVersion(key, document_);
+/** An empty map, with no version behind it until it is saved as a new one. */
+function showBlank() {
+  hideNotice();
+  undoStack.clear();
+  applyMap(fromDocument({ title: 'Domain map' }));
+  current = null;
+  dirty = false;
+  setEditMode(false);
+  showVersionInUrl();
+  showSaveState();
 }
 
-async function loadVersion(key) {
-  closeSaveMenu();
-  if (dirty && !confirm(`Open "${nameOf(key)}"? The changes made here have not been saved.`)) return;
+/** Open a version in place of what is on screen. Answers whether it did. */
+async function openVersion(name) {
+  if (dirty && !confirm(`Open "${name}"? The changes made here have not been saved.`)) return false;
 
   status('Opening…');
   try {
-    await openVersion(key);
+    showVersion(await api.readVersion(name));
     select(null, null);
     fitToScreen();
-    status(`Opened "${nameOf(key)}"`);
+    status(`Opened "${name}"`);
+    return true;
   } catch (error) {
-    status(error.message, true);
+    status(`Could not open "${name}": ${error.message}`, true);
+    return false;
   }
 }
 
-// --- the menu under the triangle ---------------------------------------------
-
-function closeSaveMenu() {
-  saveMenu.hidden = true;
-  saveMenu.replaceChildren();
-  saveMenuButton.setAttribute('aria-expanded', 'false');
-}
-
-function menuHeading(text) {
-  const heading = document.createElement('p');
-  heading.className = 'save-menu__title';
-  heading.textContent = text;
-  return heading;
-}
-
-function menuItem(label, detail, onClick) {
-  const button = document.createElement('button');
-  button.className = 'btn btn--chip save-menu__item';
-  button.type = 'button';
-  button.addEventListener('click', onClick);
-
-  const name = document.createElement('span');
-  name.className = 'save-menu__name';
-  name.textContent = label;
-  button.appendChild(name);
-
-  if (detail) {
-    const when = document.createElement('span');
-    when.className = 'save-menu__when';
-    when.textContent = detail;
-    button.appendChild(when);
-  }
-  return button;
-}
-
-const savedAt = (iso) => new Date(iso)
-  .toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-/** The name for a new version, asked for in place rather than in a dialog. */
-function newVersionField() {
-  const row = document.createElement('form');
-  row.className = 'save-menu__new';
-
-  const input = document.createElement('input');
-  input.className = 'field__input';
-  input.type = 'text';
-  input.placeholder = 'Name this version';
-  input.id = 'new-version-name';
-  input.name = 'new-version-name';
-  input.setAttribute('aria-label', 'Name for the new version');
-
-  const confirmButton = document.createElement('button');
-  confirmButton.className = 'btn btn--chip';
-  confirmButton.type = 'submit';
-  confirmButton.textContent = 'Create';
-
-  row.append(input, confirmButton);
-  row.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const label = input.value.trim();
-    if (!label) return status('A new version needs a name.', true);
-    await saveAsNewVersion(label);
-  });
-  return { row, input };
-}
-
-async function openSaveMenu() {
-  let versions = [];
-  try {
-    versions = await listVersions();
-  } catch (error) {
-    status(`Could not read the versions: ${error.message}`, true);
+/** The published version, on screen; with nothing published, what this person can have instead. */
+async function openPublished() {
+  const version = await api.readPublished();
+  if (version) {
+    showVersion(version);
+    select(null, null);
+    fitToScreen();
     return;
   }
 
-  const others = versions.filter((object) => object.key !== currentVersion);
-  const { row, input } = newVersionField();
-
-  const children = [menuHeading('Save as a new version'), row];
-
-  if (others.length > 0) {
-    children.push(menuHeading('Save to another version'));
-    for (const object of others) {
-      children.push(menuItem(nameOf(object.key), savedAt(object.lastModified), () => {
-        if (!confirm(`Overwrite "${nameOf(object.key)}" with the map as it is now?`)) return;
-        saveTo(object.key);
-      }));
-    }
+  publishedName = null;
+  if (isOwner()) {
+    showBlank();
+    status('Nothing is published yet: make a map, save it from Versions and publish it there.');
+  } else {
+    showNotice('Nothing to see yet',
+      'No version of this map has been published. It will be here once an owner publishes one.');
   }
-
-  if (versions.length > 0) {
-    children.push(menuHeading('Open a version'));
-    for (const object of versions) {
-      const here = object.key === currentVersion;
-      children.push(menuItem(
-        here ? `${nameOf(object.key)} (open)` : nameOf(object.key),
-        savedAt(object.lastModified),
-        () => (here ? closeSaveMenu() : loadVersion(object.key)),
-      ));
-    }
-  }
-
-  saveMenu.replaceChildren(...children);
-  saveMenu.hidden = false;
-  saveMenuButton.setAttribute('aria-expanded', 'true');
-
-  // Hangs off the button, and is fixed because the header does not scroll.
-  const anchor = saveMenuButton.getBoundingClientRect();
-  saveMenu.style.top = `${Math.round(anchor.bottom + 4)}px`;
-  saveMenu.style.right = `${Math.round(window.innerWidth - anchor.right)}px`;
-  input.focus();
 }
 
-function toggleSaveMenu() {
-  if (saveMenu.hidden) openSaveMenu();
-  else closeSaveMenu();
+/**
+ * Make `name` the map everyone lands on. What is published is what is saved,
+ * so the version open here is saved first if it has changes, or not published.
+ */
+async function publish(name) {
+  if (name === current?.name && dirty) {
+    if (!confirm(`"${name}" has changes that are not saved. Save them and publish it?`)) return;
+    if (!await save({ ask: false })) return;
+  } else if (!confirm(`Publish "${name}"? Everyone will see it the next time they open the map.`)) {
+    return;
+  }
+
+  status('Publishing…');
+  try {
+    await api.publishVersion(name);
+    publishedName = name;
+    showVersionInUrl();
+    showSaveState();
+    status(`Published "${name}"`);
+  } catch (error) {
+    status(`Could not publish: ${error.message}`, true);
+  }
+}
+
+/** Delete a version for good. When it is the one open here, the published one takes its place. */
+async function removeVersion(name) {
+  const open = name === current?.name;
+  const question = open && dirty
+    ? `Delete "${name}"? It is open here with changes that are not saved, and they go with it. This cannot be undone.`
+    : `Delete "${name}"? This cannot be undone.`;
+  if (!confirm(question)) return;
+
+  status('Deleting…');
+  try {
+    await api.deleteVersion(name);
+  } catch (error) {
+    status(`Could not delete: ${error.message}`, true);
+    return;
+  }
+  if (open) {
+    dirty = false; // gone with the version, as the question said
+    await openPublished();
+  }
+  status(`Deleted "${name}"`);
+}
+
+// --- the Versions dialog -----------------------------------------------------
+
+const versionsDialog = document.getElementById('versions-dialog');
+const versionsRows = document.getElementById('versions-rows');
+const versionsNote = document.getElementById('versions-note');
+const saveAsNewButton = document.getElementById('save-as-new');
+
+function note(text, isError = false) {
+  versionsNote.textContent = text ?? '';
+  versionsNote.hidden = !text;
+  versionsNote.dataset.error = String(isError);
+}
+
+function badge(text, quiet = false) {
+  const tag = document.createElement('span');
+  tag.className = quiet ? 'badge badge--quiet' : 'badge';
+  tag.textContent = text;
+  return tag;
+}
+
+function cell(className, ...children) {
+  const td = document.createElement('td');
+  if (className) td.className = className;
+  td.append(...children);
+  return td;
+}
+
+function rowButton(label, title, onClick, { disabled = false, danger = false } = {}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = danger ? 'btn btn--chip btn--danger' : 'btn btn--chip';
+  button.textContent = label;
+  button.title = title;
+  button.disabled = disabled;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+/** One row a version: its name, when and by whom it was last saved, and what can be done with it. */
+function versionRow(version) {
+  const open = version.name === current?.name;
+  const { published } = version;
+
+  const name = document.createElement('span');
+  name.className = 'versions__name';
+  name.append(version.name);
+  if (published) name.append(badge('Published'));
+  if (open) name.append(badge('Open', true));
+
+  const by = cell('versions__by', version.updatedBy?.name ?? version.updatedBy?.email ?? '—');
+  if (version.updatedBy?.email) by.title = version.updatedBy.email;
+
+  const actions = document.createElement('div');
+  actions.className = 'versions__actions';
+  actions.append(
+    rowButton('Open', open ? 'This is the version open here' : `Open "${version.name}"`,
+      () => act(() => openVersion(version.name), { close: true }), { disabled: open }),
+    rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
+      () => act(() => publish(version.name)), { disabled: published }),
+    // The published version stays until another takes its place, so the map
+    // everyone lands on can never be deleted out from under them.
+    rowButton('Delete', published ? 'Publish another version before deleting this one' : `Delete "${version.name}" for good`,
+      () => act(() => removeVersion(version.name)), { disabled: published, danger: true }),
+  );
+
+  const row = document.createElement('tr');
+  row.dataset.open = String(open);
+  row.append(cell(null, name), cell('versions__when', savedAt(version.updatedAt)), by, cell(null, actions));
+  return row;
+}
+
+/** Read the versions again and show them. */
+async function refreshVersions() {
+  try {
+    const list = await api.listVersions();
+    publishedName = list.find((version) => version.published)?.name ?? null;
+    showVersionInUrl();
+    showSaveState(); // the header's Published tag follows
+    versionsRows.replaceChildren(...list.map(versionRow));
+    note(list.length === 0 ? 'There are no versions yet. Save this map as the first one.' : null);
+  } catch (error) {
+    note(`Could not read the versions: ${error.message}`, true);
+  }
+}
+
+/**
+ * One of the dialog's actions, with its buttons held down while it runs so a
+ * second press cannot start a second request; then the list as it now stands.
+ * An Open that went through closes the dialog: the map is what was wanted.
+ */
+async function act(work, { close = false } = {}) {
+  for (const button of versionsDialog.querySelectorAll('button:not(#versions-close)')) button.disabled = true;
+  let done;
+  try {
+    done = await work();
+  } finally {
+    saveAsNewButton.disabled = false;
+  }
+  if (close && done) versionsDialog.close();
+  else await refreshVersions();
+}
+
+// --- when there is no map to show ---------------------------------------------
+
+const notice = document.getElementById('notice');
+
+/** Say why the stage is empty. `link` offers the way to the published map. */
+function showNotice(title, text, { link = false } = {}) {
+  document.getElementById('notice-title').textContent = title;
+  document.getElementById('notice-text').textContent = text;
+  const anchor = document.getElementById('notice-link');
+  anchor.hidden = !link;
+  anchor.href = location.pathname; // the clean address, which is the published map
+  notice.hidden = false;
+}
+
+function hideNotice() {
+  notice.hidden = true;
 }
 
 // --- loading -----------------------------------------------------------------
@@ -392,42 +496,66 @@ function applyMap(state) {
 }
 
 /**
- * What this tab had before a refresh; failing that, the version this browser
- * had open last, or the one saved most recently. A reload comes back to the map
- * you were working on, even when somebody else has since saved a different one.
+ * For an owner: what this tab had before a refresh, or the version the address
+ * names, or the published one. Unsaved changes come back whatever the server
+ * holds now, since this tab is the only place they exist.
+ *
+ * For a viewer: the published version, and nothing else. A link to any other
+ * is turned away rather than quietly swapped for the published one, so nobody
+ * mistakes one for the other.
  */
 async function loadMap() {
+  const wanted = new URL(location.href).searchParams.get('version');
+
+  if (!isOwner()) {
+    if (!wanted) return openPublished();
+    try {
+      showVersion(await api.readVersion(wanted)); // only the published one is open to a viewer
+    } catch (error) {
+      if (error.status !== 403 && error.status !== 404) throw error;
+      showNotice('This version is not open to you',
+        `Only an owner can open "${wanted}". Everyone else sees the published map.`, { link: true });
+    }
+    return;
+  }
+
   const session = readSession();
+  const published = await api.readPublished();
+  publishedName = published?.name ?? null;
 
-  // Changes that were never saved come back whatever the server holds now:
-  // this tab is the only place they exist.
   if (session?.dirty) {
-    resume(session);
-    status(`Restored the unsaved changes to "${nameOf(session.version)}"`);
+    // A session kept before saves carried a base has none: the version as it
+    // is now is the nearest thing, and a save still says if it moves on again.
+    let base = session.base;
+    if (!base) base = (await api.readVersion(session.version).catch(() => null))?.updatedAt ?? null;
+    resume(session, base);
+    status(`Restored the unsaved changes to "${session.version}"`);
     return;
   }
 
-  const versions = await listVersions();
-  if (versions.length === 0) throw new Error('There are no versions on the server yet.');
-
-  let remembered = null;
-  try {
-    remembered = localStorage.getItem(LAST_VERSION);
-  } catch {
-    /* no memory of the last one: open the newest instead */
+  let version = null;
+  const name = wanted ?? session?.version ?? null;
+  if (name && name !== published?.name) {
+    try {
+      version = await api.readVersion(name);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      // The address asked for it, so say it is not there; a session's version
+      // that has since been deleted just gives way to the published one.
+      if (wanted) status(`There is no version "${wanted}", so this is the published one.`, true);
+    }
   }
+  version ??= published;
+  if (!version) return openPublished();
 
-  const wanted = versions.find((object) => object.key === (session?.version ?? remembered)) ?? versions[0];
-  const { text, document_ } = await readVersion(wanted.key);
-
-  // A clean session is this same file under the ids its history names, so the
-  // history comes back with it. Unless somebody has saved over the version
-  // since: then the file is the map, and the history belongs to one that is gone.
-  if (session?.version === wanted.key && stringify(toDocument(session.map)) === text.trimEnd()) {
-    resume(session);
+  // A clean session is this same version under the ids its history names, so
+  // the history comes back with it. Unless somebody has saved over it since:
+  // then the server's copy is the map, and the history belongs to one that is gone.
+  if (session?.version === version.name && stringify(toDocument(session.map)) === version.document.trimEnd()) {
+    resume(session, version.updatedAt);
     return;
   }
-  showVersion(wanted.key, document_);
+  showVersion(version);
 }
 
 // --- surviving a refresh -----------------------------------------------------
@@ -451,10 +579,12 @@ function keepSession() {
   sessionPending = true;
   setTimeout(() => {
     sessionPending = false;
-    if (!currentVersion) return; // still loading: nothing of this tab's to keep yet
+    if (!current) return; // still loading, or a blank map: nothing of this tab's to keep yet
     try {
       sessionStorage.setItem(SESSION, JSON.stringify({
-        version: currentVersion,
+        version: current.name,
+        // When the version was saved as this tab has it, for the save to send back.
+        base: current.updatedAt,
         dirty,
         editMode,
         // The records, ids and all, rather than the document: ids are what the
@@ -483,6 +613,8 @@ function readSession() {
     return null;
   }
   if (!session?.version || !session.map) return null;
+  // Kept before the versions moved into the database, it names a file.
+  session.version = session.version.replace(/^data\/versions\//, '').replace(/\.json$/, '');
 
   // The code may have moved on since it was written. A map that no longer
   // passes is refused, the way a file would be.
@@ -499,13 +631,14 @@ function readSession() {
 }
 
 /** Carry on where the tab left off: the same records, ids and history. */
-function resume(session) {
+function resume(session, updatedAt) {
+  hideNotice();
   undoStack.load(session.history);
   applyMap(session.map);
-  currentVersion = session.version;
-  remember(session.version);
+  current = { name: session.version, updatedAt };
   dirty = session.dirty === true;
   setEditMode(session.editMode === true);
+  showVersionInUrl();
   showSaveState();
 }
 
@@ -1126,6 +1259,8 @@ document.getElementById('edit-palette').addEventListener('click', () => {
 
 initTextDialog('getting-around');
 initTextDialog('about');
+initTextDialog('profile');
+initTextDialog('versions');
 
 /**
  * The colours live in two places: the map, and the geometry that draws it. The
@@ -1202,19 +1337,19 @@ resetColorsButton.addEventListener('click', () => {
 document.getElementById('zoom-in').addEventListener('click', () => zoomBy(1.2));
 document.getElementById('zoom-out').addEventListener('click', () => zoomBy(1 / 1.2));
 document.getElementById('zoom-fit').addEventListener('click', fitToScreen);
-saveButton.addEventListener('click', () => {
-  if (currentVersion) saveTo(currentVersion);
+saveButton.addEventListener('click', () => save());
+editModeButton.addEventListener('click', () => {
+  if (isOwner()) setEditMode(true);
 });
-saveMenuButton.addEventListener('click', toggleSaveMenu);
-editModeButton.addEventListener('click', () => setEditMode(true));
 cancelButton.addEventListener('click', cancelEdit);
 
-// Anywhere else puts the menu away, the way every other popup here behaves.
-document.addEventListener('pointerdown', (event) => {
-  if (saveMenu.hidden) return;
-  if (saveMenu.contains(event.target) || saveMenuButton.contains(event.target)) return;
-  closeSaveMenu();
+// initTextDialog opens it; this fills it, afresh each time.
+versionsButton.addEventListener('click', () => {
+  versionsRows.replaceChildren();
+  note('Reading the versions…');
+  refreshVersions();
 });
+saveAsNewButton.addEventListener('click', () => act(saveAsNew));
 
 panels.menu.button.addEventListener('click', () => togglePanel('menu'));
 panels.details.button.addEventListener('click', () => togglePanel('details'));
@@ -1223,7 +1358,7 @@ panels.details.bar.addEventListener('click', () => togglePanel('details'));
 // --- import / export ---------------------------------------------------------
 
 /** Hand a file to the browser as a download. */
-function save(name, text, type = 'application/json') {
+function download(name, text, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement('a');
   link.href = url;
@@ -1254,7 +1389,7 @@ function exportFileName(title, extension = 'json') {
 document.getElementById('export-map').addEventListener('click', () => {
   try {
     status('Exporting…');
-    save(exportFileName(store.title), stringify(toDocument(store)));
+    download(exportFileName(store.title), stringify(toDocument(store)));
     status('Exported');
   } catch (error) {
     status(`Could not export: ${error.message}`, true);
@@ -1266,7 +1401,7 @@ document.getElementById('export-svg').addEventListener('click', async () => {
   try {
     status('Exporting…');
     const svg = await diagramSvg(document.getElementById('diagram'), { title: store.title });
-    save(exportFileName(store.title, 'svg'), svg, 'image/svg+xml');
+    download(exportFileName(store.title, 'svg'), svg, 'image/svg+xml');
     status('Exported SVG');
   } catch (error) {
     status(`Could not export: ${error.message}`, true);
@@ -1316,7 +1451,7 @@ window.addEventListener('keydown', async (event) => {
   // ours covers the map, and only one of them owns a focused field.
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing) {
     event.preventDefault();
-    if (!editMode) return status('Press Edit to make changes', true);
+    if (!editMode) return status(isOwner() ? 'Press Edit to make changes' : 'This map is read-only', true);
     if (!undoStack.canUndo()) return status('Nothing to undo');
     status('Undoing…');
     const label = await undoStack.undo();
@@ -1471,11 +1606,13 @@ loadIcons().catch((error) => console.error('Could not load an icon', error));
 restorePanels();
 applyEditMode();
 
-showIdentity((message) => status(message, true));
-
-applySettings()
-  .then(loadMap)
-  .then(() => {
+// Who is looking decides which map loads, and which controls there are.
+Promise.all([applySettings(), whoAmI()])
+  .then(async ([, me]) => {
+    role = me.role;
+    showIdentity(me, (message) => status(message, true));
+    applyEditMode();
+    await loadMap();
     fitToScreen();
     applySelection(linkedSelection);
   })

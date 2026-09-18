@@ -1,6 +1,6 @@
 {
   "name": "domain-map",
-  "version": "1.0.0",
+  "version": "2.0.0-pre.1",
   "description": "A shared map of your organization: domains and business capabilities in deliberate positions, with flows drawn on top.",
   "license": "MIT",
   "repository": {
@@ -28,11 +28,16 @@
     "seed",
     "tests",
     "BRANDING.md",
+    "CHANGELOG.md",
     "LICENSE",
-    "design-system.md"
+    "design-system.md",
+    "docs"
   ],
   "scripts": {
     "start": "node --env-file=dev.env scripts/serve.mjs app 8000",
-    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/auth.test.mjs"
+    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/auth.test.mjs && node tests/versions.test.mjs"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
   }
 }
