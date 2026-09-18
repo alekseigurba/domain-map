@@ -24,10 +24,6 @@ npm start
 
 Then open <http://localhost:8000>.
 
-The versions of the map are rows in Postgres, so `DATABASE_URL` has to point at
-one — `dev.env` points at the compose one. The icons, the logo and the settings
-stay as files under `STORAGE_DIR`.
-
 ## Stop it
 
 `Ctrl+C` stops the container in the foreground. From another terminal, or after `docker compose up -d`:
@@ -63,8 +59,10 @@ Notes live in the repo, not only on the tag:
 - [CHANGELOG.md](CHANGELOG.md) is the index — a section per version, newest
   first, and an `## Unreleased` section at the top to write into as you go.
 - [docs/releases/](docs/releases/) holds a page per release that needs more than
-  a list: what broke, and how to upgrade a repo built on this package.
+  a list: what broke, and what it means for a repo built on this package.
   [2.0.0](docs/releases/2.0.0.md) is one; most releases will not need one.
+- An upgrade that takes steps gets a guide of its own, such as
+  [docs/upgrade-v1-to-v2.md](docs/upgrade-v1-to-v2.md).
 
 ```bash
 # 1. Move the Unreleased entries under a heading for the version, with today's
@@ -99,7 +97,7 @@ Point one repo at it — a staging copy, not the one everyone uses:
 npm install domain-map@github:alekseigurba/domain-map#v2.1.0-pre.1
 
 # or scaffold a throwaway repo from it, pinned to that tag
-npx --package=github:alekseigurba/domain-map#v2.1.0-pre.1 create-domain-map-app trial
+npx --package=github:alekseigurba/domain-map#v2.1.0-pre.1 create-domain-map-app acme-domain-map
 ```
 
 Keep going as `-pre.2`, `-pre.3`, and when it holds up, release the version

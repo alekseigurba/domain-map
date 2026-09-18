@@ -3,13 +3,19 @@
 Built on [domain-map]({{packageUrl}}), installed as a package. This repo holds only what is ours: the branding and the starting map.
 
 ```bash
-npm install
-npm run db          # Postgres in Docker, where the versions of the map live
-npm run start:dev
+docker compose up
 ```
 
-Then open <http://localhost:8000>. `docker compose up` runs the whole thing
-instead, app and database together.
+Then open <http://localhost:8000>. That builds the app and runs the Postgres the
+versions of the map live in.
+
+To work on the app itself, Node will do, against the same database:
+
+```bash
+npm install
+npm run db          # just the Postgres
+npm run start:dev
+```
 
 ## What is in here
 

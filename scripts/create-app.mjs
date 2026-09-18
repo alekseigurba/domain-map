@@ -190,7 +190,5 @@ console.log(`Wrote ${Object.keys(files).length} files to ${dir}\n`);
 console.log('Next:');
 console.log(`  cd ${target}`);
 console.log('  git init && git add -A && git commit -m "Scaffold from domain-map"');
-console.log('  npm install');
-console.log('  npm run db          # Postgres, where the versions of the map live');
-console.log('  npm run start:dev\n');
+console.log('  docker compose up   # the app, and the Postgres the versions live in\n');
 console.log(`Then edit brand/css/brand.css and seed/data/settings.json to make it yours.`);

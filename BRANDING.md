@@ -9,14 +9,16 @@ stays here and moves forward with the version you pin.
 ```bash
 npx --package=github:alekseigurba/domain-map create-domain-map-app acme-domain-map --title "Acme domain map"
 cd acme-domain-map
-npm install
-npm run db          # Postgres in Docker, where the versions of the map live
-npm run start:dev
+docker compose up
 ```
 
 That writes a working repo: a server, a brand directory, a seed directory, a
-Dockerfile, a compose file and DEPLOY.md. Open <http://localhost:8000> and it is
-already your colour, your logo and your map.
+Dockerfile, a compose file and DEPLOY.md. Compose builds it and runs the
+Postgres the versions live in. Open <http://localhost:8000> and it is already
+your colour, your logo and your map.
+
+To work on the app itself rather than run it, Node will do, against the same
+database: `npm install && npm run db && npm run start:dev`.
 
 ## What it needs to run
 
@@ -93,6 +95,10 @@ storage`, or `docker compose down -v`.
 ```bash
 npm install domain-map@github:alekseigurba/domain-map#v2.0.0
 ```
+
+Coming from 1.x, this one is not just a version bump: it wants a Postgres and a
+list of owners. [docs/upgrade-v1-to-v2.md](docs/upgrade-v1-to-v2.md) is the
+short way through it.
 
 Pin a tag rather than a range. There is no build step in this package, so npm
 installs straight from the tag and what you get is exactly what is in it.

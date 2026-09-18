@@ -5,13 +5,16 @@ What changed in each release, newest first. A release is a version in
 package" in the [README](README.md). A release with more to say than fits here
 has a page of its own under [docs/releases/](docs/releases/).
 
-## Unreleased
+## 1.0.0 — 2026-09-16
+
+Version 1.
 
 ## 2.0.0-pre.1 — 2026-09-18
 
 The versions of the map move into Postgres, and who may change them is now a
 role. **Breaking**: the server does not start without `DATABASE_URL`, and the
-API for versions has moved. Full notes, including how to upgrade a 1.x repo:
+API for versions has moved. Upgrading a 1.x repo:
+[docs/upgrade-v1-to-v2.md](docs/upgrade-v1-to-v2.md). Full notes:
 [docs/releases/2.0.0.md](docs/releases/2.0.0.md).
 
 ### Added
