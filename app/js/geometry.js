@@ -793,6 +793,23 @@ export function newLobeSpot(domain, children) {
 }
 
 /**
+ * What a domain holds while a capability is in hand. The one being dragged is
+ * laid out wherever the pointer has it: the domain it is over reaches out to
+ * receive it whether or not it was that domain's to begin with, and the one it
+ * came from closes up behind it. `landing` is the drop target as it stands —
+ * {domainId, lobeX, lobeY} — or null over open ground.
+ */
+export function childrenInHand(domainId, children, capability, landing) {
+  const rest = children.filter((child) => child.id !== capability.id);
+  if (landing?.domainId !== domainId) return rest;
+  const arriving = { ...capability, lobeX: landing.lobeX, lobeY: landing.lobeY };
+  // Its own keeps its place in the list; a stranger goes on the end.
+  return rest.length === children.length
+    ? [...children, arriving]
+    : children.map((child) => (child.id === capability.id ? arriving : child));
+}
+
+/**
  * Lays a domain out. One ovoid body, one lobe per capability wherever it has
  * been put, and a lobe of its own for the title — which may hang off the edge.
  *

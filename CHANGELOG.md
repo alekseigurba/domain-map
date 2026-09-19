@@ -7,6 +7,8 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.1.0 — 2026-09-19
+
 The map gains layers, and two new kinds of element to put on them.
 **Breaking**: map files are version 2, and a 2.0.x deployment refuses one. There
 is no migration to run — a version 1 file still reads, and everything in it
@@ -87,6 +89,25 @@ lands on the base layer. Full notes:
   corner, and what the line said is in **Getting around**.
 - The layer stack moved from `defaults.js` to `rules.js`: a brand may restyle
   its shapes, but not redefine what the two layers mean.
+- **The example map opens with the Presentation layer hidden.** A fresh install
+  shows the terrain first — domains, capabilities and the lines between them —
+  and the eye in the layer control brings the touchpoints and actors up over
+  it. A map already in the database is not touched: the seed fills an empty
+  store once.
+
+### Fixed
+
+- **A domain reaches out for a capability dragged onto it**, wherever it comes
+  from. The lobe used to re-form only for a capability dragged out of that same
+  domain and back in without the button being let go; one arriving from another
+  domain, or from open ground, landed on a shape that had not made room for it.
+  The hover rim follows the domain about to receive it too, rather than staying
+  on the one the drag set off from.
+
+## 2.0.1 — 2026-09-18
+
+### Changed
+
 - An empty `OWNER_EMAILS` makes everyone who signs in an owner, where before it
   left nobody able to edit. The server still warns about it at startup. A
   deployment that relied on an empty list to keep the map read-only needs to

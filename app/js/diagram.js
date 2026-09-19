@@ -147,22 +147,18 @@ function computeLayout() {
   const map = new Map();
   const views = [];
 
-  for (const domain of store.domains) {
-    let children = childrenOf(domain.id);
-    let moving = null;
+  // A capability in hand is laid out wherever the pointer has it. The domain it
+  // is over reaches out to receive it, its own or not, and the one it came
+  // from closes up behind it — so what is drawn is what the drop would give.
+  const held = drag?.kind === 'capability' ? find('capability', drag.id) : null;
 
-    // A capability being dragged out of this domain leaves it; one being moved
-    // inside it keeps its place in the list and just follows the cursor.
-    if (drag?.kind === 'capability' && children.some((c) => c.id === drag.id)) {
-      if (dropTarget?.domainId === domain.id) {
-        moving = { id: drag.id, lobeX: dropTarget.lobeX, lobeY: dropTarget.lobeY };
-      } else {
-        children = children.filter((c) => c.id !== drag.id);
-      }
-    }
-    if (drag?.kind === 'title' && drag.id === domain.id) {
-      moving = { id: 'title', titleX: drag.titleX, titleY: drag.titleY };
-    }
+  for (const domain of store.domains) {
+    const children = held
+      ? geo.childrenInHand(domain.id, childrenOf(domain.id), held, dropTarget)
+      : childrenOf(domain.id);
+    const moving = drag?.kind === 'title' && drag.id === domain.id
+      ? { id: 'title', titleX: drag.titleX, titleY: drag.titleY }
+      : null;
 
     const layout = geo.layoutDomain(domain, children, moving, editingState(domain.id));
     views.push({ domain, layout });
@@ -301,9 +297,19 @@ function renderLayer(layer, views) {
   return group;
 }
 
+/**
+ * The domain wearing the hover rim. With a capability in hand it is the one
+ * about to receive it, wherever the drag set off from; otherwise it is the one
+ * under the pointer.
+ */
+function rimmedDomainId() {
+  if (drag?.kind === 'capability' && drag.moved) return dropTarget?.domainId ?? null;
+  return hoveredDomainId;
+}
+
 function renderDomain({ domain, layout }) {
   const selected = store.selection.type === 'domain' && store.selection.id === domain.id;
-  const hovered = hoveredDomainId === domain.id;
+  const hovered = rimmedDomainId() === domain.id;
   const group = el('g', {
     class: `domain${selected ? ' domain--selected' : ''}${hovered ? ' domain--hover' : ''}`,
     'data-type': 'domain',
@@ -1467,6 +1473,9 @@ function onPointerUp(event) {
   } else if (finished.kind === 'title-width') {
     actions.setTitleWidth?.(finished.id, finished.width);
   } else if (finished.kind === 'capability') {
+    // The rim followed the drop target; leave it there. The pointer is still
+    // over wherever that was, and the next move re-reads it anyway.
+    hoveredDomainId = target?.domainId ?? null;
     const capability = find('capability', finished.id);
     actions.dropCapability?.(finished.id, {
       domainId: target?.domainId ?? null,

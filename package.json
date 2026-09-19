@@ -1,6 +1,6 @@
 {
   "name": "domain-map",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "A shared map of your organization: domains and business capabilities in deliberate positions, with flows drawn on top.",
   "license": "MIT",
   "repository": {

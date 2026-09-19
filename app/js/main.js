@@ -457,9 +457,23 @@ function versionRow(version) {
 
   const name = document.createElement('span');
   name.className = 'versions__name';
-  name.append(version.name);
-  if (published) name.append(badge('Published'));
-  if (open) name.append(badge('Open', true));
+  // The name may run to sixty-four characters and the column is fixed, so what
+  // does not fit in two lines is cut. The whole of it is on the pointer.
+  const label = document.createElement('span');
+  label.className = 'versions__label';
+  label.textContent = version.name;
+  label.title = version.name;
+  name.append(label);
+
+  // Published and Open belong together and travel together: they are what the
+  // row is telling you, so they hold their place and the name gives way.
+  if (published || open) {
+    const tags = document.createElement('span');
+    tags.className = 'versions__tags';
+    if (published) tags.append(badge('Published'));
+    if (open) tags.append(badge('Open', true));
+    name.append(tags);
+  }
 
   const by = cell('versions__by', version.updatedBy?.name ?? version.updatedBy?.email ?? '—');
   if (version.updatedBy?.email) by.title = version.updatedBy.email;

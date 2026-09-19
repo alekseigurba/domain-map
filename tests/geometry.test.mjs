@@ -323,6 +323,41 @@ check('a lobe being dragged follows the cursor', (() => {
   return layout.slots[0].x === 410 && layout.slots[0].y === -120;
 })());
 
+// --- a domain reaches out for a capability held over it ---
+{
+  const domain = { id: 'd', title: 'Invoicing' };
+  const children = placed(3);
+  const own = children[1];
+  const stranger = { id: 'x', title: 'From elsewhere', fontSize: 22, fontWeight: 'bold', domainId: 'other', lobeX: 0, lobeY: 0 };
+  const ids = (list) => list.map((c) => c.id).join(',');
+  // Well clear of the blob as it stands, the way a capability arrives from next door.
+  const far = { domainId: 'd', lobeX: 900, lobeY: 40 };
+  const before = geo.layoutDomain(domain, children);
+  check('the far spot starts outside the blob', !before.contains(far.lobeX, far.lobeY));
+
+  const receiving = geo.childrenInHand('d', children, stranger, far);
+  const reached = geo.layoutDomain(domain, receiving);
+  const slot = reached.slots.find((s) => s.item.id === 'x');
+  check('a stranger held over the domain is laid out as one of its own',
+    ids(receiving) === `${ids(children)},x`, ids(receiving));
+  check('  ...at the spot the pointer has it', slot && slot.x === 900 && slot.y === 40);
+  check('  ...at its own size', reached.lobes.at(-1).rx === geo.lobeSizeFor(stranger).rx);
+  check('  ...and the blob reaches out to cover it',
+    slot && rimOf(slot).every((p) => reached.contains(p.x, p.y)));
+
+  check('its own capability held over it keeps its place in the list', (() => {
+    const kept = geo.childrenInHand('d', children, own, far);
+    return ids(kept) === ids(children) && kept[1].lobeX === 900 && kept[1].lobeY === 40;
+  })());
+  const without = `${children[0].id},${children[2].id}`;
+  check('its own capability held over another domain leaves',
+    ids(geo.childrenInHand('d', children, own, { domainId: 'other', lobeX: 0, lobeY: 0 })) === without);
+  check('its own capability held over open ground leaves too',
+    ids(geo.childrenInHand('d', children, own, null)) === without);
+  check('a stranger held elsewhere changes nothing',
+    ids(geo.childrenInHand('d', children, stranger, null)) === ids(children));
+}
+
 // --- the title has a lobe of its own, and can be moved ---
 const titled = geo.layoutDomain({ id: 'd', title: 'Invoicing' }, placed(4));
 check('the title gets a lobe', titled.titleLobe.rx > 0 && titled.titleLobe.ry > 0);

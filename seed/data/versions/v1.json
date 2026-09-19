@@ -32,7 +32,8 @@
       "key": "core"
     },
     {
-      "key": "presentation"
+      "key": "presentation",
+      "hidden": true
     }
   ],
   "types": {

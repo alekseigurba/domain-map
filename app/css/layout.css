@@ -882,11 +882,12 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .dialog--profile .dialog__foot > :last-child { margin-left: auto; }
 
 /* Versions is centred, like Getting around, and wide enough for a row to read
-   as one line: the name, when and by whom, and what can be done with it. */
+   as one line: the name, when and by whom, and what can be done with it. Four
+   actions rather than three since Rename came back, and the width follows. */
 .dialog--versions {
   inset: 0;
   margin: auto;
-  width: min(680px, calc(100vw - 2 * var(--dialog-inset)));
+  width: min(760px, calc(100vw - 2 * var(--dialog-inset)));
 }
 
 .versions__note {
@@ -917,6 +918,15 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   white-space: nowrap;
 }
 
+/* The same inset at both ends of every row, open or not. It used to be added
+   to the open row alone, which nudged its name eight pixels along and made the
+   column look like it moved as the selection did. */
+.versions th:first-child,
+.versions td:first-child { padding-left: var(--gap-2); }
+
+.versions th:last-child,
+.versions td:last-child { padding-right: var(--gap-2); }
+
 .versions th {
   font-weight: var(--fw-semibold);
   color: var(--ink-soft);
@@ -928,19 +938,41 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 /* The version open in this tab, picked out the way a selected row is. */
 .versions tr[data-open="true"] td { background: var(--chrome); }
-.versions tr[data-open="true"] td:first-child { padding-left: var(--gap-2); }
 
+/* The fixed label width lives on the box inside the cell, not on the cell. A
+   width on a table cell is only a hint — a column never shrinks below what its
+   contents demand, and a name set in one unbroken line demands all of it — so
+   the clipping box is what holds the column to size. */
 .versions__name {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--gap-2);
+  width: 12rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* One line, cut where it runs out. The name is the only thing in the row that
+   can be any length, so it is the only thing that gives way — every row is
+   then the same height whatever its versions are called. The whole name is on
+   the pointer. */
+.versions__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Never broken apart, and never pushed onto a line of their own. */
+.versions__tags {
+  display: inline-flex;
+  flex: none;
+  gap: var(--gap-1);
 }
 
 .versions__when { font-variant-numeric: tabular-nums; }
 
 .versions__by {
-  max-width: 18ch;
+  max-width: 14ch;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--ink-soft);
@@ -948,12 +980,17 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 .versions__actions {
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--gap-1);
 }
 
-.versions td:last-child { padding-right: 0; }
+/* Shrink-to-fit, and never wrapped: what can be done with a version is the one
+   thing in the row that holds its shape whatever else is in it. */
+.versions th:last-child,
+.versions td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
 
 /* Said over the empty stage, in the middle of it, when there is no map to show.
    Above the zoom stack, which is the only other thing floating over the stage. */
@@ -1362,18 +1399,22 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
   .versions tbody tr:first-child { border-top: none; }
 
-  .versions td {
+  .versions td,
+  .versions td:first-child,
+  .versions td:last-child {
     padding: 0;
     border: none;
   }
 
-  /* The name takes a line of its own; the two smaller facts share the next. */
+  /* The name takes a line of its own; the two smaller facts share the next.
+     Each is as wide as the card, not the width the table gave it. */
   .versions td:first-child,
-  .versions td:last-child { flex: 1 1 100%; }
+  .versions td:last-child { flex: 1 1 100%; width: auto; }
 
   .versions__when,
   .versions__by { color: var(--ink-soft); }
 
+  .versions__name { width: auto; }
   .versions__actions { justify-content: flex-start; }
 
   /* The row is the card now, so it carries the mark of the one that is open. */
