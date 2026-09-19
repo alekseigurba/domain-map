@@ -2,8 +2,8 @@
 // selected. Two sections — what the thing *is* (metadata), then how it *looks*.
 
 import {
-  store, selected, find, patchLocal, scopeOf, connectorLabel, slugFor, oneLine, withBreaks,
-  typesFor, layerByKey, layerOf,
+  store, selected, find, patchLocal, connectorLabel, slugFor, oneLine, withBreaks,
+  typesFor, layerOf, layerTitle, connectorScope, CONNECTOR_NAMES,
 } from './store.js';
 import {
   COLORS, FONT_SIZES, CAPABILITY_FONT_SIZES, FONT_WEIGHTS, SIZE_SCALES, TITLE_SCALES,
@@ -483,8 +483,21 @@ const timesLabel = (value) => `${Number(value.toFixed(2))}x`;
 const slugOf = (type, record) => slugFor(type, record.id) ?? '—';
 
 /** The layer the selection sits on, named as the layer control names it. */
-const layerNameOf = (type, record) =>
-  layerByKey(layerOf(type, record))?.title ?? '—';
+const layerNameOf = (type, record) => layerTitle(layerOf(type, record));
+
+/** How solid a shape is drawn. Every kind carries one; a domain always did. */
+function opacityField(type, record, fallback) {
+  return field('Opacity', slider(
+    {
+      min: 10,
+      max: 100,
+      step: 10,
+      value: record.opacity ?? fallback,
+      format: (v) => `${v}%`,
+    },
+    (value) => patch(type, record, { opacity: value }),
+  ));
+}
 
 /** Read-only facts about the selection, set apart below its fields. */
 function meta(lines) {
@@ -573,6 +586,7 @@ export function renderDetails() {
         (value) => patch(type, record, { sizeScale: Number(value) }),
       ), { inline: true }),
       field('Color', swatches(type, record)),
+      opacityField(type, record, 100),
     ]));
   } else if (type === 'touchpoint' || type === 'actor') {
     // Neither belongs to a domain, so what frames it is the layer it is on.
@@ -588,6 +602,8 @@ export function renderDetails() {
         (value) => patch(type, record, { sizeScale: Number(value) }),
       ), { inline: true }),
       field('Color', swatches(type, record)),
+      // An actor starts half see-through, so the terrain under it still reads.
+      opacityField(type, record, type === 'actor' ? 50 : 100),
     ]));
   } else if (type === 'domain') {
     const count = store.capabilities.filter((c) => c.domainId === record.id).length;
@@ -606,31 +622,31 @@ export function renderDetails() {
       ), { inline: true }),
       field('Color', swatches(type, record)),
       // How much of the color shows, so it follows the color.
-      field('Opacity', slider(
-        {
-          min: 10,
-          max: 100,
-          step: 10,
-          value: record.opacity ?? DEFAULT_OPACITY,
-          format: (v) => `${v}%`,
-        },
-        (value) => patch(type, record, { opacity: value }),
-      )),
+      opacityField(type, record, DEFAULT_OPACITY),
     ]));
   } else if (type === 'connector') {
-    // Named for the kind of line it is, the way the menu files it.
-    const internal = scopeOf(record) === 'internal';
+    // Named for the kind of line it is, the way the menu files it — the panel
+    // and the menu never disagree about what you have selected.
+    const scope = connectorScope(record);
     // Both ends of an internal line sit in the same domain — that is what makes
     // it internal — so either end names the one it belongs to. A public line
     // belongs to no one domain, and says so rather than leaving the row out:
     // the field is then in the same place whichever line is selected.
-    const home = internal
+    const home = scope === 'internal'
       ? find('domain', find('capability', record.fromId)?.domainId)
       : null;
-    nodes.push(section(internal ? 'Domain connector' : 'Public connector', [
+    // A presentation line hangs off the element that owns it, so that is what
+    // it says it belongs to, where a terrain line names a domain.
+    const owner = scope === 'interaction' || scope === 'touchpoint'
+      ? find(record.fromKind, record.fromId)
+      : null;
+
+    nodes.push(section(CONNECTOR_NAMES[scope] ?? 'Connector', [
       field('Label', staticText(connectorLabel(record))),
-      field('Domain', staticText(internal ? home?.title ?? '—' : 'Across domains')),
-      // A line belongs to the topmost layer it touches, which is the layer that
+      owner
+        ? field(scope === 'interaction' ? 'Actor' : 'Touchpoint', staticText(owner.title))
+        : field('Domain', staticText(scope === 'internal' ? home?.title ?? '—' : 'Across domains')),
+      // A line belongs to the layer of its upper end, which is the layer that
       // takes it away when it is hidden.
       field('Layer', staticText(layerNameOf(type, record))),
       field('Description', liveText(type, record, 'description', { multiline: true })),

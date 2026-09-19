@@ -29,12 +29,10 @@
   ],
   "layers": [
     {
-      "key": "core",
-      "title": "Core Business Domains"
+      "key": "core"
     },
     {
-      "key": "presentation",
-      "title": "Presentation"
+      "key": "presentation"
     }
   ],
   "types": {
@@ -91,172 +89,291 @@
       "domain": "customer-merchant-management",
       "title": "Identity & Access",
       "description": "Handles user registration, authentication, permissions, and profile management for both consumers and merchants",
-      "shape": { "position": "224,177", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "224,177", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "merchant-onboarding",
       "domain": "customer-merchant-management",
       "title": "Merchant Onboarding",
       "description": "Manages merchant registration, store API integrations, product catalogs, risk categorization, and fee agreements",
-      "shape": { "position": "-80,221", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "-80,221", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "customer-profile",
       "domain": "customer-merchant-management",
       "title": "Customer Profile",
       "description": "Maintains customer states, payment history, saved cards, and preferences",
-      "shape": { "position": "-112,4", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "-112,4", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "kyc-aml-compliance",
       "domain": "credit-risk-assessment",
       "title": "KYC / AML Compliance",
       "description": "Validates user identity (Know Your Customer) and runs Anti-Money Laundering checks during onboarding",
-      "shape": { "position": "-169,199", "color": 9, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 0 }
+      "shape": { "position": "-169,199", "color": 9, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "fraud-detection",
       "domain": "credit-risk-assessment",
       "title": "Fraud Detection",
       "description": "Evaluates device fingerprints, transaction patterns, and behavioral data to prevent identity theft",
-      "shape": { "position": "199,136", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 1 }
+      "shape": { "position": "199,136", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 1 }
     },
     {
       "key": "limit-management",
       "domain": "credit-risk-assessment",
       "title": "Limit Management",
       "description": "Dynamically calculates and adjusts the maximum credit limit a customer can borrow",
-      "shape": { "position": "-114,-200", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 2 }
+      "shape": { "position": "-114,-200", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 2 }
     },
     {
       "key": "underwriting-engine",
       "domain": "credit-risk-assessment",
       "title": "Underwriting Engine",
       "description": "Evaluates creditworthiness in milliseconds using internal data, credit bureaus, and alternative data",
-      "shape": { "position": "238,-117", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 3 }
+      "shape": { "position": "238,-117", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 3 }
     },
     {
       "key": "checkout-engine",
       "domain": "checkout-order-processing",
       "title": "Checkout Engine",
       "description": "Integrates into merchant websites via SDKs/APIs to offer BNPL payment options at the point of sale",
-      "shape": { "position": "105,22", "color": 1, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 0 }
+      "shape": { "position": "105,22", "color": 1, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "order-management",
       "domain": "checkout-order-processing",
       "title": "Order Management",
       "description": "Tracks order lifecycle events (created, authorized, captured, shipped, cancelled)",
-      "shape": { "position": "-69,301", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 1 }
+      "shape": { "position": "-69,301", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 1 }
     },
     {
       "key": "virtual-card-issuance",
       "domain": "checkout-order-processing",
       "title": "Virtual Card Issuance",
       "description": "Generates single-use credit card numbers (e.g., via Visa/Mastercard networks) for checkout at non-partner merchants",
-      "shape": { "position": "306,220", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
+      "shape": { "position": "306,220", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 2 }
     },
     {
       "key": "merchant-settlement",
       "domain": "treasury-merchant-settlements",
       "title": "Merchant Settlement",
       "description": "Calculates payouts owed to merchants after deducting BNPL transaction fees (merchant discount rate), managing the payout queue",
-      "shape": { "position": "-185,-265", "color": 5, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 1 }
+      "shape": { "position": "-185,-265", "color": 5, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 1 }
     },
     {
       "key": "dispute-refund-management",
       "domain": "treasury-merchant-settlements",
       "title": "Dispute & Refund Management",
       "description": "Processes customer chargebacks, returns, and merchant refunds, automatically adjusting loan balances",
-      "shape": { "position": "-18,-72", "color": 5, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
+      "shape": { "position": "-18,-72", "color": 5, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 2 }
     },
     {
       "key": "treasury-liquidity",
       "domain": "treasury-merchant-settlements",
       "title": "Treasury & Liquidity",
       "description": "Monitors cash flow, funding facilities, and currency conversions to ensure capital is available to pay merchants before customers pay back",
-      "shape": { "position": "-196,154", "color": 5, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 3 }
+      "shape": { "position": "-196,154", "color": 5, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 3 }
     },
     {
       "key": "collections-delinquency",
       "domain": "core-ledger-repayment",
       "title": "Collections & Delinquency",
       "description": "Manages dunning processes, late fees, automated reminders, and handoffs to external collection agencies",
-      "shape": { "position": "-461,-112", "color": 2, "size": 32, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 0 }
+      "shape": { "position": "-461,-112", "color": 2, "size": 32, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "loan-management",
       "domain": "core-ledger-repayment",
       "title": "Loan Management",
       "description": "Structures individual purchases into specific loan agreements (e.g., Pay-in-4, monthly installments) with precise payment schedules",
-      "shape": { "position": "-335,-373", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 1 }
+      "shape": { "position": "-335,-373", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 1 }
     },
     {
       "key": "payment-gateway-integration",
       "domain": "core-ledger-repayment",
       "title": "Payment Gateway Integration",
       "description": "Interfaces with external processors (Stripe, Adyen, ACH) to charge cards or bank accounts for repayments",
-      "shape": { "position": "134,25", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "order": 2 }
+      "shape": { "position": "134,25", "color": 2, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 2 }
     },
     {
       "key": "ledger-engine",
       "domain": "core-ledger-repayment",
       "title": "Ledger Engine",
       "description": "Serves as the immutable financial system of record tracking debits, credits, and account balances",
-      "shape": { "position": "73,-247", "color": 2, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 3 }
+      "shape": { "position": "73,-247", "color": 2, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "opacity": 100, "order": 3 }
     }
   ],
   "touchpoints": [
     {
       "key": "checkout-widget",
-      "layer": "presentation",
       "title": "Checkout\nwidget",
       "type": "Customer channel",
-      "shape": { "position": "3165,-1557", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "3165,-1557", "color": 1, "size": 48, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "connectors": [
+        {
+          "to": "checkout-engine",
+          "description": "Every checkout is authorized here before the shopper is told yes.",
+          "fromPoint": 5,
+          "toPoint": 14,
+          "lineStyle": "curved",
+          "anchored": true
+        },
+        {
+          "to": "fraud-detection",
+          "description": "Device and behavioural signals are scored while the widget is still open.",
+          "fromPoint": 7,
+          "toPoint": 22,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
     },
     {
       "key": "consumer-app",
-      "layer": "presentation",
       "title": "Consumer app",
       "type": "Customer channel",
-      "shape": { "position": "3866,-1576", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "3866,-1576", "color": 1, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "connectors": [
+        {
+          "to": "identity-access",
+          "description": "Sign-in, profile and permissions for the consumer.",
+          "fromPoint": 4,
+          "toPoint": 14,
+          "lineStyle": "curved",
+          "anchored": true,
+          "bendPoints": [
+            4072,
+            -1391,
+            4361,
+            -1169
+          ]
+        },
+        {
+          "to": "loan-management",
+          "description": "Instalments are paid, rescheduled and settled from the app.",
+          "fromPoint": 7,
+          "toPoint": 22,
+          "lineStyle": "curved",
+          "anchored": true,
+          "bendPoints": [
+            3996,
+            -1166,
+            3869,
+            -745
+          ]
+        }
+      ]
     },
     {
       "key": "merchant-dashboard",
-      "layer": "presentation",
       "title": "Merchant\ndashboard",
       "type": "Merchant channel",
-      "shape": { "position": "4905,-818", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "4795,-712", "color": 12, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "connectors": [
+        {
+          "to": "merchant-onboarding",
+          "description": "Onboarding, contracts and store configuration.",
+          "fromPoint": 13,
+          "toPoint": 2,
+          "lineStyle": "curved",
+          "anchored": true
+        },
+        {
+          "to": "merchant-settlement",
+          "description": "What the merchant is owed, and when it lands.",
+          "fromPoint": 11,
+          "toPoint": 23,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
     },
     {
       "key": "service-console",
-      "layer": "presentation",
       "title": "Service console",
       "type": "Internal",
-      "shape": { "position": "4834,-518", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "4725,-453", "color": 11, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "connectors": [
+        {
+          "to": "customer-profile",
+          "description": "The account as support sees it.",
+          "fromPoint": 13,
+          "toPoint": 3,
+          "lineStyle": "curved",
+          "anchored": true,
+          "bendPoints": [
+            4492,
+            -778
+          ]
+        },
+        {
+          "to": "dispute-refund-management",
+          "description": "Disputes are raised and worked from the console.",
+          "fromPoint": 11,
+          "toPoint": 23,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
     }
   ],
   "actors": [
     {
       "key": "shopper",
-      "layer": "presentation",
       "title": "Shopper",
       "type": "Customer",
-      "shape": { "position": "3539,-1821", "color": 9, "size": 32, "weight": "regular", "scale": 1.2, "order": 0 }
+      "shape": { "position": "3539,-1821", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "opacity": 50, "order": 0 },
+      "interactions": [
+        {
+          "to": "consumer-app",
+          "description": "The shopper browses plans, tracks instalments and pays early from the app.",
+          "fromPoint": 2,
+          "toPoint": 18,
+          "lineStyle": "curved",
+          "anchored": true
+        },
+        {
+          "to": "checkout-widget",
+          "description": "At the merchant’s checkout, the shopper picks Pay in 4 and is underwritten in the widget.",
+          "fromPoint": 10,
+          "toPoint": 18,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
     },
     {
       "key": "merchant",
-      "layer": "presentation",
       "title": "Merchant",
       "type": "Partner",
-      "shape": { "position": "5232,-824", "color": 9, "size": 32, "weight": "regular", "scale": 1.4, "order": 0 }
+      "shape": { "position": "5149,-719", "color": 18, "size": 36, "weight": "regular", "scale": 1.4, "opacity": 50, "order": 0 },
+      "interactions": [
+        {
+          "to": "merchant-dashboard",
+          "description": "The merchant reconciles settlements and reviews disputes from the dashboard.",
+          "fromPoint": 12,
+          "toPoint": 0,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
     },
     {
       "key": "support-agent",
-      "layer": "presentation",
       "title": "Support agent",
       "type": "Internal",
-      "shape": { "position": "5233,-519", "color": 9, "size": 32, "weight": "regular", "scale": 1.4, "order": 0 }
+      "shape": { "position": "5073,-458", "color": 11, "size": 36, "weight": "regular", "scale": 1.4, "opacity": 50, "order": 0 },
+      "interactions": [
+        {
+          "to": "service-console",
+          "description": "Support answers customers from the console, with the account and its ledger beside them.",
+          "fromPoint": 12,
+          "toPoint": 0,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
     }
   ],
   "connectors": [
@@ -434,142 +551,6 @@
       "toPoint": 18,
       "lineStyle": "straight",
       "anchored": false
-    },
-    {
-      "from": "shopper",
-      "fromKind": "actor",
-      "to": "consumer-app",
-      "toKind": "touchpoint",
-      "description": "The shopper browses plans, tracks instalments and pays early from the app.",
-      "fromPoint": 2,
-      "toPoint": 18,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "shopper",
-      "fromKind": "actor",
-      "to": "checkout-widget",
-      "toKind": "touchpoint",
-      "description": "At the merchant’s checkout, the shopper picks Pay in 4 and is underwritten in the widget.",
-      "fromPoint": 10,
-      "toPoint": 18,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "merchant",
-      "fromKind": "actor",
-      "to": "merchant-dashboard",
-      "toKind": "touchpoint",
-      "description": "The merchant reconciles settlements and reviews disputes from the dashboard.",
-      "fromPoint": 12,
-      "toPoint": 0,
-      "lineStyle": "curved",
-      "anchored": false
-    },
-    {
-      "from": "support-agent",
-      "fromKind": "actor",
-      "to": "service-console",
-      "toKind": "touchpoint",
-      "description": "Support answers customers from the console, with the account and its ledger beside them.",
-      "fromPoint": 12,
-      "toPoint": 0,
-      "lineStyle": "curved",
-      "anchored": false
-    },
-    {
-      "from": "checkout-widget",
-      "fromKind": "touchpoint",
-      "to": "checkout-engine",
-      "description": "Every checkout is authorized here before the shopper is told yes.",
-      "fromPoint": 5,
-      "toPoint": 14,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "checkout-widget",
-      "fromKind": "touchpoint",
-      "to": "fraud-detection",
-      "description": "Device and behavioural signals are scored while the widget is still open.",
-      "fromPoint": 7,
-      "toPoint": 22,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "consumer-app",
-      "fromKind": "touchpoint",
-      "to": "identity-access",
-      "description": "Sign-in, profile and permissions for the consumer.",
-      "fromPoint": 4,
-      "toPoint": 14,
-      "lineStyle": "curved",
-      "anchored": true,
-      "bendPoints": [
-        4072,
-        -1391,
-        4361,
-        -1169
-      ]
-    },
-    {
-      "from": "consumer-app",
-      "fromKind": "touchpoint",
-      "to": "loan-management",
-      "description": "Instalments are paid, rescheduled and settled from the app.",
-      "fromPoint": 7,
-      "toPoint": 22,
-      "lineStyle": "curved",
-      "anchored": true,
-      "bendPoints": [
-        3996,
-        -1166,
-        3869,
-        -745
-      ]
-    },
-    {
-      "from": "merchant-dashboard",
-      "fromKind": "touchpoint",
-      "to": "merchant-onboarding",
-      "description": "Onboarding, contracts and store configuration.",
-      "fromPoint": 13,
-      "toPoint": 0,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "merchant-dashboard",
-      "fromKind": "touchpoint",
-      "to": "merchant-settlement",
-      "description": "What the merchant is owed, and when it lands.",
-      "fromPoint": 11,
-      "toPoint": 23,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "service-console",
-      "fromKind": "touchpoint",
-      "to": "customer-profile",
-      "description": "The account as support sees it.",
-      "fromPoint": 13,
-      "toPoint": 3,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "service-console",
-      "fromKind": "touchpoint",
-      "to": "dispute-refund-management",
-      "description": "Disputes are raised and worked from the console.",
-      "fromPoint": 11,
-      "toPoint": 23,
-      "lineStyle": "curved",
-      "anchored": true
     }
   ]
 }

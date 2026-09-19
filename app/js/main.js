@@ -10,7 +10,8 @@ import {
   createActor, updateActor, deleteActor,
   createConnector as addConnector, updateConnector, deleteConnector,
   restore, updateMap,
-  layerStack, layerByKey, layerState, setLayerState, resetLayerState,
+  layerStack, layerState, setLayerState, resetLayerState, isVisible,
+  selectLayer, selectedLayerKey, kindsAddableTo,
   addTypeChoice, removeTypeChoice, setTypeChoices, typesFor,
 } from './store.js';
 import { fromDocument, toDocument, stringify, validate } from './document.js';
@@ -35,9 +36,8 @@ import {
   DEFAULT_CAPABILITY_FONT_WEIGHT, DEFAULT_STRETCH, DOMAIN_GAP,
   capabilitySize, sizeOf, layoutDomain, newLobeSpot, setPalette, swatchFor,
 } from './geometry.js';
-import {
-  DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE, HOME_LAYER,
-} from './defaults.js';
+import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
+import { BASE_LAYER } from './rules.js';
 import * as undoStack from './history.js';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
@@ -46,7 +46,7 @@ const SETTINGS_KEY = 'data/settings.json';
 const statusBar = document.getElementById('status');
 const statsBar = document.getElementById('stats');
 const layerControl = document.getElementById('layer-control');
-const layerPick = document.getElementById('layer-pick');
+const addRow = document.getElementById('add-shapes');
 const main = document.querySelector('.main');
 
 let syncingHash = false;
@@ -147,12 +147,10 @@ const EDIT_MARK = 'view-edit-session';
 
 function applyEditMode() {
   // Browsing has nothing for these to do, so the whole row leaves rather than
-  // sitting there greyed out.
-  document.getElementById('menu-actions').hidden = !editMode;
+  // sitting there greyed out. Adding a shape is the diagram's own row now, and
+  // renderLayerControl builds it from the layer being worked on.
   document.getElementById('details-actions').hidden = !editMode;
   document.getElementById('import-map').disabled = !editMode;
-  // The layer picker only means anything while something can be added.
-  document.getElementById('layer-pick-field').hidden = !editMode;
   renderLayerControl();
   showSaveState();
   showSelectionActions();
@@ -167,7 +165,13 @@ function setEditMode(next) {
     // was hiding for its own sake goes back to what the map says — otherwise
     // the control would be writing one thing and showing another.
     resetLayerState();
-  } else closeKebab();
+    // Work starts on the base layer, which is the one that can never be hidden.
+    selectLayer(BASE_LAYER, { saved: true });
+  } else {
+    closeKebab();
+    // Nothing is being added, so no layer is being worked on.
+    selectLayer(null);
+  }
   setDiagramEditMode(editMode);
   setDetailsEditMode(editMode);
   applyEditMode();
@@ -761,12 +765,11 @@ function patch(type, id, body, label = 'Saving') {
 // The corner the "Drag to pan…" line used to hold. One row per layer, topmost
 // first, because that is the order they are stacked in on the map.
 //
-// What it writes depends on the mode. Browsing, it changes this tab and nothing
-// else — reading a map never edits it. In Edit mode it writes the document, so
-// what an owner leaves showing is what the map opens at once it is published.
-
-/** Which layer a new shape lands on. Reset to each kind's own home as it is used. */
-let addingTo = null;
+// What the eye and the dim write depends on the mode. Browsing, they change
+// this tab and nothing else — reading a map never edits it. In Edit mode they
+// write the document, so what an owner leaves showing is what the map opens at
+// once it is published. The third control, which layer is *selected*, is never
+// saved: it says which layer you are adding to, and only Edit mode has one.
 
 /** "capability" does not take an -s, so the plurals are written down. */
 const PLURALS = {
@@ -794,6 +797,21 @@ function changeLayer(key, changes) {
   return setLayerState(key, changes, { saved: true });
 }
 
+/**
+ * Hide or show a layer. Hiding the one being worked on moves the work to the
+ * base layer, which can never be hidden — so you are always editing something
+ * you can see. Anything selected on the layer that just went is dropped: a
+ * details panel describing a shape nobody can see is a panel about nothing.
+ */
+function toggleLayer(layer) {
+  changeLayer(layer.key, { hidden: !layer.hidden });
+  if (layer.hidden) return; // it was hidden and is now shown: nothing to drop
+
+  if (selectedLayerKey() === layer.key) selectLayer(BASE_LAYER);
+  const { type, id } = store.selection;
+  if (type && !isVisible(type, find(type, id))) select(null, null);
+}
+
 function layerButton(className, label, pressed, onClick, { disabled = false } = {}) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -813,58 +831,97 @@ function renderLayerControl() {
   // Topmost first: the control reads the way the map is stacked, from the top
   // of the pile down.
   for (const layer of [...stack].reverse()) {
+    const chosen = selectedLayerKey() === layer.key;
     const row = document.createElement('div');
     row.className = `layers__row${layer.hidden ? ' layers__row--hidden' : ''}`
-      + `${layer.dimmed ? ' layers__row--dimmed' : ''}`;
+      + `${layer.dimmed ? ' layers__row--dimmed' : ''}`
+      + `${chosen ? ' layers__row--selected' : ''}`;
 
     const name = document.createElement('span');
     name.className = 'layers__name';
     name.textContent = layer.title;
     row.appendChild(name);
 
-    // Nothing sits under the base layer, so hiding it would leave an empty
-    // stage. It dims instead, which is the whole point of dimming.
+    // Which layer is being worked on. Only one at a time, and only while there
+    // is something to add — so it is not there at all while browsing.
+    if (editMode) {
+      row.appendChild(layerButton(
+        'layers__pick', `Add to ${layer.title}`, chosen,
+        () => { selectLayer(layer.key, { saved: true }); }));
+    }
+
     row.appendChild(layerButton(
       'layers__dim', `Dim ${layer.title}`, layer.dimmed,
       () => changeLayer(layer.key, { dimmed: !layer.dimmed })));
 
+    // Nothing sits under the base layer, so hiding it would leave an empty
+    // stage. It dims instead, which is the whole point of dimming.
     row.appendChild(layerButton(
       'layers__eye', layer.hidden ? `Show ${layer.title}` : `Hide ${layer.title}`, !layer.hidden,
-      () => changeLayer(layer.key, { hidden: !layer.hidden }),
+      () => toggleLayer(layer),
       { disabled: layer.base }));
 
     rows.push(row);
   }
 
   layerControl.replaceChildren(...rows);
-  renderLayerPick();
-}
-
-/** The options of the "Add to" picker, from the map's own stack. */
-function renderLayerPick() {
-  if (!layerPick) return;
-  const stack = layerStack();
-  const wanted = stack.some((layer) => layer.key === addingTo) ? addingTo : null;
-
-  layerPick.replaceChildren(...stack.map((layer) => {
-    const option = document.createElement('option');
-    option.value = layer.key;
-    option.textContent = layer.title;
-    option.selected = layer.key === wanted;
-    return option;
-  }));
-  if (wanted) layerPick.value = wanted;
+  renderAddButtons();
 }
 
 /**
- * The layer a new shape of this kind goes on: whatever the picker has been set
- * to, or the kind's own home — the base layer for a domain or a capability,
- * Presentation for a touchpoint or an actor.
+ * The Add buttons, beside the layer control: the kinds the selected layer
+ * takes, and nothing else. Browsing there is no selected layer and nothing to
+ * add, so the row is simply not there.
  */
-function layerFor(kind) {
-  if (addingTo && layerByKey(addingTo)) return addingTo;
-  const home = HOME_LAYER[kind];
-  return layerByKey(home) ? home : store.layers[0]?.key ?? null;
+const ADD_LABELS = {
+  domain: 'Add a domain',
+  capability: 'Add a capability',
+  touchpoint: 'Add a touchpoint',
+  actor: 'Add an actor',
+};
+
+const ADD_ICONS = {
+  domain: 'icons/add-domain.svg',
+  capability: 'icons/add-capability.svg',
+  touchpoint: 'icons/add-touchpoint.svg',
+  actor: 'icons/add-actor.svg',
+};
+
+function renderAddButtons() {
+  const layer = editMode ? selectedLayerKey() : null;
+  const kinds = layer ? kindsAddableTo(layer) : [];
+  addRow.hidden = kinds.length === 0;
+
+  addRow.replaceChildren(...kinds.map((kind) => {
+    const button = document.createElement('button');
+    button.className = 'btn btn--chip btn--chip-icon add-shape';
+    button.type = 'button';
+    button.dataset.kind = kind;
+    button.title = ADD_LABELS[kind];
+    button.setAttribute('aria-label', ADD_LABELS[kind]);
+
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.dataset.icon = ADD_ICONS[kind];
+    icon.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.className = 'btn__label';
+    label.textContent = ADD_LABELS[kind];
+
+    button.append(icon, label);
+    button.addEventListener('click', () => addOfKind(kind));
+    return button;
+  }));
+  // The icons are inlined SVG, fetched once and cached by icons.js.
+  if (kinds.length > 0) loadIcons(addRow);
+}
+
+/** Add follows the button pressed, and the button follows the selected layer. */
+function addOfKind(kind) {
+  if (kind === 'domain') return addDomain();
+  if (kind === 'capability') return addCapabilityHere();
+  return addElement(kind);
 }
 
 // --- placing new shapes ------------------------------------------------------
@@ -938,7 +995,6 @@ async function addDomain() {
   const created = await run('Adding domain', () => createDomain({
     title: DOMAIN_SHAPE.title,
     ...domainLook(),
-    layer: layerFor('domain'),
     x: spot.x,
     y: spot.y,
   }));
@@ -990,9 +1046,6 @@ async function addCapability(domainId = null, { keepSelection = false, over = nu
     title: CAPABILITY_SHAPE.title,
     ...capabilityLook(),
     ...(home ? { colorIndex: home.colorIndex } : {}),
-    // A capability in a domain is on that domain's layer: the lobe and the blob
-    // it is cut into cannot come apart.
-    layer: home ? home.layer : layerFor('capability'),
     ...place,
   }));
   if (created) {
@@ -1020,7 +1073,6 @@ async function addElement(kind) {
   const created = await run(label, () => create({
     title: shape.title,
     ...look,
-    layer: layerFor(kind),
     x: spot.x,
     y: spot.y,
   }));
@@ -1552,12 +1604,9 @@ window.addEventListener('beforeunload', (event) => {
   if (dirty && !signingIn) event.preventDefault();
 });
 
-document.getElementById('add-domain').addEventListener('click', addDomain);
+// The Add buttons live on the diagram now, beside the layer control, and are
+// built with the layer they belong to — see renderAddButtons.
 document.getElementById('collapse-all').addEventListener('click', () => collapseAll());
-document.getElementById('add-capability').addEventListener('click', addCapabilityHere);
-document.getElementById('add-touchpoint').addEventListener('click', () => addElement('touchpoint'));
-document.getElementById('add-actor').addEventListener('click', () => addElement('actor'));
-layerPick.addEventListener('change', () => { addingTo = layerPick.value || null; });
 document.getElementById('delete-selected').addEventListener('click', deleteSelection);
 resetShapesButton.addEventListener('click', () => {
   if (store.selection.type === 'domain') resetShapes(store.selection.id);

@@ -84,43 +84,6 @@
         </span>
       </div>
       <nav class="tree" id="tree"></nav>
-      <!-- Adding is what you do after reading the hierarchy, so the buttons sit
-           under it. Open, they run the width of the panel and say what they do; shut, the
-           rail leaves only the two icons. The shapes follow the tree's swatches:
-           a domain is the round blob, a capability the flatter oval it holds. -->
-      <div class="panel__actions" id="menu-actions">
-        <button class="btn btn--chip btn--chip-icon btn--wide" id="add-domain"
-                title="Add a domain" aria-label="Add a domain">
-          <span class="icon" data-icon="icons/add-domain.svg" aria-hidden="true"></span>
-          <span class="btn__label">Add a domain</span>
-        </button>
-        <button class="btn btn--chip btn--chip-icon btn--wide" id="add-capability"
-                title="Add a capability" aria-label="Add a capability">
-          <span class="icon" data-icon="icons/add-capability.svg" aria-hidden="true"></span>
-          <span class="btn__label">Add a capability</span>
-        </button>
-        <!-- The two Presentation-layer shapes. They follow the tree's swatches
-             the way the two above do: a touchpoint the rounded box, an actor
-             the ringed figure. -->
-        <button class="btn btn--chip btn--chip-icon btn--wide" id="add-touchpoint"
-                title="Add a touchpoint" aria-label="Add a touchpoint">
-          <span class="icon" data-icon="icons/add-touchpoint.svg" aria-hidden="true"></span>
-          <span class="btn__label">Add a touchpoint</span>
-        </button>
-        <button class="btn btn--chip btn--chip-icon btn--wide" id="add-actor"
-                title="Add an actor" aria-label="Add an actor">
-          <span class="icon" data-icon="icons/add-actor.svg" aria-hidden="true"></span>
-          <span class="btn__label">Add an actor</span>
-        </button>
-        <!-- Which layer a new shape lands on. In Edit mode only, since that is
-             the only time anything is being added; main.js fills the options
-             from the map's own stack. -->
-        <label class="layer-pick" id="layer-pick-field">
-          <span class="layer-pick__label">Add to</span>
-          <select class="field__select" id="layer-pick"
-                  title="Which layer new shapes are added to"></select>
-        </label>
-      </div>
       <div class="panel__foot">
         <button class="btn btn--chip btn--wide btn--collapse" id="toggle-menu" aria-pressed="true"
                 aria-controls="menu-panel" title="Collapse the domains panel">
@@ -151,10 +114,15 @@
         <button class="btn btn--icon" id="zoom-out" title="Zoom out">&minus;</button>
         <button class="btn btn--icon" id="zoom-fit" title="Fit to screen">&#9723;</button>
       </div>
-      <!-- The layer control: one row per layer, topmost first. What used to
+      <!-- The layer control, one row per layer topmost first, and beside it the
+           Add buttons for whichever layer is being worked on. What used to
            stand here was the "Drag to pan…" line; it lives in Getting around
-           now. main.js fills the rows from the map's stack. -->
-      <div class="layers" id="layer-control" role="group" aria-label="Layers"></div>
+           now. main.js fills both: the rows from the model's stack, the buttons
+           from the kinds that layer takes. -->
+      <div class="stage__foot">
+        <div class="layers" id="layer-control" role="group" aria-label="Layers"></div>
+        <div class="add-shapes" id="add-shapes" role="group" aria-label="Add a shape" hidden></div>
+      </div>
       <!-- Said over an empty stage when there is no map to show: a version this
            person may not open, or nothing published yet. -->
       <div class="notice" id="notice" role="status" hidden>
@@ -295,7 +263,8 @@
       <h2 class="dialog__title" id="getting-around-title">Getting around</h2>
       <div class="shortcuts">
         <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right. In <strong>Edit</strong> mode, click a connection point on a shape to start a connector. Press <strong>Edit</strong> in the header to make changes.</p>
-        <p>The <strong>layer control</strong> in the bottom left corner lists the map's layers, topmost first. The eye hides a layer above the base; the base layer cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
+        <p>The <strong>layer control</strong> in the bottom left corner lists the two layers, topmost first. The eye hides the Presentation Layer; the base layer cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
+        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds: domains and capabilities on the base layer, touchpoints and actors on the Presentation Layer. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
         <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
 
         <section class="shortcuts__group" aria-labelledby="shortcuts-shapes">
@@ -349,7 +318,7 @@
             </thead>
             <tbody>
               <tr><td>Point at or select a capability, touchpoint or actor</td><td>Show its connection points</td></tr>
-              <tr><td>Drag from a connection point to one on another shape</td><td>Draw a connector. A line may join any two of a capability, a touchpoint and an actor.</td></tr>
+              <tr><td>Drag from a connection point to one on another shape</td><td>Draw a connector. A line runs down the stack: an actor to a touchpoint, a touchpoint to a capability, a capability to another capability. Anything else is refused.</td></tr>
               <tr><td>Click a connection point, then one on another shape</td><td>Draw a connector in two clicks</td></tr>
               <tr><td>Esc, or click anywhere else</td><td>Drop a connector you have started</td></tr>
               <tr><td>Click a connector</td><td>Select it</td></tr>

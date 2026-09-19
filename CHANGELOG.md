@@ -15,26 +15,39 @@ lands on the base layer. Full notes:
 
 ### Added
 
-- **Layers.** A map holds an ordered stack, bottom first, and ships with two:
-  "Core Business Domains" (the base) and "Presentation". The list is data, so a
-  third layer is a row in the file rather than a release.
-- **A layer control** in the bottom left corner of the diagram. The eye hides a
-  layer above the base; the base layer cannot be hidden, only dimmed. Using it
-  changes your tab alone — in Edit mode it sets what the map opens at for
-  everyone, and that is saved with the map.
+- **Layers.** Two of them, bottom first: "Core Business Domains" and
+  "Presentation Layer". They are a fixed conceptual model, not a list a map may
+  edit — which layer an element is on follows from what it is, so a domain is
+  always core and an actor is always presentation.
+- **A layer control** in the bottom left corner of the diagram, one row per
+  layer reading `title · selected · dim · eye`. The eye hides a layer above the
+  base; the base layer cannot be hidden, only dimmed. Hiding a layer drops
+  anything selected on it. Using the control changes your tab alone — in Edit
+  mode it sets what the map opens at for everyone, and that is saved with the
+  map and unwound by Ctrl-Z and Cancel.
 - **Touchpoints and actors**, two kinds of their own alongside domains and
   capabilities: a rounded box and a ringed figure, both on the Presentation
-  layer, neither belonging to a domain. **Add a touchpoint** and **Add an
-  actor** sit under Add a capability, with an **Add to** picker saying which
-  layer a new shape lands on, and each kind gets a section in the menu and in
+  layer, neither belonging to a domain. Each gets a section in the menu and in
   the details panel.
-- **Connectors between any two shapes** that carry connection points — a
-  capability, a touchpoint or an actor. A line belongs to the topmost layer it
-  touches, so hiding that layer takes the line with it.
+- **Add buttons on the diagram**, beside the layer control, offering the kinds
+  the selected layer takes. Which layer is being worked on is a box on that
+  layer's row, one at a time, in Edit mode only; selecting a hidden layer shows
+  it, and hiding the one being worked on moves the work back to the base layer.
+- **Connectors down the stack**: an actor joins a touchpoint, a touchpoint joins
+  a capability, a capability joins a capability. Anything else is refused as it
+  is drawn. A line is filed under its upper end whichever way round it was
+  drawn, so an actor's line is always the actor's, and presentation lines are
+  drawn in their own deep teal.
+- **User interactions** and **Touchpoint connectors**: an actor's lines and a
+  touchpoint's hang under it in the menu, the way a domain's own lines do, and
+  are written under it in the file. The details panel heads a line with the same
+  name the menu filed it under.
 - **Type**, on every kind of element: a picker over a list of choices, with a
   box to add one. Each kind keeps its own list, the lists travel with the map,
-  and a choice something is typed with cannot be removed — it says how many
-  hold it instead.
+  and a choice something is typed with cannot be removed — it says how many hold
+  it instead.
+- **Opacity**, on every kind, on one scale of 10 to 100. A capability and a
+  touchpoint start solid, an actor at half, a domain at the 20 it always had.
 
 ### Changed
 
@@ -45,6 +58,8 @@ lands on the base layer. Full notes:
   control on the one section it leaves.
 - The "Drag to pan…" line under the map is gone; the layer control has that
   corner, and what the line said is in **Getting around**.
+- The layer stack moved from `defaults.js` to `rules.js`: a brand may restyle
+  its shapes, but not redefine what the two layers mean.
 - An empty `OWNER_EMAILS` makes everyone who signs in an owner, where before it
   left nobody able to edit. The server still warns about it at startup. A
   deployment that relied on an empty list to keep the map read-only needs to

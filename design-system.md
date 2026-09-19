@@ -374,22 +374,27 @@ export const ACTOR_SHAPE = Object.freeze({
 });
 ```
 
-The same file holds the stack a new map is drawn on, and where each kind of
-shape is added unless the layer picker says otherwise:
+The layers are **not** here. They are a fixed conceptual model rather than a
+setting, so they live in [`app/js/rules.js`](app/js/rules.js), which a brand
+directory does not shadow:
 
 ```js
 export const LAYERS = Object.freeze([
   Object.freeze({ key: 'core', title: 'Core Business Domains' }),
-  Object.freeze({ key: 'presentation', title: 'Presentation' }),
+  Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
 ]);
 
-export const HOME_LAYER = Object.freeze({
+/** Which layer each kind is on. No element carries a layer of its own. */
+export const LAYER_OF = Object.freeze({
   domain: 'core',
   capability: 'core',
   touchpoint: 'presentation',
   actor: 'presentation',
 });
 ```
+
+A deployment may restyle its shapes; it may not redefine what the two layers
+mean, or which kind of element is on which.
 
 Change a value, then check the file:
 
@@ -430,7 +435,7 @@ A shape stores a palette swatch, not a color. When a shape is created, its defau
 
   A capability that lands inside a domain, including one added with **Add lobe** from the domain's ⋮ menu, takes the domain's color instead of the default. This happens only when it is added, so you can change the color afterwards.
 - **Reset shapes** appears at the bottom of the details panel when a domain is selected. It sets the domain's color, opacity, font size, weight and title size back to `DOMAIN_SHAPE`. It sets the color, font size, weight, shape size and stretch of every capability in the domain back to `CAPABILITY_SHAPE`. Titles, icons, positions and a dragged title width don't change.
-- **Add a touchpoint** uses `TOUCHPOINT_SHAPE` and **Add an actor** uses `ACTOR_SHAPE`. Neither belongs to a domain, so both land on open ground beside the map, on the layer the **Add to** picker names — Presentation unless it has been changed.
+- **Add a touchpoint** uses `TOUCHPOINT_SHAPE` and **Add an actor** uses `ACTOR_SHAPE`. Neither belongs to a domain, so both land on open ground beside the map. The Add buttons sit at the bottom of the diagram and offer only the kinds the selected layer takes, so a touchpoint can only ever be added to the Presentation layer.
 - **Reset colors**, below it, gives every capability in the domain the domain's color.
 - **Map files**: if a file leaves out a field, the field gets its default. The exception is color, which falls back to swatch 1.
 

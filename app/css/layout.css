@@ -491,22 +491,6 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 .type-pick__new { flex-basis: 100%; }
 
-.layer-pick {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-1);
-  padding-top: var(--gap-1);
-  font-size: var(--fs-xs);
-  color: var(--ink-soft);
-}
-
-.layer-pick__label { flex: none; }
-.layer-pick .field__select { flex: 1; min-width: 0; }
-
-/* Shut, the rail is icons only, and there is no room for a picker with a word
-   beside it. */
-.main[data-menu="collapsed"] .layer-pick { display: none; }
-
 .tree__swatch--connector {
   height: 0;
   border: none;
@@ -1250,6 +1234,10 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
      actually pressed, and the row keeps the layer's name as its tooltip. */
   .layers { font-size: 10px; }
   .layers__name { max-width: 84px; }
+
+  /* Side by side there is no room for both; the buttons go under the rows. */
+  .stage__foot { flex-direction: column; align-items: flex-start; }
+  .add-shapes { flex-direction: row; flex-wrap: wrap; }
 
   /* The sheet is a row of the layout rather than something floating over it, so
      the map keeps a stage of its own to be fitted to and the zoom stack never

@@ -2,7 +2,7 @@
 // intents. It never talks to the API itself — it calls back into `actions`.
 
 import {
-  store, select, childrenOf, stackingOrder, stackedList, patchLocal, find, scopeOf,
+  store, select, childrenOf, stackingOrder, stackedList, patchLocal, find, connectorScope,
   connectorEnds, oneLine, layerStack, layerOf, connectorLayer, isHidden,
 } from './store.js';
 import * as geo from './geometry.js';
@@ -84,7 +84,9 @@ const colorOf = (index) => geo.COLORS[(index || 1) - 1] ?? geo.COLORS[0];
 /** The one ink a capability's title and icon are ever drawn in. */
 const CAPABILITY_INK = '#000';
 const paper = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fffdfa';
-const opacityOf = (domain) => (domain.opacity ?? geo.DEFAULT_OPACITY) / 100;
+/** How solid a shape is drawn, as a share. Every kind carries one now. */
+const opacityOf = (record, fallback = geo.DEFAULT_OPACITY) =>
+  (record.opacity ?? fallback) / 100;
 
 export function initDiagram(handlers) {
   actions = handlers;
@@ -277,18 +279,19 @@ function renderLayer(layer, views) {
   // domain drawn at 20% goes quieter still rather than jumping to one value.
   if (layer.dimmed) group.setAttribute('opacity', DIM_OPACITY);
 
-  const mine = views.filter(({ domain }) => domain.layer === layer.key);
-  const on = (type) => (record) => layerOf(type, record) === layer.key;
+  // A kind belongs to one layer entirely, so a stack is either all of that
+  // kind or none of it — there is nothing to filter shape by shape.
+  const has = (kind) => layer.kinds.includes(kind);
 
   group.append(
-    el('g', { class: 'stack stack--domains' }, mine.map(renderDomain)),
+    el('g', { class: 'stack stack--domains' }, has('domain') ? views.map(renderDomain) : []),
     // Paint order is the stack, so a shape sent to the back lands at the back.
     el('g', { class: 'stack stack--capabilities' },
-      stackingOrder().filter(on('capability')).map(renderCapability)),
+      has('capability') ? stackingOrder().map(renderCapability) : []),
     el('g', { class: 'stack stack--touchpoints' },
-      stackedList('touchpoint').filter(on('touchpoint')).map(renderTouchpoint)),
+      has('touchpoint') ? stackedList('touchpoint').map(renderTouchpoint) : []),
     el('g', { class: 'stack stack--actors' },
-      stackedList('actor').filter(on('actor')).map(renderActor)),
+      has('actor') ? stackedList('actor').map(renderActor) : []),
     el('g', { class: 'stack stack--connectors' },
       store.connectors
         .filter((connector) => connectorLayer(connector) === layer.key)
@@ -639,7 +642,13 @@ function renderCapability(capability) {
   // label that flips to white on the darker swatches reads as a different kind
   // of thing rather than the same label on another colour.
   const ink = CAPABILITY_INK;
-  group.appendChild(el('ellipse', { class: 'cap__oval', rx: size.rx, ry: size.ry, fill }));
+  group.appendChild(el('ellipse', {
+    class: 'cap__oval',
+    rx: size.rx,
+    ry: size.ry,
+    fill,
+    'fill-opacity': opacityOf(capability, 100),
+  }));
 
   if (capability.icon && size.iconSize > 0) {
     // An <image> is its own little document, so the icon cannot inherit the ink
@@ -717,6 +726,7 @@ function renderTouchpoint(touchpoint) {
     rx: size.corner,
     ry: size.corner,
     fill: colorOf(touchpoint.colorIndex),
+    'fill-opacity': opacityOf(touchpoint, 100),
   }));
 
   if (touchpoint.icon && size.iconSize > 0) {
@@ -760,6 +770,7 @@ function renderActor(actor) {
     class: 'actor__ring',
     r: size.rx,
     fill: colorOf(actor.colorIndex),
+    'fill-opacity': opacityOf(actor, 50),
   }));
 
   // The same silhouette the profile avatar wears, drawn at the size this actor
@@ -859,8 +870,9 @@ function renderConnector(connector) {
   if (!line) return null;
 
   const selected = store.selection.type === 'connector' && store.selection.id === connector.id;
-  // Public events cross a domain boundary and read loud; internal ones stay quiet.
-  const scope = scopeOf(connector);
+  // Public events cross a domain boundary and read loud; internal ones stay
+  // quiet; the two presentation kinds read as a different sort of line again.
+  const scope = connectorScope(connector);
   const hovered = hoveredConnectorId === connector.id;
   const group = el('g', {
     class: `connector-group connector--${scope}${selected ? ' connector--selected' : ''}`

@@ -31,12 +31,18 @@
 
 /* --- the layer control --------------------------------------------------- */
 
-/* The corner that used to hold the "Drag to pan…" line. One row per layer,
-   topmost first, because that is the order they are stacked on the map. */
-.layers {
+/* The corner that used to hold the "Drag to pan…" line: the layer rows, and
+   beside them the Add buttons for whichever layer is being worked on. */
+.stage__foot {
   position: absolute;
   left: var(--gap-3);
   bottom: var(--gap-3);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--gap-2);
+}
+
+.layers {
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -50,15 +56,19 @@
 .layers__row {
   display: flex;
   align-items: center;
-  gap: var(--gap-1);
-  padding: 2px 2px 2px var(--gap-1);
+  gap: 2px;
+  padding: 2px;
   border-radius: var(--radius-s);
 }
 
+/* The title runs up against the controls rather than away from them, so the
+   name and the icons it belongs to read as one row. */
 .layers__name {
   flex: 1;
   min-width: 0;
+  padding-right: var(--gap-1);
   overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ink);
@@ -71,6 +81,13 @@
 }
 
 .layers__row--dimmed .layers__name { color: var(--ink-soft); }
+
+/* The layer being worked on. Only one at a time, and only in Edit mode. */
+.layers__row--selected {
+  background: color-mix(in srgb, var(--selection) 12%, transparent);
+}
+
+.layers__row--selected .layers__name { font-weight: var(--fw-semibold); }
 
 .layers__btn {
   flex: none;
@@ -97,20 +114,34 @@
 
 .layers__btn[aria-pressed="true"] { color: var(--ink); }
 
-/* Drawn rather than lettered: an eye open or struck through, and a half-filled
-   disc for dimming. currentColor, so the states above carry them. */
+/* Drawn rather than lettered, in currentColor so the states above carry them. */
+
+/* The eye: a lid, with an eyeball in it while the layer is shown and none
+   while it is hidden. */
 .layers__eye::before {
   content: "";
   display: block;
-  width: 14px;
-  height: 14px;
-  margin: 2px auto;
+  position: relative;
+  width: 15px;
+  height: 15px;
+  margin: 1px auto;
   border: 1.5px solid currentcolor;
   border-radius: 80% 10%;
   transform: rotate(45deg);
 }
 
-.layers__eye[aria-pressed="false"]::before { border-style: dotted; }
+.layers__eye::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 5px;
+  margin: -10px auto 0;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+/* Shut: the lid stays, the eyeball goes. */
+.layers__eye[aria-pressed="false"]::after { background: none; }
 
 .layers__dim::before {
   content: "";
@@ -124,6 +155,40 @@
 }
 
 .layers__dim[aria-pressed="true"]::before { background: currentcolor; }
+
+/* A box that is ticked while this is the layer being added to. */
+.layers__pick::before {
+  content: "";
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 3px auto;
+  border: 1.5px solid currentcolor;
+  border-radius: 3px;
+}
+
+.layers__pick[aria-pressed="true"] { color: var(--selection); }
+
+.layers__pick[aria-pressed="true"]::before {
+  background: var(--selection);
+  box-shadow: inset 0 0 0 2px var(--paper);
+}
+
+/* --- adding a shape ------------------------------------------------------- */
+
+/* Only the kinds the selected layer takes, so the row says what this layer is
+   for as much as it offers a way to fill it. */
+.add-shapes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap-1);
+}
+
+.add-shapes .add-shape {
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+}
 
 /* --- domains ------------------------------------------------------------- */
 
@@ -209,10 +274,10 @@
   stroke-opacity: 0.9;
 }
 
-/* See-through, so the terrain under an actor still reads: it stands on the map
-   rather than covering it. The rim is the edge its snap points sit on. */
+/* The ring is the edge an actor's snap points sit on. How see-through it is
+   comes from the shape's own opacity, written on it by the diagram — an actor
+   starts at half, so the terrain under it still reads. */
 .actor__ring {
-  fill-opacity: 0.45;
   stroke: var(--capability-border);
   stroke-width: 2.5;
 }
@@ -273,6 +338,16 @@
 }
 
 .connector--public .connector { stroke: var(--connector-public); }
+
+/* A user interaction and a touchpoint connector are both presentation lines:
+   one colour, one weight. Which section files them is the menu's business. */
+.connector--interaction,
+.connector--touchpoint {
+  --connector-width: var(--connector-presentation-width);
+}
+
+.connector--interaction .connector,
+.connector--touchpoint .connector { stroke: var(--connector-presentation); }
 
 .connector--internal {
   --connector-width: var(--connector-internal-width);

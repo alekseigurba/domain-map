@@ -27,6 +27,8 @@ export const CAPABILITY_SHAPE = Object.freeze({
   sizeScale: 1,
   /** How the oval leans: -2 tall, 0 round, 2 wide. Ctrl-< and Ctrl-> step it. */
   stretch: 2,
+  /** Percent, 10 to 100 in steps of 10. Solid, unlike a domain. */
+  opacity: 100,
 });
 
 export const TOUCHPOINT_SHAPE = Object.freeze({
@@ -39,6 +41,8 @@ export const TOUCHPOINT_SHAPE = Object.freeze({
   sizeScale: 1,
   /** How the rectangle leans: -2 tall, 0 square, 2 wide. */
   stretch: 2,
+  /** Percent, 10 to 100 in steps of 10. */
+  opacity: 100,
 });
 
 export const ACTOR_SHAPE = Object.freeze({
@@ -49,23 +53,9 @@ export const ACTOR_SHAPE = Object.freeze({
   fontWeight: 'regular',
   /** The Shape size multiple. An actor is a circle, so it has no stretch. */
   sizeScale: 1,
-});
-
-/**
- * The layers a new map is drawn on, bottom first. The base layer is the one at
- * the bottom: it can be dimmed but never hidden, and an element that names no
- * layer is on it. A map carries its own list, so these are only the starting
- * two — see docs/releases/2.1.0.md.
- */
-export const LAYERS = Object.freeze([
-  Object.freeze({ key: 'core', title: 'Core Business Domains' }),
-  Object.freeze({ key: 'presentation', title: 'Presentation' }),
-]);
-
-/** Where each kind of element is added unless the layer picker says otherwise. */
-export const HOME_LAYER = Object.freeze({
-  domain: 'core',
-  capability: 'core',
-  touchpoint: 'presentation',
-  actor: 'presentation',
+  /**
+   * Percent, 10 to 100 in steps of 10. Half, so the terrain under an actor
+   * still reads: it stands on the map rather than covering it.
+   */
+  opacity: 50,
 });

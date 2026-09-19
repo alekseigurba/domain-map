@@ -4,7 +4,7 @@
 
 import {
   store, select, childrenOf, orphans, find, internalConnectors, publicConnectors, connectorLabel,
-  stackedList,
+  stackedList, ownedBy, connectorScope,
 } from './store.js';
 import { COLORS } from './geometry.js';
 
@@ -21,6 +21,12 @@ const opened = new Set();
 let openedFor = null;
 
 const colorOf = (index) => COLORS[(index || 1) - 1] ?? COLORS[0];
+
+/** What an element's own lines are called, where they hang under it. */
+const OWN_LINES = {
+  actor: 'User interactions',
+  touchpoint: 'Touchpoint connectors',
+};
 
 function item(type, record, { depth = 0, text: caption, color }) {
   const button = document.createElement('button');
@@ -117,15 +123,23 @@ function revealSelection() {
   }
   if (type === 'connector') {
     const record = find('connector', id);
-    const from = record && find(record.fromKind, record.fromId);
-    const to = record && find(record.toKind, record.toId);
-    if (from && to && record.fromKind === 'capability' && record.toKind === 'capability'
-      && from.domainId && from.domainId === to.domainId) {
+    if (!record) return;
+    const scope = connectorScope(record);
+
+    // A line hangs under whatever owns it, so opening up to it means opening
+    // that element's section and the element's own list of lines.
+    if (scope === 'interaction' || scope === 'touchpoint') {
+      opened.add(`${record.fromKind}s`);
+      opened.add(record.fromId);
+      return;
+    }
+    if (scope === 'internal') {
+      const from = find('capability', record.fromId);
       opened.add(from.domainId);
       opened.add(`${from.domainId}:internal`);
-    } else {
-      opened.add('connectors');
+      return;
     }
+    opened.add('connectors');
   }
 }
 
@@ -195,11 +209,24 @@ export function renderMenu() {
 
     const group = document.createElement('div');
     group.className = 'tree__group';
+
     for (const record of list) {
-      group.appendChild(row(item(kind, record, {
-        text: record.title,
-        color: colorOf(record.colorIndex),
-      })));
+      // An actor's lines are its interactions; a touchpoint's are what it
+      // reaches into the business. Either way they belong to the element.
+      const own = ownedBy(kind, record.id);
+      group.appendChild(row(
+        item(kind, record, { text: record.title, color: colorOf(record.colorIndex) }),
+        own.length === 0 ? null : toggleFor(record.id),
+      ));
+      if (own.length === 0 || !opened.has(record.id)) continue;
+
+      const key = `${record.id}:lines`;
+      group.appendChild(caption(key, OWN_LINES[kind], 1));
+      if (!opened.has(key)) continue;
+      for (const connector of own) {
+        group.appendChild(row(
+          item('connector', connector, { depth: 2, text: connectorLabel(connector) }), null, 2));
+      }
     }
     nodes.push(group);
   }

@@ -157,6 +157,11 @@
   --connector-public-width: 5px;
   --connector-internal: #9a9a9a;
   --connector-internal-width: 7px;
+  /* Lines on the presentation layer. A darker relative of the touchpoint blue,
+     so they belong to the shapes they join while the saturation tells them
+     apart from the two greys the terrain is drawn in. */
+  --connector-presentation: #3c94a3;
+  --connector-presentation-width: 5px;
   /* A picked line stops being terrain for as long as it is picked: it is drawn
      heavier than either of them, so it is unmistakable among the lines it
      crosses. */

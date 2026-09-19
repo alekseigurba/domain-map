@@ -9,7 +9,6 @@
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';
-import { LAYERS } from './defaults.js';
 
 export const CURRENT_VERSION = 2;
 
@@ -29,6 +28,17 @@ export function readPosition(text) {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
+/**
+ * Bend points back to front. A line read the other way round has its ends
+ * swapped, and the bends between them run the other way too.
+ */
+function reversedBends(flat) {
+  if (!Array.isArray(flat) || flat.length < 4) return flat;
+  const points = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) points.unshift([flat[i], flat[i + 1]]);
+  return points.flat();
+}
+
 /** Keys have to be unique within their kind, so repeats get a suffix. */
 function unique(seen, wanted) {
   const count = (seen.get(wanted) ?? 0) + 1;
@@ -45,32 +55,38 @@ const compact = (record) =>
 // --- layers ------------------------------------------------------------------
 
 /**
- * The stack a document is drawn on. A file that names none — every version 1
- * file, and a version 2 one that never left the base layer — gets the starting
- * two, so the layer control always has something to show.
+ * What a document says about the stack. The stack itself is fixed, so this only
+ * reads how each layer opens: a file that says nothing gets the model's own
+ * layers, shown and undimmed.
+ *
+ * A layer a file carries a title for is read without it. The titles belong to
+ * the model, so a file cannot rename a layer into meaning something else.
  */
 export function readLayers(list) {
-  const layers = Array.isArray(list) && list.length > 0 ? list : LAYERS;
-  return layers.map((layer, index) => ({
-    ...rules.withDefaults(rules.LAYER_DEFAULTS, {
-      key: layer.key,
-      title: layer.title?.trim() || layer.key,
-      // The base layer is the bottom of the stack: there is nothing under it to
-      // show, so hiding it is not a state it can be in.
-      hidden: index === 0 ? false : layer.hidden === true,
-      dimmed: layer.dimmed === true,
-    }),
-  }));
-}
+  const said = new Map((Array.isArray(list) ? list : [])
+    .filter((layer) => layer && typeof layer === 'object')
+    .map((layer) => [layer.key, layer]));
 
-/** The key of the base layer: the bottom of the stack, and every file has one. */
-export const baseLayerOf = (layers) => layers[0]?.key ?? LAYERS[0].key;
+  return rules.LAYERS.map((layer) => {
+    const from = said.get(layer.key) ?? {};
+    return rules.withDefaults(rules.LAYER_DEFAULTS, {
+      key: layer.key,
+      // Nothing sits under the base layer, so hiding it is not a state it can
+      // be in, whatever a hand-edited file says.
+      hidden: layer.key === rules.BASE_LAYER ? false : from.hidden === true,
+      dimmed: from.dimmed === true,
+    });
+  });
+}
 
 // --- reading -----------------------------------------------------------------
 
-/** Shape fields every element but a domain shares, read the same way for each. */
-const commonFields = (node, layers, base) => ({
-  layer: layerOf(node.layer, layers, base),
+/**
+ * Shape fields every element but a domain shares, read the same way for each.
+ * A `layer` a file carries is not among them: the kind decides that now, so an
+ * older file naming one is read without it rather than refused.
+ */
+const commonFields = (node) => ({
   title: node.title?.trim(),
   description: node.description,
   owner: node.owner,
@@ -79,12 +95,9 @@ const commonFields = (node, layers, base) => ({
   fontSize: node.shape?.size,
   fontWeight: node.shape?.weight,
   sizeScale: node.shape?.scale,
+  opacity: node.shape?.opacity,
   sortIndex: node.shape?.order,
 });
-
-/** A layer a file names, or the base layer — which is what naming none means. */
-const layerOf = (named, layers, base) =>
-  (named != null && layers.some((layer) => layer.key === named) ? named : base);
 
 /**
  * A document as the editor holds it: flat records with fresh ids, keys resolved
@@ -92,7 +105,6 @@ const layerOf = (named, layers, base) =>
  */
 export function fromDocument(document_) {
   const layers = readLayers(document_.layers);
-  const base = baseLayerOf(layers);
 
   const domainIds = new Map();
   const domains = (document_.domains ?? []).map((node) => {
@@ -104,7 +116,6 @@ export function fromDocument(document_) {
     return {
       id,
       ...rules.withDefaults(rules.DOMAIN_DEFAULTS, {
-        layer: layerOf(node.layer, layers, base),
         title: node.title?.trim(),
         description: node.description,
         owner: node.owner,
@@ -130,18 +141,12 @@ export function fromDocument(document_) {
     const id = crypto.randomUUID();
     capabilityIds.set(node.key, id);
 
-    // A capability sits on the layer its domain does: the lobe and the blob it
-    // is cut into cannot come apart. Loose on the map, it carries its own.
-    const owner = home === null
-      ? null : domains.find((domain) => domain.id === home) ?? null;
-
     // One position, read as the lobe when it has a domain and as its own spot
     // on the map when it has none — the same way it was written.
     return {
       id,
       ...rules.withDefaults(rules.CAPABILITY_DEFAULTS, {
-        ...commonFields(node, layers, base),
-        layer: owner ? owner.layer : layerOf(node.layer, layers, base),
+        ...commonFields(node),
         domainId: home,
         stretch: node.shape?.stretch,
         x: home === null && at ? Math.round(at.x) : undefined,
@@ -162,7 +167,7 @@ export function fromDocument(document_) {
     return {
       id,
       ...rules.withDefaults(rules.TOUCHPOINT_DEFAULTS, {
-        ...commonFields(node, layers, base),
+        ...commonFields(node),
         stretch: node.shape?.stretch,
         x: at && Math.round(at.x),
         y: at && Math.round(at.y),
@@ -180,7 +185,7 @@ export function fromDocument(document_) {
     return {
       id,
       ...rules.withDefaults(rules.ACTOR_DEFAULTS, {
-        ...commonFields(node, layers, base),
+        ...commonFields(node),
         x: at && Math.round(at.x),
         y: at && Math.round(at.y),
       }),
@@ -200,28 +205,62 @@ export function fromDocument(document_) {
     return id ? { id, kind: named } : null;
   };
 
+  // A line is written under the element that owns it — an actor's under the
+  // actor, a touchpoint's under the touchpoint — and between two capabilities
+  // it is written at the top of the file, where there is no upper end to own
+  // it. In memory they are one list: what the diagram draws is one kind of
+  // thing wherever it was read from.
   const connectors = [];
-  for (const node of document_.connectors ?? []) {
-    const from = endpoint(node.from, node.fromKind);
-    const to = endpoint(node.to, node.toKind);
-    if (!from || !to) continue;
 
+  /**
+   * Take up one line. `owner` is the end the file implied by where the record
+   * sat; a flat record carries both ends itself. The pair is put in stack
+   * order, so a line written the other way round still lands on its owner.
+   */
+  const take = (node, owner = null) => {
+    const from = owner ?? endpoint(node.from, node.fromKind);
+    // Nested under an owner, the far end's kind follows from the stack.
+    const toKind = owner ? rules.CONNECTS_TO[owner.kind] : node.toKind;
+    const to = endpoint(node.to, toKind);
+    if (!from || !to) return;
+
+    const ends = rules.orderEnds(from, to);
+    if (!ends) return; // not a pair this model draws; the validator says so
+
+    // The points were written for the ends as they were written. Swapping the
+    // ends has to swap them too, or the line comes back attached elsewhere.
+    const flipped = ends.upper !== from;
     connectors.push({
       id: crypto.randomUUID(),
-      fromId: from.id,
-      fromKind: from.kind,
-      toId: to.id,
-      toKind: to.kind,
+      fromId: ends.upper.id,
+      fromKind: ends.upper.kind,
+      toId: ends.lower.id,
+      toKind: ends.lower.kind,
       ...rules.withDefaults(rules.CONNECTOR_DEFAULTS, {
         description: node.description,
-        fromPoint: node.fromPoint,
-        toPoint: node.toPoint,
+        fromPoint: flipped ? node.toPoint : node.fromPoint,
+        toPoint: flipped ? node.fromPoint : node.toPoint,
         lineStyle: node.lineStyle,
         anchored: node.anchored,
-        bendPoints: node.bendPoints,
+        bendPoints: flipped ? reversedBends(node.bendPoints) : node.bendPoints,
       }),
     });
+  };
+
+  for (const [kind, list, ids] of [
+    ['actor', document_.actors ?? [], actorIds],
+    ['touchpoint', document_.touchpoints ?? [], touchpointIds],
+  ]) {
+    for (const node of list) {
+      const id = ids.get(node.key);
+      for (const line of node[rules.NESTED_UNDER[kind]] ?? []) take(line, { id, kind });
+    }
   }
+
+  // The flat list is capability-to-capability now. An older file wrote every
+  // line here, typed ends and all, so those are taken up the same way and land
+  // under their owners.
+  for (const node of document_.connectors ?? []) take(node);
 
   return {
     title: document_.title?.trim() || 'Domain map',
@@ -252,10 +291,7 @@ export function readTypes(types) {
 
 /** The map as it goes to disk: keys instead of ids, and nothing left implied. */
 export function toDocument(state) {
-  const layers = state.layers?.length ? state.layers : readLayers(null);
-  const base = baseLayerOf(layers);
-  /** The base layer is what naming no layer means, so it is not written down. */
-  const layerName = (record) => (record.layer && record.layer !== base ? record.layer : null);
+  const layers = readLayers(state.layers);
 
   const domainSeen = new Map();
   const domainKeys = new Map();
@@ -264,7 +300,6 @@ export function toDocument(state) {
     domainKeys.set(domain.id, key);
     return compact({
       key,
-      layer: layerName(domain),
       title: domain.title,
       description: blank(domain.description),
       owner: blank(domain.owner),
@@ -291,9 +326,6 @@ export function toDocument(state) {
 
     return compact({
       key,
-      // A capability in a domain is on that domain's layer, and the domain is
-      // what says so — writing it here as well would be a second answer.
-      layer: home === null ? layerName(capability) : null,
       domain: home,
       title: capability.title,
       description: blank(capability.description),
@@ -311,6 +343,7 @@ export function toDocument(state) {
         weight: capability.fontWeight,
         scale: capability.sizeScale,
         stretch: capability.stretch,
+        opacity: capability.opacity,
         order: capability.sortIndex,
       }),
     });
@@ -324,7 +357,6 @@ export function toDocument(state) {
 
     return compact({
       key,
-      layer: layerName(touchpoint),
       title: touchpoint.title,
       description: blank(touchpoint.description),
       owner: blank(touchpoint.owner),
@@ -337,6 +369,7 @@ export function toDocument(state) {
         weight: touchpoint.fontWeight,
         scale: touchpoint.sizeScale,
         stretch: touchpoint.stretch,
+        opacity: touchpoint.opacity,
         order: touchpoint.sortIndex,
       }),
     });
@@ -350,7 +383,6 @@ export function toDocument(state) {
 
     return compact({
       key,
-      layer: layerName(actor),
       title: actor.title,
       description: blank(actor.description),
       owner: blank(actor.owner),
@@ -361,6 +393,7 @@ export function toDocument(state) {
         size: actor.fontSize,
         weight: actor.fontWeight,
         scale: actor.sizeScale,
+        opacity: actor.opacity,
         order: actor.sortIndex,
       }),
     });
@@ -373,22 +406,46 @@ export function toDocument(state) {
   };
   const known = (kind, id) => keysByKind[kind]?.has(id) === true;
 
-  const connectors = (state.connectors ?? [])
-    .filter((connector) =>
-      known(connector.fromKind, connector.fromId) && known(connector.toKind, connector.toId))
+  /**
+   * A line as it is written under its owner: the far end and its own shape.
+   * Neither end's kind is written — the owner is one, and what it reaches
+   * follows from the stack — and the near end is the record it sits inside.
+   */
+  const line = (connector) => compact({
+    to: keysByKind[connector.toKind].get(connector.toId),
+    description: blank(connector.description),
+    fromPoint: connector.fromPoint,
+    toPoint: connector.toPoint,
+    lineStyle: connector.lineStyle,
+    anchored: connector.anchored,
+    bendPoints: connector.bendPoints?.length ? connector.bendPoints : null,
+  });
+
+  const drawn = (state.connectors ?? []).filter((connector) =>
+    known(connector.fromKind, connector.fromId) && known(connector.toKind, connector.toId));
+
+  /** One element's own lines, in the order the map holds them. */
+  const linesOf = (kind, id) => drawn
+    .filter((connector) => connector.fromKind === kind && connector.fromId === id)
+    .map(line);
+
+  for (const [kind, written, records] of [
+    ['actor', actors, state.actors ?? []],
+    ['touchpoint', touchpoints, state.touchpoints ?? []],
+  ]) {
+    records.forEach((record, at) => {
+      const mine = linesOf(kind, record.id);
+      if (mine.length > 0) written[at][rules.NESTED_UNDER[kind]] = mine;
+    });
+  }
+
+  // What is left at the top of the file is what no element owns: the lines
+  // between two capabilities, which have no upper end to sit under.
+  const connectors = drawn
+    .filter((connector) => connector.fromKind === 'capability')
     .map((connector) => compact({
-      from: keysByKind[connector.fromKind].get(connector.fromId),
-      // A line between two capabilities is what every line used to be, so the
-      // kind is written only where it says something the key does not.
-      fromKind: connector.fromKind === 'capability' ? null : connector.fromKind,
-      to: keysByKind[connector.toKind].get(connector.toId),
-      toKind: connector.toKind === 'capability' ? null : connector.toKind,
-      description: blank(connector.description),
-      fromPoint: connector.fromPoint,
-      toPoint: connector.toPoint,
-      lineStyle: connector.lineStyle,
-      anchored: connector.anchored,
-      bendPoints: connector.bendPoints?.length ? connector.bendPoints : null,
+      from: keysByKind.capability.get(connector.fromId),
+      ...line(connector),
     }));
 
   const types = Object.fromEntries(
@@ -400,9 +457,10 @@ export function toDocument(state) {
     version: CURRENT_VERSION,
     title: state.title,
     palette: state.palette.length === 0 ? null : state.palette,
+    // Key and state only. What a layer is called belongs to the model, so a
+    // file cannot rename one into meaning something it does not.
     layers: layers.map((layer) => compact({
       key: layer.key,
-      title: layer.title,
       hidden: layer.hidden === true ? true : null,
       dimmed: layer.dimmed === true ? true : null,
     })),
@@ -485,22 +543,11 @@ export function validate(document_) {
   const typeError = rules.validateTypes(document_.types);
   if (typeError) return typeError;
 
-  // A layer an element names has to be one the file declares. A file with no
-  // layers of its own gets the starting stack, so those two are what it may name.
-  const layerKeys = new Set(readLayers(document_.layers).map((layer) => layer.key));
-  const onALayer = (record, kind) =>
-    (record.layer != null && !layerKeys.has(record.layer)
-      ? `${kind} '${record.key}' is on layer '${record.layer}', which is not in the file.`
-      : null);
-
   const domainKeys = new Set();
   for (const domain of document_.domains ?? []) {
     if (!domain.key || domain.key.trim().length === 0) return 'Every domain needs a key.';
     if (domainKeys.has(domain.key)) return `Two domains share the key '${domain.key}'.`;
     domainKeys.add(domain.key);
-
-    const stray = onALayer(domain, 'Domain');
-    if (stray) return stray;
 
     const shape = domain.shape;
     if (unreadable(shape?.position) || unreadable(shape?.titlePosition))
@@ -534,9 +581,6 @@ export function validate(document_) {
         + 'which is not in the file.';
     }
 
-    const stray = onALayer(capability, 'Capability');
-    if (stray) return stray;
-
     const shape = capability.shape;
     if (unreadable(shape?.position))
       return `Capability '${capability.key}': a position must read as "x,y".`;
@@ -551,6 +595,7 @@ export function validate(document_) {
       fontWeight: shape?.weight,
       sizeScale: shape?.scale,
       stretch: shape?.stretch,
+      opacity: shape?.opacity,
       icon: capability.icon,
     });
     if (error) return `Capability '${capability.key}': ${error}`;
@@ -569,9 +614,6 @@ export function validate(document_) {
       if (keys.has(node.key)) return `Two ${kind}s share the key '${node.key}'.`;
       keys.add(node.key);
 
-      const stray = onALayer(node, label);
-      if (stray) return stray;
-
       if (unreadable(node.shape?.position))
         return `${label} '${node.key}': a position must read as "x,y".`;
 
@@ -585,6 +627,7 @@ export function validate(document_) {
         fontWeight: node.shape?.weight,
         sizeScale: node.shape?.scale,
         stretch: node.shape?.stretch,
+        opacity: node.shape?.opacity,
         icon: node.icon,
       });
       if (error) return `${label} '${node.key}': ${error}`;
@@ -592,24 +635,51 @@ export function validate(document_) {
     keysByKind[kind] = keys;
   }
 
-  for (const connector of document_.connectors ?? []) {
-    for (const [end, kind] of [['from', connector.fromKind], ['to', connector.toKind]]) {
-      if (kind != null && !rules.ENDPOINT_KINDS.includes(kind)) {
-        return `Connector '${connector.from}' – '${connector.to}': `
-          + `an end cannot be on a ${kind}.`;
-      }
-      if (!keysByKind[kind ?? 'capability'].has(connector[end])) {
-        return `Connector '${connector.from}' – '${connector.to}' `
-          + 'names an element that is not in the file.';
-      }
-    }
-    if (connector.from === connector.to
-      && (connector.fromKind ?? 'capability') === (connector.toKind ?? 'capability')) {
-      return 'A connector needs two different elements.';
-    }
+  /**
+   * One line, wherever it was written. `owner` is the end the file implied by
+   * where the record sat; a flat record names both ends itself.
+   */
+  const checkLine = (node, owner = null) => {
+    const from = owner ?? { key: node.from, kind: node.fromKind ?? 'capability' };
+    const to = {
+      key: node.to,
+      kind: owner ? rules.CONNECTS_TO[owner.kind] : node.toKind ?? 'capability',
+    };
+    const named = `Connector '${from.key}' – '${to.key}'`;
 
-    const error = rules.validateConnector(connector);
-    if (error) return `Connector '${connector.from}' – '${connector.to}': ${error}`;
+    // A nested line names no kinds, so only a flat one can name a wrong one.
+    const wrongPair = rules.connectorRule(from.kind, to.kind);
+    if (wrongPair) return `${named}: ${wrongPair}`;
+
+    for (const end of [from, to]) {
+      if (!keysByKind[end.kind]?.has(end.key))
+        return `${named} names an element that is not in the file.`;
+    }
+    if (from.key === to.key && from.kind === to.kind)
+      return 'A connector needs two different elements.';
+
+    const error = rules.validateConnector(node);
+    return error ? `${named}: ${error}` : null;
+  };
+
+  for (const [kind, list] of [
+    ['actor', document_.actors ?? []],
+    ['touchpoint', document_.touchpoints ?? []],
+  ]) {
+    for (const node of list) {
+      const own = node[rules.NESTED_UNDER[kind]];
+      if (own != null && !Array.isArray(own))
+        return `${kind} '${node.key}': ${rules.NESTED_UNDER[kind]} must be a list.`;
+      for (const nested of own ?? []) {
+        const wrong = checkLine(nested, { key: node.key, kind });
+        if (wrong) return wrong;
+      }
+    }
+  }
+
+  for (const connector of document_.connectors ?? []) {
+    const wrong = checkLine(connector);
+    if (wrong) return wrong;
   }
 
   return null;

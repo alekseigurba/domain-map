@@ -6,7 +6,6 @@
 // written from them afterwards.
 
 import * as rules from './rules.js';
-import { LAYERS } from './defaults.js';
 
 const listeners = new Set();
 
@@ -52,7 +51,9 @@ export function emit(reason = 'change') {
 export function setMap(state) {
   store.title = state.title;
   store.palette = state.palette ?? [];
-  store.layers = state.layers?.length ? state.layers : LAYERS.map((layer) => ({ ...layer }));
+  store.layers = state.layers?.length
+    ? state.layers
+    : rules.LAYERS.map((layer) => ({ key: layer.key, hidden: false, dimmed: false }));
   store.types = state.types ?? {};
   store.domains = state.domains;
   store.capabilities = state.capabilities;
@@ -126,12 +127,16 @@ export const stackedList = (type) => [...listOf(type)].sort(byStack);
  */
 const session = new Map();
 
-/** The layer everything without one is on: the bottom of the stack. */
+/** The layer everything on the base of the stack is on. */
 export const baseLayer = () => store.layers[0] ?? null;
 
-export const isBaseLayer = (key) => baseLayer()?.key === key;
+export const isBaseLayer = (key) => key === rules.BASE_LAYER;
 
 export const layerByKey = (key) => store.layers.find((layer) => layer.key === key) ?? null;
+
+/** What a layer is called. The titles are the model's, not the file's. */
+export const layerTitle = (key) =>
+  rules.LAYERS.find((layer) => layer.key === key)?.title ?? key;
 
 /**
  * A layer as it is being shown right now: what the document saved, with this
@@ -150,7 +155,13 @@ export function layerState(key) {
 
 /** The stack as the diagram paints it, bottom first, with each one's state. */
 export const layerStack = () =>
-  store.layers.map((layer) => ({ ...layer, ...layerState(layer.key), base: isBaseLayer(layer.key) }));
+  rules.LAYERS.map((layer) => ({
+    key: layer.key,
+    title: layer.title,
+    base: isBaseLayer(layer.key),
+    kinds: rules.KINDS_ON[layer.key] ?? [],
+    ...layerState(layer.key),
+  }));
 
 export const isHidden = (key) => layerState(key).hidden;
 
@@ -186,35 +197,56 @@ export function resetLayerState() {
 
 export const layersOverridden = () => session.size > 0;
 
-/** Where a capability really is: its domain's layer, or its own when it is loose. */
+// --- the selected layer ------------------------------------------------------
+
+/**
+ * The layer new shapes are added to. An Edit-mode idea only: browsing, there is
+ * nothing to add, so nothing is selected. Never saved — it says what you are
+ * working on, not anything about the map.
+ */
+let selectedLayer = null;
+
+export const selectedLayerKey = () => selectedLayer;
+
+export const kindsAddableTo = (key) => rules.KINDS_ON[key] ?? [];
+
+/** The layer a kind of element lives on. Its kind decides; nothing else can. */
+export const layerForKind = (kind) => rules.LAYER_OF[kind] ?? rules.BASE_LAYER;
+
+/**
+ * Work on a layer. Selecting a hidden one shows it: adding a shape to a layer
+ * you cannot see would drop it into nowhere. Null selects nothing, which is
+ * what leaving Edit mode does.
+ */
+export function selectLayer(key, { saved = false } = {}) {
+  if (key !== null && !layerByKey(key)) return null;
+  selectedLayer = key;
+  if (key !== null && isHidden(key)) setLayerState(key, { hidden: false }, { saved });
+  emit('layers');
+  return selectedLayer;
+}
+
+/** Where a record sits: its kind says so, and for a line, its upper end does. */
 export function layerOf(type, record) {
-  if (!record) return baseLayer()?.key ?? null;
-  if (type === 'capability' && record.domainId) {
-    return find('domain', record.domainId)?.layer ?? record.layer;
-  }
-  if (type === 'connector') return connectorLayer(record);
-  return record.layer ?? baseLayer()?.key ?? null;
+  if (type === 'connector') return record ? connectorLayer(record) : rules.BASE_LAYER;
+  return layerForKind(type);
 }
 
 /** How high up the stack a layer sits. An unknown one is treated as the base. */
 export const layerDepth = (key) => {
-  const at = store.layers.findIndex((layer) => layer.key === key);
+  const at = rules.LAYERS.findIndex((layer) => layer.key === key);
   return at < 0 ? 0 : at;
 };
 
 /**
- * A line belongs to the topmost layer it touches, so hiding that layer takes
- * the line with it — no line is ever left running to something that is gone.
+ * A line belongs to the layer of its upper end, so hiding that layer takes the
+ * line with it — no line is ever left running to something that is gone.
  */
-export function connectorLayer(connector) {
-  const from = layerOf(connector.fromKind, find(connector.fromKind, connector.fromId));
-  const to = layerOf(connector.toKind, find(connector.toKind, connector.toId));
-  return layerDepth(from) >= layerDepth(to) ? from : to;
-}
+export const connectorLayer = (connector) => layerForKind(connector.fromKind);
 
 /** Everything on a layer, kind by kind, in the order each kind is held. */
 export function onLayer(key) {
-  const mine = (type) => listOf(type).filter((record) => layerOf(type, record) === key);
+  const mine = (type) => (layerForKind(type) === key ? listOf(type) : []);
   return {
     domains: mine('domain'),
     capabilities: mine('capability'),
@@ -343,10 +375,39 @@ export function internalConnectors(domainId) {
   });
 }
 
-/** Everything that crosses a boundary, listed once at the top level. */
+/**
+ * Everything that crosses a boundary, listed once at the top level. Only lines
+ * between two capabilities land here: an actor's and a touchpoint's hang under
+ * the element that owns them.
+ */
 export function publicConnectors() {
-  return store.connectors.filter((connector) => scopeOf(connector) === 'public');
+  return store.connectors.filter((connector) =>
+    connector.fromKind === 'capability' && scopeOf(connector) === 'public');
 }
+
+/**
+ * The lines one actor or touchpoint owns. A line is owned by its upper end, so
+ * an actor's line to a touchpoint is the actor's — it is a User interaction,
+ * and never also a Touchpoint connector.
+ */
+export const ownedBy = (kind, id) =>
+  store.connectors.filter((connector) =>
+    connector.fromKind === kind && connector.fromId === id);
+
+/** What a line is: which section of the menu files it, and what to call it. */
+export function connectorScope(connector) {
+  if (connector.fromKind === 'actor') return 'interaction';
+  if (connector.fromKind === 'touchpoint') return 'touchpoint';
+  return scopeOf(connector);
+}
+
+/** The heading a line is given, in the menu and in the details alike. */
+export const CONNECTOR_NAMES = {
+  interaction: 'User interaction',
+  touchpoint: 'Touchpoint connector',
+  internal: 'Domain connector',
+  public: 'Public connector',
+};
 
 // --- human-readable links ----------------------------------------------------
 
@@ -616,24 +677,43 @@ export const deleteActor = (id) => removeElement('actor', id);
 
 /** An end names a kind and a record of it, and that record has to be on the map. */
 function endpoint(kind, id) {
-  if (!rules.ENDPOINT_KINDS.includes(kind))
-    throw new Error(`A connector cannot end on a ${kind}.`);
   if (!find(kind, id)) throw new Error('Both ends must be on this map.');
   return { kind, id };
+}
+
+/**
+ * The two ends in stack order, with the points that go with them. A line has no
+ * direction, so a line drawn upwards is the same line drawn downwards — it is
+ * stored under its upper end either way, and the points follow the ends.
+ */
+function ordered(from, to, points) {
+  const wrong = rules.connectorRule(from.kind, to.kind);
+  if (wrong) throw new Error(wrong);
+  if (from.id === to.id) throw new Error('A connector needs two different elements.');
+
+  const ends = rules.orderEnds(from, to);
+  const flipped = ends.upper !== from;
+  return {
+    fromId: ends.upper.id,
+    fromKind: ends.upper.kind,
+    toId: ends.lower.id,
+    toKind: ends.lower.kind,
+    ...(points === undefined ? {} : {
+      fromPoint: flipped ? points.toPoint : points.fromPoint,
+      toPoint: flipped ? points.fromPoint : points.toPoint,
+    }),
+  };
 }
 
 export function createConnector(fields) {
   const from = endpoint(fields.fromKind ?? 'capability', fields.fromId);
   const to = endpoint(fields.toKind ?? 'capability', fields.toId);
-  if (from.id === to.id) throw new Error('A connector needs two different elements.');
+  const ends = ordered(from, to, { fromPoint: fields.fromPoint, toPoint: fields.toPoint });
 
   const connector = {
     id: crypto.randomUUID(),
-    fromId: from.id,
-    fromKind: from.kind,
-    toId: to.id,
-    toKind: to.kind,
     ...rules.withDefaults(rules.CONNECTOR_DEFAULTS, fields),
+    ...ends,
   };
 
   store.connectors.push(connector);
@@ -646,17 +726,17 @@ export function updateConnector(id, changes = {}) {
   if (!connector) return null;
 
   // An end may be moved to another element, but never onto the one at the
-  // other end.
+  // other end, and never to one this model does not join.
   const from = endpoint(
     changes.fromKind ?? connector.fromKind, changes.fromId ?? connector.fromId);
   const to = endpoint(changes.toKind ?? connector.toKind, changes.toId ?? connector.toId);
-  if (from.id === to.id) throw new Error('A connector needs two different elements.');
+  const ends = ordered(from, to, {
+    fromPoint: changes.fromPoint ?? connector.fromPoint,
+    toPoint: changes.toPoint ?? connector.toPoint,
+  });
 
-  connector.fromId = from.id;
-  connector.fromKind = from.kind;
-  connector.toId = to.id;
-  connector.toKind = to.kind;
   assign(connector, changes, rules.CONNECTOR_DEFAULTS);
+  Object.assign(connector, ends);
 
   emit('data');
   return connector;

@@ -13,13 +13,14 @@ import { pathToFileURL } from 'node:url';
 
 import {
   validateDomain, validateCapability, validateTouchpoint, validateActor, validateLayers,
+  LAYERS, LAYER_OF,
 } from '../app/js/rules.js';
 
 const target = process.argv[2]
   ? pathToFileURL(resolve(process.argv[2])).href
   : new URL('../app/js/defaults.js', import.meta.url).href;
 const {
-  DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE, LAYERS, HOME_LAYER,
+  DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE,
 } = await import(target);
 
 let failures = 0;
@@ -45,7 +46,8 @@ check('the domain color is hex', isHex(DOMAIN_SHAPE.color), String(DOMAIN_SHAPE.
 check('the domain opacity is a step of the slider', DOMAIN_SHAPE.opacity % 10 === 0, String(DOMAIN_SHAPE.opacity));
 
 // --- capabilities ---
-const capabilityGaps = missing(CAPABILITY_SHAPE, ['title', 'color', 'fontSize', 'fontWeight', 'sizeScale', 'stretch']);
+const capabilityGaps = missing(CAPABILITY_SHAPE,
+  ['title', 'color', 'fontSize', 'fontWeight', 'sizeScale', 'stretch', 'opacity']);
 check('every capability default is set', capabilityGaps.length === 0, capabilityGaps.join(', '));
 
 const capabilityError = validateCapability(CAPABILITY_SHAPE);
@@ -55,7 +57,7 @@ check('the capability color is hex', isHex(CAPABILITY_SHAPE.color), String(CAPAB
 
 // --- touchpoints ---
 const touchpointGaps = missing(TOUCHPOINT_SHAPE,
-  ['title', 'color', 'fontSize', 'fontWeight', 'sizeScale', 'stretch']);
+  ['title', 'color', 'fontSize', 'fontWeight', 'sizeScale', 'stretch', 'opacity']);
 check('every touchpoint default is set', touchpointGaps.length === 0, touchpointGaps.join(', '));
 
 const touchpointError = validateTouchpoint(TOUCHPOINT_SHAPE);
@@ -66,7 +68,8 @@ check('the touchpoint color is hex', isHex(TOUCHPOINT_SHAPE.color), String(TOUCH
 
 // --- actors ---
 // An actor is a circle, so it is the one shape with no lean to set.
-const actorGaps = missing(ACTOR_SHAPE, ['title', 'color', 'fontSize', 'fontWeight', 'sizeScale']);
+const actorGaps = missing(ACTOR_SHAPE,
+  ['title', 'color', 'fontSize', 'fontWeight', 'sizeScale', 'opacity']);
 check('every actor default is set', actorGaps.length === 0, actorGaps.join(', '));
 
 const actorError = validateActor(ACTOR_SHAPE);
@@ -74,14 +77,27 @@ check('the actor defaults make a valid actor', actorError === null, actorError ?
 check('the actor has a title', String(ACTOR_SHAPE.title ?? '').trim().length > 0);
 check('the actor color is hex', isHex(ACTOR_SHAPE.color), String(ACTOR_SHAPE.color));
 check('an actor has no lean to set', ACTOR_SHAPE.stretch === undefined);
+check('and starts half see-through, so the terrain under it reads',
+  ACTOR_SHAPE.opacity === 50, String(ACTOR_SHAPE.opacity));
+check('a capability and a touchpoint start solid',
+  CAPABILITY_SHAPE.opacity === 100 && TOUCHPOINT_SHAPE.opacity === 100);
+check('every opacity is a step of the slider',
+  [DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE]
+    .every((shape) => shape.opacity % 10 === 0));
 
-// --- the starting stack ---
-const layerError = validateLayers(LAYERS);
-check('the starting layers make a valid stack', layerError === null, layerError ?? '');
+// --- the stack ---
+// The layers are the model's, not a brand's: they live in rules.js, so a
+// consumer's own defaults.js cannot redefine what the two layers mean.
+const layerError = validateLayers(LAYERS.map((layer) => ({ key: layer.key })));
+check('the layers make a valid stack', layerError === null, layerError ?? '');
 check('there are two of them', LAYERS.length === 2, String(LAYERS.length));
-check('and every kind is sent to one of them that exists',
-  Object.values(HOME_LAYER).every((key) => LAYERS.some((layer) => layer.key === key)),
-  JSON.stringify(HOME_LAYER));
+check('every one of them is named', LAYERS.every((layer) => layer.title?.length > 0));
+check('and every kind of element is on one that exists',
+  Object.values(LAYER_OF).every((key) => LAYERS.some((layer) => layer.key === key)),
+  JSON.stringify(LAYER_OF));
+check('the shape defaults carry no layer of their own',
+  [DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE]
+    .every((shape) => shape.layer === undefined));
 
 console.log(failures === 0 ? '\nAll defaults checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

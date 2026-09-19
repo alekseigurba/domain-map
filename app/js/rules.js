@@ -17,8 +17,97 @@ export const ELEMENT_KINDS = ['domain', 'capability', 'touchpoint', 'actor'];
 /** The kinds a connector may be drawn between: the ones that carry snap points. */
 export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
 
-/** How many layers one map may hold, and how long a layer key may be. */
-export const MAX_LAYERS = 12;
+// --- the layers --------------------------------------------------------------
+
+// The stack is a fixed conceptual model, not a list a map may edit. It lives
+// here rather than in defaults.js because a brand may shadow that file, and
+// what the two layers *mean* is not a thing a deployment gets to redefine —
+// only how its shapes look. A map file carries each layer's key and whether it
+// is hidden or dimmed; the titles come from here.
+
+export const LAYERS = Object.freeze([
+  Object.freeze({ key: 'core', title: 'Core Business Domains' }),
+  Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
+]);
+
+/** The base layer: the bottom of the stack, which is never hidden. */
+export const BASE_LAYER = LAYERS[0].key;
+
+/**
+ * Which layer each kind of element lives on. A domain is always core and an
+ * actor is always presentation, so an element carries no layer of its own —
+ * there is nothing for a file to say that could contradict this.
+ */
+export const LAYER_OF = Object.freeze({
+  domain: 'core',
+  capability: 'core',
+  touchpoint: 'presentation',
+  actor: 'presentation',
+});
+
+/** The kinds that may be added to a layer, in the order their buttons sit in. */
+export const KINDS_ON = Object.freeze({
+  core: ['domain', 'capability'],
+  presentation: ['touchpoint', 'actor'],
+});
+
+/**
+ * What each kind may be connected to: strictly down the stack. A person reaches
+ * the business through a channel, and a channel reaches a capability — so an
+ * actor joins a touchpoint, a touchpoint joins a capability, and capabilities
+ * join each other. Nothing else is a line this model can draw.
+ */
+export const CONNECTS_TO = Object.freeze({
+  actor: 'touchpoint',
+  touchpoint: 'capability',
+  capability: 'capability',
+});
+
+/**
+ * A line is stored under its upper end, which is the one that owns it. Between
+ * two capabilities there is no upper end, and the map owns the line instead.
+ */
+export const OWNER_KIND = Object.freeze({
+  actor: 'actor',
+  touchpoint: 'touchpoint',
+  capability: null,
+});
+
+/** Where a kind's own lines are written, under the element that owns them. */
+export const NESTED_UNDER = Object.freeze({
+  actor: 'interactions',
+  touchpoint: 'connectors',
+});
+
+/**
+ * The two ends of a line, put in stack order: the upper one first. A line has
+ * two ends and no direction, so which end was drawn first means nothing — this
+ * is what decides which of them the line is filed under.
+ *
+ * Null when the pair is not one this model allows.
+ */
+export function orderEnds(a, b) {
+  if (CONNECTS_TO[a.kind] === b.kind) return { upper: a, lower: b };
+  if (CONNECTS_TO[b.kind] === a.kind) return { upper: b, lower: a };
+  return null;
+}
+
+/** "an actor", "a touchpoint" — only one of the kinds starts with a vowel. */
+const a = (kind) => `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`;
+
+/** Why these two cannot be joined, or null if they can. */
+export function connectorRule(fromKind, toKind) {
+  if (!ENDPOINT_KINDS.includes(fromKind) || !ENDPOINT_KINDS.includes(toKind)) {
+    const wrong = ENDPOINT_KINDS.includes(fromKind) ? toKind : fromKind;
+    return `A connector cannot end on ${a(wrong)}.`;
+  }
+  if (orderEnds({ kind: fromKind }, { kind: toKind })) return null;
+  // Naming what *is* allowed is more use than naming what is not.
+  const opening = a(fromKind);
+  return `${opening[0].toUpperCase()}${opening.slice(1)} connects to `
+    + `${a(CONNECTS_TO[fromKind])}, not to ${a(toKind)}.`;
+}
+
 export const MAX_KEY_LENGTH = 64;
 
 /** A Type is a word or two picked from a list, not running copy. */
@@ -65,20 +154,18 @@ export const MAX_ICON_BYTES = 512 * 1024;
 // to find one in — so a file that names no colour gets the first swatch.
 
 /**
- * A layer of the map. `hidden` and `dimmed` are what the document opens at —
- * the layer control changes them for the tab only, unless an owner is editing.
- * The base layer is the first in the list: it is never hidden, and it is the
- * one an element that names no layer is on.
+ * What a map says about a layer: which one, and how it opens. `hidden` and
+ * `dimmed` are what the document opens at — the layer control changes them for
+ * the tab only, unless an owner is editing. The title is not here: it belongs
+ * to the model, not to the file.
  */
 export const LAYER_DEFAULTS = {
   key: '',
-  title: '',
   hidden: false,
   dimmed: false,
 };
 
 export const DOMAIN_DEFAULTS = {
-  layer: null,
   title: DOMAIN_SHAPE.title,
   description: '',
   owner: '',
@@ -96,7 +183,6 @@ export const DOMAIN_DEFAULTS = {
 };
 
 export const CAPABILITY_DEFAULTS = {
-  layer: null,
   domainId: null,
   title: CAPABILITY_SHAPE.title,
   description: '',
@@ -107,6 +193,7 @@ export const CAPABILITY_DEFAULTS = {
   fontWeight: CAPABILITY_SHAPE.fontWeight,
   sizeScale: CAPABILITY_SHAPE.sizeScale,
   stretch: CAPABILITY_SHAPE.stretch,
+  opacity: CAPABILITY_SHAPE.opacity,
   x: 0,
   y: 0,
   lobeX: 0,
@@ -121,7 +208,6 @@ export const CAPABILITY_DEFAULTS = {
  * it does not have is a domain — nothing lobes a touchpoint into a blob.
  */
 export const TOUCHPOINT_DEFAULTS = {
-  layer: null,
   title: TOUCHPOINT_SHAPE.title,
   description: '',
   owner: '',
@@ -131,6 +217,7 @@ export const TOUCHPOINT_DEFAULTS = {
   fontWeight: TOUCHPOINT_SHAPE.fontWeight,
   sizeScale: TOUCHPOINT_SHAPE.sizeScale,
   stretch: TOUCHPOINT_SHAPE.stretch,
+  opacity: TOUCHPOINT_SHAPE.opacity,
   x: 0,
   y: 0,
   sortIndex: 0,
@@ -139,7 +226,6 @@ export const TOUCHPOINT_DEFAULTS = {
 
 /** An actor is a circle, so it takes no stretch, and it wears no icon but its own. */
 export const ACTOR_DEFAULTS = {
-  layer: null,
   title: ACTOR_SHAPE.title,
   description: '',
   owner: '',
@@ -148,6 +234,7 @@ export const ACTOR_DEFAULTS = {
   fontSize: ACTOR_SHAPE.fontSize,
   fontWeight: ACTOR_SHAPE.fontWeight,
   sizeScale: ACTOR_SHAPE.sizeScale,
+  opacity: ACTOR_SHAPE.opacity,
   x: 0,
   y: 0,
   sortIndex: 0,
@@ -262,10 +349,14 @@ export function validateDomain(fields) {
         || fields.titleWidth > MAX_TITLE_WIDTH)
       ? `titleWidth must be between ${MIN_TITLE_WIDTH} and ${MAX_TITLE_WIDTH}.`
       : null)
-    ?? (given(fields.opacity) && (fields.opacity < 10 || fields.opacity > 100)
-      ? 'opacity must be between 10 and 100.'
-      : null);
+    ?? faded(fields.opacity);
 }
+
+/** How solid a shape is drawn, on one scale for every kind that has one. */
+const faded = (opacity) =>
+  (given(opacity) && (opacity < 10 || opacity > 100)
+    ? 'opacity must be between 10 and 100.'
+    : null);
 
 export function validateCapability(fields) {
   return text(fields.title, fields.description, fields.owner)
@@ -276,6 +367,7 @@ export function validateCapability(fields) {
     ?? (given(fields.stretch) && !STRETCHES.includes(fields.stretch)
       ? `stretch must be one of ${STRETCHES.join(', ')}.`
       : null)
+    ?? faded(fields.opacity)
     ?? validateIcon(fields.icon);
 }
 
@@ -289,7 +381,8 @@ export function validateActor(fields) {
     ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)
-    ?? scale(fields.sizeScale, 'sizeScale', MAX_SIZE_SCALE);
+    ?? scale(fields.sizeScale, 'sizeScale', MAX_SIZE_SCALE)
+    ?? faded(fields.opacity);
 }
 
 export const validatorFor = {
@@ -311,36 +404,29 @@ export function validateConnector(fields) {
 
 // --- layers ------------------------------------------------------------------
 
-const isKey = (value) =>
-  typeof value === 'string'
-  && value.length > 0
-  && value.length <= MAX_KEY_LENGTH
-  && /^[a-z0-9][a-z0-9-]*$/.test(value);
-
 /**
- * The stack a map is drawn on: at least one layer, bottom first, each with a
- * key of its own. The first is the base layer, which is why it may not be
- * hidden — there would be nothing left under the rest.
+ * What a file may say about the stack. The stack itself is fixed, so a file
+ * does not describe it — it only names layers that exist and says how each one
+ * opens. The base layer may not be hidden: there would be nothing left under
+ * the rest.
  */
 export function validateLayers(layers) {
   if (layers == null) return null;
-  if (!Array.isArray(layers) || layers.length === 0)
-    return 'A map must have at least one layer.';
-  if (layers.length > MAX_LAYERS) return `A map may have at most ${MAX_LAYERS} layers.`;
+  if (!Array.isArray(layers)) return 'Layers must be a list.';
 
   const keys = new Set();
   for (const layer of layers) {
     if (!layer || typeof layer !== 'object') return 'Every layer must be a record.';
-    if (!isKey(layer.key))
-      return `Layer key '${layer.key}' must be lowercase letters, digits and dashes.`;
+    if (!LAYERS.some((one) => one.key === layer.key)) {
+      return `'${layer.key}' is not a layer of this map. `
+        + `The layers are ${LAYERS.map((one) => one.key).join(' and ')}.`;
+    }
     if (keys.has(layer.key)) return `Two layers share the key '${layer.key}'.`;
     keys.add(layer.key);
 
-    const titled = layer.title;
-    if (given(titled) && (typeof titled !== 'string' || titled.length > MAX_TITLE_LENGTH))
-      return `Layer '${layer.key}': title must be at most ${MAX_TITLE_LENGTH} characters.`;
+    if (layer.key === BASE_LAYER && layer.hidden === true)
+      return 'The base layer cannot be hidden.';
   }
-  if (layers[0].hidden === true) return 'The base layer cannot be hidden.';
   return null;
 }
 
