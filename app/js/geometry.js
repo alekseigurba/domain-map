@@ -297,11 +297,132 @@ export function capabilitySize(capability) {
   };
 }
 
-/** The connection points, evenly spaced around the perimeter (0 = 3 o'clock). */
-export function snapPoints(rx, ry) {
+// --- touchpoints and actors --------------------------------------------------
+
+/** How round a touchpoint's corners are, as a share of its shorter half-side. */
+export const TOUCHPOINT_RADIUS_SHARE = 0.34;
+
+/**
+ * A touchpoint is a rounded rectangle, sized the way a capability's oval is:
+ * the same scale and the same lean, so the two read as the same family of
+ * thing. The box the words live in is the rectangle itself, less its padding,
+ * rather than the smaller one that fits inside an ellipse.
+ */
+export function touchpointSize(touchpoint) {
+  const fontSize = touchpoint.fontSize || DEFAULT_FONT_SIZE;
+  const fontWeight = touchpoint.fontWeight || DEFAULT_CAPABILITY_FONT_WEIGHT;
+  const scale = touchpoint.sizeScale || 1;
+
+  const radii = ovalRadii(touchpoint.stretch);
+  const rx = radii.rx * scale;
+  const ry = radii.ry * scale;
+
+  const roomX = Math.max(fontSize, rx * 2 - fontSize * PAD_X * 2);
+  const roomY = ry * 2 - fontSize * PAD_Y * 2;
+
+  const iconSize = touchpoint.icon ? fontSize * ICON_SHARE : 0;
+  const gap = iconSize ? fontSize * ICON_GAP : 0;
+
+  const lineHeight = fontSize * 1.18;
+  const rows = Math.max(1, Math.min(
+    MAX_CAPABILITY_LINES,
+    Math.floor((roomY - iconSize - gap) / lineHeight),
+  ));
+  const block = textBlock(touchpoint.title, fontSize, fontWeight, roomX, rows);
+
+  const stack = block.height + iconSize + gap;
+  return {
+    shape: 'rect',
+    rx,
+    ry,
+    corner: Math.min(rx, ry) * TOUCHPOINT_RADIUS_SHARE,
+    ...block,
+    iconSize,
+    iconY: iconSize ? -(stack - iconSize) / 2 : 0,
+    textY: iconSize ? (iconSize + gap) / 2 : 0,
+  };
+}
+
+/** How much of an actor's circle the figure takes, and where the label sits. */
+const ACTOR_FIGURE_SHARE = 0.46;
+
+/**
+ * An actor is a circle with a figure in the top of it and its name under that.
+ * One radius, so there is no stretch to set: a person on the map is a person
+ * whichever way the map is laid out.
+ */
+export function actorSize(actor) {
+  const fontSize = actor.fontSize || DEFAULT_FONT_SIZE;
+  const fontWeight = actor.fontWeight || DEFAULT_CAPABILITY_FONT_WEIGHT;
+  const scale = actor.sizeScale || 1;
+  const r = BASE_RY * scale;
+
+  // The words sit in the widest box that fits the circle, as they do in an oval.
+  const roomX = Math.max(fontSize, (r / Math.SQRT2) * 2 - fontSize * PAD_X * 2);
+  const figure = r * ACTOR_FIGURE_SHARE;
+  const gap = fontSize * ICON_GAP;
+
+  const lineHeight = fontSize * 1.18;
+  const rows = Math.max(1, Math.min(
+    MAX_CAPABILITY_LINES,
+    Math.floor(((r / Math.SQRT2) * 2 - figure - gap) / lineHeight),
+  ));
+  const block = textBlock(actor.title, fontSize, fontWeight, roomX, rows);
+
+  const stack = block.height + figure + gap;
+  return {
+    shape: 'circle',
+    rx: r,
+    ry: r,
+    ...block,
+    figureSize: figure,
+    figureY: -(stack - figure) / 2,
+    textY: (figure + gap) / 2,
+  };
+}
+
+/** How each kind of element is measured. Domains lay themselves out instead. */
+export const sizeOf = (kind, record) => {
+  if (kind === 'touchpoint') return touchpointSize(record);
+  if (kind === 'actor') return actorSize(record);
+  return capabilitySize(record);
+};
+
+// --- snap points -------------------------------------------------------------
+
+/**
+ * Where a ray leaving the middle at `angle` crosses a rectangle's edge. The
+ * angles are the same twenty-four a capability uses, so a line moved between an
+ * oval and a touchpoint lands on the point facing the same way.
+ */
+function onRectangle(rx, ry, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // Whichever side the ray reaches first: the smaller of the two scale factors.
+  const reach = Math.min(
+    Math.abs(cos) < 1e-9 ? Infinity : rx / Math.abs(cos),
+    Math.abs(sin) < 1e-9 ? Infinity : ry / Math.abs(sin),
+  );
+  return { x: cos * reach, y: sin * reach };
+}
+
+/**
+ * The connection points, evenly spaced around the perimeter (0 = 3 o'clock).
+ * Takes a size rather than two radii when the shape is not an ellipse, which is
+ * why both callings are allowed: `snapPoints(size)` and `snapPoints(rx, ry)`.
+ */
+export function snapPoints(rxOrSize, maybeRy) {
+  const size = typeof rxOrSize === 'object' && rxOrSize !== null
+    ? rxOrSize
+    : { rx: rxOrSize, ry: maybeRy };
+  const { rx, ry, shape } = size;
+
   return Array.from({ length: SNAP_COUNT }, (_, i) => {
     const angle = (i * 2 * Math.PI) / SNAP_COUNT;
-    return { index: i, x: rx * Math.cos(angle), y: ry * Math.sin(angle) };
+    const at = shape === 'rect'
+      ? onRectangle(rx, ry, angle)
+      : { x: rx * Math.cos(angle), y: ry * Math.sin(angle) };
+    return { index: i, x: at.x, y: at.y };
   });
 }
 
@@ -309,21 +430,33 @@ export function snapPoints(rx, ry) {
  * The way out of a snap point: square to the shape's edge where the line meets
  * it. The oval is stretched, so this is the gradient of its equation and not
  * simply the angle the snap point was placed at — on a wide, flat oval those
- * two part company badly.
+ * two part company badly. A rectangle has four flat faces instead, so the way
+ * out is the axis of whichever face the point landed on.
  */
 export function snapNormal(size, index) {
   const angle = (index * 2 * Math.PI) / SNAP_COUNT;
+
+  if (size.shape === 'rect') {
+    const at = onRectangle(size.rx || 1, size.ry || 1, angle);
+    // A corner belongs to both faces; the one it is further along wins.
+    const onSide = Math.abs(Math.abs(at.x) - (size.rx || 1)) < 1e-6;
+    const onTop = Math.abs(Math.abs(at.y) - (size.ry || 1)) < 1e-6;
+    if (onSide && (!onTop || Math.abs(at.x) / (size.rx || 1) >= Math.abs(at.y) / (size.ry || 1)))
+      return { x: Math.sign(at.x) || 1, y: 0 };
+    return { x: 0, y: Math.sign(at.y) || 1 };
+  }
+
   const [x, y] = unit(Math.cos(angle) / (size.rx || 1), Math.sin(angle) / (size.ry || 1));
   return { x, y };
 }
 
 /**
  * The pair of snap points that puts a connector's ends closest together — what
- * a line re-attaches to once either capability has moved.
+ * a line re-attaches to once either element has moved.
  */
 export function closestSnapPair(fromPosition, fromSize, toPosition, toSize) {
-  const from = snapPoints(fromSize.rx, fromSize.ry);
-  const to = snapPoints(toSize.rx, toSize.ry);
+  const from = snapPoints(fromSize);
+  const to = snapPoints(toSize);
   let best = { fromPoint: 0, toPoint: 0, distance: Infinity };
 
   for (const a of from) {

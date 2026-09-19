@@ -2,10 +2,29 @@
 // validation in the API; with neither of those left, this file is the only
 // place that knows, so both the editor and the importer read it from here.
 
-import { DOMAIN_SHAPE, CAPABILITY_SHAPE } from './defaults.js';
+import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
 
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_TEXT_LENGTH = 2000;
+
+/**
+ * The kinds of element a map is drawn from, and the order they are listed in.
+ * Anything that walks every kind — the document, the menu, the layer stacks —
+ * reads this rather than naming the four itself.
+ */
+export const ELEMENT_KINDS = ['domain', 'capability', 'touchpoint', 'actor'];
+
+/** The kinds a connector may be drawn between: the ones that carry snap points. */
+export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
+
+/** How many layers one map may hold, and how long a layer key may be. */
+export const MAX_LAYERS = 12;
+export const MAX_KEY_LENGTH = 64;
+
+/** A Type is a word or two picked from a list, not running copy. */
+export const MAX_TYPE_LENGTH = 60;
+/** How many choices one kind's Type list may hold. */
+export const MAX_TYPE_CHOICES = 100;
 
 /** The sizes a domain title may be set at. Mirrors geometry.js. */
 export const FONT_SIZES = [32, 36, 48, 64, 72, 80, 100];
@@ -45,10 +64,25 @@ export const MAX_ICON_BYTES = 512 * 1024;
 // is a hex, here it has to be a palette swatch, and there is no palette to hand
 // to find one in — so a file that names no colour gets the first swatch.
 
+/**
+ * A layer of the map. `hidden` and `dimmed` are what the document opens at —
+ * the layer control changes them for the tab only, unless an owner is editing.
+ * The base layer is the first in the list: it is never hidden, and it is the
+ * one an element that names no layer is on.
+ */
+export const LAYER_DEFAULTS = {
+  key: '',
+  title: '',
+  hidden: false,
+  dimmed: false,
+};
+
 export const DOMAIN_DEFAULTS = {
+  layer: null,
   title: DOMAIN_SHAPE.title,
   description: '',
   owner: '',
+  type: '',
   colorIndex: 1,
   x: 0,
   y: 0,
@@ -62,10 +96,12 @@ export const DOMAIN_DEFAULTS = {
 };
 
 export const CAPABILITY_DEFAULTS = {
+  layer: null,
   domainId: null,
   title: CAPABILITY_SHAPE.title,
   description: '',
   owner: '',
+  type: '',
   colorIndex: 1,
   fontSize: CAPABILITY_SHAPE.fontSize,
   fontWeight: CAPABILITY_SHAPE.fontWeight,
@@ -77,6 +113,44 @@ export const CAPABILITY_DEFAULTS = {
   lobeY: 0,
   sortIndex: 0,
   icon: null,
+};
+
+/**
+ * A touchpoint is a capability in everything but its geometry: it wears the
+ * palette, takes a size and a stretch, and carries the same snap points. What
+ * it does not have is a domain — nothing lobes a touchpoint into a blob.
+ */
+export const TOUCHPOINT_DEFAULTS = {
+  layer: null,
+  title: TOUCHPOINT_SHAPE.title,
+  description: '',
+  owner: '',
+  type: '',
+  colorIndex: 1,
+  fontSize: TOUCHPOINT_SHAPE.fontSize,
+  fontWeight: TOUCHPOINT_SHAPE.fontWeight,
+  sizeScale: TOUCHPOINT_SHAPE.sizeScale,
+  stretch: TOUCHPOINT_SHAPE.stretch,
+  x: 0,
+  y: 0,
+  sortIndex: 0,
+  icon: null,
+};
+
+/** An actor is a circle, so it takes no stretch, and it wears no icon but its own. */
+export const ACTOR_DEFAULTS = {
+  layer: null,
+  title: ACTOR_SHAPE.title,
+  description: '',
+  owner: '',
+  type: '',
+  colorIndex: 1,
+  fontSize: ACTOR_SHAPE.fontSize,
+  fontWeight: ACTOR_SHAPE.fontWeight,
+  sizeScale: ACTOR_SHAPE.sizeScale,
+  x: 0,
+  y: 0,
+  sortIndex: 0,
 };
 
 // fromPoint/toPoint start on opposite sides of the oval, which is what a line
@@ -178,6 +252,7 @@ export function validatePalette(palette) {
 
 export function validateDomain(fields) {
   return text(fields.title, fields.description, fields.owner)
+    ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, FONT_SIZES)
     ?? scale(fields.titleScale, 'titleScale')
@@ -194,6 +269,7 @@ export function validateDomain(fields) {
 
 export function validateCapability(fields) {
   return text(fields.title, fields.description, fields.owner)
+    ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)
     ?? scale(fields.sizeScale, 'sizeScale', MAX_SIZE_SCALE)
@@ -203,6 +279,26 @@ export function validateCapability(fields) {
     ?? validateIcon(fields.icon);
 }
 
+/** A touchpoint is checked as a capability is — the two differ only in geometry. */
+export function validateTouchpoint(fields) {
+  return validateCapability(fields);
+}
+
+export function validateActor(fields) {
+  return text(fields.title, fields.description, fields.owner)
+    ?? typed(fields.type)
+    ?? color(fields.colorIndex)
+    ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)
+    ?? scale(fields.sizeScale, 'sizeScale', MAX_SIZE_SCALE);
+}
+
+export const validatorFor = {
+  domain: validateDomain,
+  capability: validateCapability,
+  touchpoint: validateTouchpoint,
+  actor: validateActor,
+};
+
 export function validateConnector(fields) {
   return describes(fields.description)
     ?? point(fields.fromPoint)
@@ -211,6 +307,77 @@ export function validateConnector(fields) {
       ? `lineStyle must be one of ${LINE_STYLES.join(', ')}.`
       : null)
     ?? bends(fields.bendPoints);
+}
+
+// --- layers ------------------------------------------------------------------
+
+const isKey = (value) =>
+  typeof value === 'string'
+  && value.length > 0
+  && value.length <= MAX_KEY_LENGTH
+  && /^[a-z0-9][a-z0-9-]*$/.test(value);
+
+/**
+ * The stack a map is drawn on: at least one layer, bottom first, each with a
+ * key of its own. The first is the base layer, which is why it may not be
+ * hidden — there would be nothing left under the rest.
+ */
+export function validateLayers(layers) {
+  if (layers == null) return null;
+  if (!Array.isArray(layers) || layers.length === 0)
+    return 'A map must have at least one layer.';
+  if (layers.length > MAX_LAYERS) return `A map may have at most ${MAX_LAYERS} layers.`;
+
+  const keys = new Set();
+  for (const layer of layers) {
+    if (!layer || typeof layer !== 'object') return 'Every layer must be a record.';
+    if (!isKey(layer.key))
+      return `Layer key '${layer.key}' must be lowercase letters, digits and dashes.`;
+    if (keys.has(layer.key)) return `Two layers share the key '${layer.key}'.`;
+    keys.add(layer.key);
+
+    const titled = layer.title;
+    if (given(titled) && (typeof titled !== 'string' || titled.length > MAX_TITLE_LENGTH))
+      return `Layer '${layer.key}': title must be at most ${MAX_TITLE_LENGTH} characters.`;
+  }
+  if (layers[0].hidden === true) return 'The base layer cannot be hidden.';
+  return null;
+}
+
+// --- types -------------------------------------------------------------------
+
+const typed = (value) =>
+  given(value) && (typeof value !== 'string' || value.length > MAX_TYPE_LENGTH)
+    ? `Type must be at most ${MAX_TYPE_LENGTH} characters.`
+    : null;
+
+/**
+ * The Type choices a map offers, one list per kind of element. A value on a
+ * shape is always one of these, which is why a choice in use cannot be removed
+ * — see typeUsage() in store.js, which is what refuses it.
+ */
+export function validateTypes(types) {
+  if (types == null) return null;
+  if (typeof types !== 'object' || Array.isArray(types)) return 'Types must be a record of lists.';
+
+  for (const [kind, choices] of Object.entries(types)) {
+    if (!ELEMENT_KINDS.includes(kind))
+      return `'${kind}' is not a kind of element that carries a Type.`;
+    if (!Array.isArray(choices)) return `Types for ${kind} must be a list.`;
+    if (choices.length > MAX_TYPE_CHOICES)
+      return `${kind} may have at most ${MAX_TYPE_CHOICES} Type choices.`;
+
+    const seen = new Set();
+    for (const choice of choices) {
+      const wrong = typed(choice);
+      if (wrong) return `Types for ${kind}: ${wrong}`;
+      if (typeof choice !== 'string' || choice.trim().length === 0)
+        return `Types for ${kind}: a choice cannot be blank.`;
+      if (seen.has(choice)) return `Types for ${kind}: '${choice}' is listed twice.`;
+      seen.add(choice);
+    }
+  }
+  return null;
 }
 
 // --- icons -------------------------------------------------------------------

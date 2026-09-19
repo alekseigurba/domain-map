@@ -45,7 +45,7 @@ sharp tool, so only this list is supported:
 | `favicon.svg` | The tab icon. |
 | `fonts/*` | Your own woff2 files, declared from `css/brand.css`. |
 | `css/fonts.css` | Only if you want to drop the bundled Poppins faces entirely. |
-| `js/defaults.js` | What a new domain or capability looks like. See the caveat below. |
+| `js/defaults.js` | What a new domain, capability, touchpoint or actor looks like, and the layers a new map is drawn on. See the caveat below. |
 
 A server of your own is a parameter rather than a file to shadow:
 `createDomainMapServer` takes `databaseUrl`, `owners`, `storageDir`, `store` and
@@ -99,7 +99,7 @@ npm install domain-map@github:alekseigurba/domain-map#v2.0.0
 ```
 
 Coming from 1.x, this one is not just a version bump: it wants a Postgres and a
-list of owners. [docs/upgrade-v1-to-v2.md](docs/upgrade-v1-to-v2.md) is the
+list of owners. [upgrade-v1-to-v2.md](upgrade-v1-to-v2.md) is the
 short way through it.
 
 Pin a tag rather than a range. There is no build step in this package, so npm

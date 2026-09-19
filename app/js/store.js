@@ -6,6 +6,7 @@
 // written from them afterwards.
 
 import * as rules from './rules.js';
+import { LAYERS } from './defaults.js';
 
 const listeners = new Set();
 
@@ -13,12 +14,30 @@ export const store = {
   title: '',
   /** The map's own colours, or empty for the ones in the stylesheet. */
   palette: [],
+  /** The stack, bottom first. The first is the base layer; see rules.LAYER_DEFAULTS. */
+  layers: [],
+  /** The Type choices on offer, one list per kind of element. */
+  types: {},
   domains: [],
   capabilities: [],
+  touchpoints: [],
+  actors: [],
   connectors: [],
-  /** @type {{type: 'domain'|'capability'|'connector'|null, id: string|null}} */
+  /** @type {{type: 'domain'|'capability'|'touchpoint'|'actor'|'connector'|null, id: string|null}} */
   selection: { type: null, id: null },
 };
+
+/** Where each kind of element is kept. The one place that knows. */
+const LISTS = {
+  domain: 'domains',
+  capability: 'capabilities',
+  touchpoint: 'touchpoints',
+  actor: 'actors',
+  connector: 'connectors',
+};
+
+/** Every record of one kind, in the order the map holds them. */
+export const listOf = (type) => store[LISTS[type]] ?? [];
 
 export function subscribe(listener) {
   listeners.add(listener);
@@ -33,10 +52,17 @@ export function emit(reason = 'change') {
 export function setMap(state) {
   store.title = state.title;
   store.palette = state.palette ?? [];
+  store.layers = state.layers?.length ? state.layers : LAYERS.map((layer) => ({ ...layer }));
+  store.types = state.types ?? {};
   store.domains = state.domains;
   store.capabilities = state.capabilities;
+  store.touchpoints = state.touchpoints ?? [];
+  store.actors = state.actors ?? [];
   store.connectors = state.connectors;
 
+  // A layer the tab was told to hide is the tab's business, and a map that has
+  // just been opened is a different map — what it opens at is what it says.
+  session.clear();
   dropLostSelection();
   emit('map');
 }
@@ -48,11 +74,8 @@ export function select(type, id, reason = 'selection') {
 }
 
 export function find(type, id) {
-  if (!id) return null;
-  if (type === 'domain') return store.domains.find((d) => d.id === id) ?? null;
-  if (type === 'capability') return store.capabilities.find((c) => c.id === id) ?? null;
-  if (type === 'connector') return store.connectors.find((c) => c.id === id) ?? null;
-  return null;
+  if (!id || !LISTS[type]) return null;
+  return listOf(type).find((record) => record.id === id) ?? null;
 }
 
 export function selected() {
@@ -89,6 +112,164 @@ export function capabilityById(id) {
   return store.capabilities.find((c) => c.id === id) ?? null;
 }
 
+/** Touchpoints and actors have no domain to be stacked inside, only each other. */
+export const stackedList = (type) => [...listOf(type)].sort(byStack);
+
+// --- layers ------------------------------------------------------------------
+
+/**
+ * What this tab has been told to hide or dim, over what the map says. The layer
+ * control writes here while browsing, so reading a map never changes it; in
+ * Edit mode it writes the document instead, and this stays empty.
+ *
+ * @type {Map<string, {hidden?: boolean, dimmed?: boolean}>}
+ */
+const session = new Map();
+
+/** The layer everything without one is on: the bottom of the stack. */
+export const baseLayer = () => store.layers[0] ?? null;
+
+export const isBaseLayer = (key) => baseLayer()?.key === key;
+
+export const layerByKey = (key) => store.layers.find((layer) => layer.key === key) ?? null;
+
+/**
+ * A layer as it is being shown right now: what the document saved, with this
+ * tab's own override on top. The base layer is never hidden, whatever either
+ * of them says.
+ */
+export function layerState(key) {
+  const layer = layerByKey(key);
+  if (!layer) return { hidden: false, dimmed: false };
+  const mine = session.get(key) ?? {};
+  return {
+    hidden: !isBaseLayer(key) && (mine.hidden ?? layer.hidden === true),
+    dimmed: mine.dimmed ?? layer.dimmed === true,
+  };
+}
+
+/** The stack as the diagram paints it, bottom first, with each one's state. */
+export const layerStack = () =>
+  store.layers.map((layer) => ({ ...layer, ...layerState(layer.key), base: isBaseLayer(layer.key) }));
+
+export const isHidden = (key) => layerState(key).hidden;
+
+/**
+ * Hide, show or dim a layer for this tab alone. `saved` writes the document
+ * instead, which is what an owner in Edit mode is doing: the map then opens
+ * that way for everyone it is published to.
+ */
+export function setLayerState(key, changes, { saved = false } = {}) {
+  const layer = layerByKey(key);
+  if (!layer) return null;
+
+  // Nothing is under the base layer, so hiding it would leave an empty map.
+  const wanted = { ...changes };
+  if (isBaseLayer(key)) delete wanted.hidden;
+
+  if (saved) {
+    session.delete(key);
+    Object.assign(layer, wanted);
+  } else {
+    session.set(key, { ...session.get(key), ...wanted });
+  }
+  emit(saved ? 'data' : 'layers');
+  return layer;
+}
+
+/** Forget every override, so the map shows what it was saved showing. */
+export function resetLayerState() {
+  if (session.size === 0) return;
+  session.clear();
+  emit('layers');
+}
+
+export const layersOverridden = () => session.size > 0;
+
+/** Where a capability really is: its domain's layer, or its own when it is loose. */
+export function layerOf(type, record) {
+  if (!record) return baseLayer()?.key ?? null;
+  if (type === 'capability' && record.domainId) {
+    return find('domain', record.domainId)?.layer ?? record.layer;
+  }
+  if (type === 'connector') return connectorLayer(record);
+  return record.layer ?? baseLayer()?.key ?? null;
+}
+
+/** How high up the stack a layer sits. An unknown one is treated as the base. */
+export const layerDepth = (key) => {
+  const at = store.layers.findIndex((layer) => layer.key === key);
+  return at < 0 ? 0 : at;
+};
+
+/**
+ * A line belongs to the topmost layer it touches, so hiding that layer takes
+ * the line with it — no line is ever left running to something that is gone.
+ */
+export function connectorLayer(connector) {
+  const from = layerOf(connector.fromKind, find(connector.fromKind, connector.fromId));
+  const to = layerOf(connector.toKind, find(connector.toKind, connector.toId));
+  return layerDepth(from) >= layerDepth(to) ? from : to;
+}
+
+/** Everything on a layer, kind by kind, in the order each kind is held. */
+export function onLayer(key) {
+  const mine = (type) => listOf(type).filter((record) => layerOf(type, record) === key);
+  return {
+    domains: mine('domain'),
+    capabilities: mine('capability'),
+    touchpoints: mine('touchpoint'),
+    actors: mine('actor'),
+    connectors: store.connectors.filter((connector) => connectorLayer(connector) === key),
+  };
+}
+
+/** Whether what is selected is on a layer that is being shown at all. */
+export const isVisible = (type, record) =>
+  !!record && !isHidden(layerOf(type, record));
+
+// --- Type choices ------------------------------------------------------------
+
+/** The choices one kind of element may be typed with, in the order they were added. */
+export const typesFor = (kind) => store.types[kind] ?? [];
+
+/** How many elements of a kind carry a Type — what refuses to delete it. */
+export const typeUsage = (kind, choice) =>
+  listOf(kind).filter((record) => record.type === choice).length;
+
+/** Add a choice to a kind's list. A repeat is not an error; it is already there. */
+export function addTypeChoice(kind, choice) {
+  const wanted = choice?.trim();
+  if (!wanted || !rules.ELEMENT_KINDS.includes(kind)) return null;
+  const choices = typesFor(kind);
+  if (choices.includes(wanted)) return wanted;
+
+  store.types = { ...store.types, [kind]: [...choices, wanted] };
+  emit('data');
+  return wanted;
+}
+
+/**
+ * Take a choice off a kind's list. A choice something is typed with stays:
+ * the caller is told how many hold it, and nothing is cleared behind an
+ * author's back.
+ */
+export function removeTypeChoice(kind, choice) {
+  const used = typeUsage(kind, choice);
+  if (used > 0) return { removed: false, used };
+
+  store.types = { ...store.types, [kind]: typesFor(kind).filter((one) => one !== choice) };
+  emit('data');
+  return { removed: true, used: 0 };
+}
+
+/** Put a kind's whole list back, ids and all — what undo does to a Type change. */
+export function setTypeChoices(kind, choices) {
+  store.types = { ...store.types, [kind]: [...(choices ?? [])] };
+  emit('data');
+  return store.types[kind];
+}
+
 /** A selection that was cascade-deleted is no selection at all. */
 function dropLostSelection() {
   if (store.selection.id && !find(store.selection.type, store.selection.id)) {
@@ -104,16 +285,23 @@ function dropLostSelection() {
  * the moment a capability is dragged across a border.
  */
 export function scopeOf(connector) {
-  const from = find('capability', connector.fromCapabilityId);
-  const to = find('capability', connector.toCapabilityId);
+  const [from, to] = endpointsOf(connector);
   if (!from || !to) return 'public';
+  // Only a capability has a domain to stay inside; a line touching a touchpoint
+  // or an actor has left one by definition.
+  if (connector.fromKind !== 'capability' || connector.toKind !== 'capability') return 'public';
   return from.domainId && from.domainId === to.domainId ? 'internal' : 'public';
 }
 
-/** The titles of the two capabilities a line joins, from end first. */
+/** The two records a line joins, from end first — whatever kinds they are. */
+export const endpointsOf = (connector) => [
+  find(connector.fromKind, connector.fromId),
+  find(connector.toKind, connector.toId),
+];
+
+/** The titles of the two elements a line joins, from end first. */
 export function connectorEnds(connector) {
-  const from = find('capability', connector.fromCapabilityId);
-  const to = find('capability', connector.toCapabilityId);
+  const [from, to] = endpointsOf(connector);
   return [from?.title ?? '?', to?.title ?? '?'];
 }
 
@@ -150,7 +338,7 @@ export function withBreaks(text, from) {
 /** The internal lines of one domain — they hang under it in the menu. */
 export function internalConnectors(domainId) {
   return store.connectors.filter((connector) => {
-    const from = find('capability', connector.fromCapabilityId);
+    const [from] = endpointsOf(connector);
     return scopeOf(connector) === 'internal' && from?.domainId === domainId;
   });
 }
@@ -175,13 +363,9 @@ export function slugify(text) {
   return slug || 'untitled';
 }
 
-const listOf = (type) =>
-  (type === 'domain' ? store.domains : type === 'capability' ? store.capabilities : store.connectors);
-
 function labelOf(type, record) {
   if (type !== 'connector') return record.title;
-  const from = find('capability', record.fromCapabilityId);
-  const to = find('capability', record.toCapabilityId);
+  const [from, to] = endpointsOf(record);
   return `${from?.title ?? 'unknown'} ${to?.title ?? 'unknown'}`;
 }
 
@@ -284,8 +468,7 @@ export function deleteDomain(id) {
 
   const children = store.capabilities.filter((c) => c.domainId === id);
   const childIds = new Set(children.map((c) => c.id));
-  const lost = store.connectors.filter(
-    (c) => childIds.has(c.fromCapabilityId) || childIds.has(c.toCapabilityId));
+  const lost = store.connectors.filter((c) => touches(c, 'capability', childIds));
 
   const removed = {
     domains: store.domains.splice(index, 1),
@@ -337,18 +520,82 @@ export function updateCapability(id, changes = {}) {
   return capability;
 }
 
+/** Whether a line has an end on any of these records of one kind. */
+const touches = (connector, kind, ids) =>
+  (connector.fromKind === kind && ids.has(connector.fromId))
+  || (connector.toKind === kind && ids.has(connector.toId));
+
 /** Deleting a capability takes the lines attached to it. */
 export function deleteCapability(id) {
-  const index = store.capabilities.findIndex((c) => c.id === id);
+  return removeElement('capability', id);
+}
+
+// --- touchpoints and actors --------------------------------------------------
+
+// Two kinds of their own rather than capabilities in other clothes: their own
+// keys, their own defaults and their own validation. What they share with a
+// capability is a position, a palette colour and the snap points a line hangs
+// off — which is why everything below is written once and told which kind.
+
+const DEFAULTS_FOR = {
+  domain: rules.DOMAIN_DEFAULTS,
+  capability: rules.CAPABILITY_DEFAULTS,
+  touchpoint: rules.TOUCHPOINT_DEFAULTS,
+  actor: rules.ACTOR_DEFAULTS,
+};
+
+const POSITIONS_FOR = {
+  domain: DOMAIN_POSITIONS,
+  capability: CAPABILITY_POSITIONS,
+  touchpoint: ['x', 'y'],
+  actor: ['x', 'y'],
+};
+
+/** Make one element of a kind that carries its own position. */
+function createElement(kind, fields = {}) {
+  const defaults = DEFAULTS_FOR[kind];
+  const record = { id: crypto.randomUUID(), ...rules.withDefaults(defaults, fields) };
+  record.title = titled(fields.title, defaults.title);
+  roundPositions(record, POSITIONS_FOR[kind]);
+
+  // A new one goes on top of the stack it joins, as a capability does.
+  if (fields.sortIndex == null && 'sortIndex' in defaults) {
+    const peers = listOf(kind);
+    record.sortIndex = peers.length ? Math.max(...peers.map((one) => one.sortIndex)) + 1 : 0;
+  }
+
+  listOf(kind).push(record);
+  emit('data');
+  return record;
+}
+
+function updateElement(kind, id, changes = {}) {
+  const record = find(kind, id);
+  if (!record) return null;
+
+  assign(record, changes, DEFAULTS_FOR[kind]);
+  if (changes.title !== undefined) record.title = titled(changes.title, record.title);
+  if (changes.icon === '') record.icon = null;
+  roundPositions(record, POSITIONS_FOR[kind]);
+
+  emit('data');
+  return record;
+}
+
+/** Deleting an element takes the lines attached to it, whatever kind it is. */
+function removeElement(kind, id) {
+  const list = listOf(kind);
+  const index = list.findIndex((record) => record.id === id);
   if (index < 0) return null;
 
-  const lost = store.connectors.filter(
-    (c) => c.fromCapabilityId === id || c.toCapabilityId === id);
-
+  const lost = store.connectors.filter((c) => touches(c, kind, new Set([id])));
   const removed = {
     domains: [],
-    capabilities: store.capabilities.splice(index, 1),
+    capabilities: [],
+    touchpoints: [],
+    actors: [],
     connectors: lost,
+    [LISTS[kind]]: list.splice(index, 1),
   };
   store.connectors = store.connectors.filter((c) => !lost.includes(c));
 
@@ -357,17 +604,35 @@ export function deleteCapability(id) {
   return removed;
 }
 
+export const createTouchpoint = (fields) => createElement('touchpoint', fields);
+export const updateTouchpoint = (id, changes) => updateElement('touchpoint', id, changes);
+export const deleteTouchpoint = (id) => removeElement('touchpoint', id);
+
+export const createActor = (fields) => createElement('actor', fields);
+export const updateActor = (id, changes) => updateElement('actor', id, changes);
+export const deleteActor = (id) => removeElement('actor', id);
+
+// --- connectors --------------------------------------------------------------
+
+/** An end names a kind and a record of it, and that record has to be on the map. */
+function endpoint(kind, id) {
+  if (!rules.ENDPOINT_KINDS.includes(kind))
+    throw new Error(`A connector cannot end on a ${kind}.`);
+  if (!find(kind, id)) throw new Error('Both ends must be on this map.');
+  return { kind, id };
+}
+
 export function createConnector(fields) {
-  const { fromCapabilityId, toCapabilityId } = fields;
-  if (fromCapabilityId === toCapabilityId)
-    throw new Error('A connector needs two different capabilities.');
-  if (!capabilityById(fromCapabilityId) || !capabilityById(toCapabilityId))
-    throw new Error('Both capabilities must be on this map.');
+  const from = endpoint(fields.fromKind ?? 'capability', fields.fromId);
+  const to = endpoint(fields.toKind ?? 'capability', fields.toId);
+  if (from.id === to.id) throw new Error('A connector needs two different elements.');
 
   const connector = {
     id: crypto.randomUUID(),
-    fromCapabilityId,
-    toCapabilityId,
+    fromId: from.id,
+    fromKind: from.kind,
+    toId: to.id,
+    toKind: to.kind,
     ...rules.withDefaults(rules.CONNECTOR_DEFAULTS, fields),
   };
 
@@ -380,16 +645,17 @@ export function updateConnector(id, changes = {}) {
   const connector = find('connector', id);
   if (!connector) return null;
 
-  // An end may be moved to another capability, but never onto the one at the
+  // An end may be moved to another element, but never onto the one at the
   // other end.
-  const from = changes.fromCapabilityId ?? connector.fromCapabilityId;
-  const to = changes.toCapabilityId ?? connector.toCapabilityId;
-  if (from === to) throw new Error('A connector needs two different capabilities.');
-  if (!capabilityById(from) || !capabilityById(to))
-    throw new Error('Both capabilities must be on this map.');
+  const from = endpoint(
+    changes.fromKind ?? connector.fromKind, changes.fromId ?? connector.fromId);
+  const to = endpoint(changes.toKind ?? connector.toKind, changes.toId ?? connector.toId);
+  if (from.id === to.id) throw new Error('A connector needs two different elements.');
 
-  connector.fromCapabilityId = from;
-  connector.toCapabilityId = to;
+  connector.fromId = from.id;
+  connector.fromKind = from.kind;
+  connector.toId = to.id;
+  connector.toKind = to.kind;
   assign(connector, changes, rules.CONNECTOR_DEFAULTS);
 
   emit('data');
@@ -400,7 +666,10 @@ export function deleteConnector(id) {
   const index = store.connectors.findIndex((c) => c.id === id);
   if (index < 0) return null;
 
-  const removed = { domains: [], capabilities: [], connectors: store.connectors.splice(index, 1) };
+  const removed = {
+    domains: [], capabilities: [], touchpoints: [], actors: [],
+    connectors: store.connectors.splice(index, 1),
+  };
   dropLostSelection();
   emit('data');
   return removed;
@@ -411,14 +680,18 @@ export function restore(removed) {
   if (!removed) return;
   store.domains.push(...(removed.domains ?? []));
   store.capabilities.push(...(removed.capabilities ?? []));
+  store.touchpoints.push(...(removed.touchpoints ?? []));
+  store.actors.push(...(removed.actors ?? []));
   store.connectors.push(...(removed.connectors ?? []));
   emit('data');
 }
 
-/** The map's own settings: what it is called and the colours it wears. */
+/** The map's own settings: what it is called, the colours it wears, its stack. */
 export function updateMap(changes = {}) {
   if (changes.title !== undefined) store.title = titled(changes.title, store.title);
   if (changes.palette !== undefined) store.palette = changes.palette ?? [];
+  if (changes.layers !== undefined) store.layers = changes.layers ?? [];
+  if (changes.types !== undefined) store.types = changes.types ?? {};
   emit('data');
   return store;
 }

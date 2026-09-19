@@ -9,8 +9,13 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink';
 /** Clear space left around the outermost ink, in map pixels. */
 const MARGIN = 10;
 
-/** The layers that are the map. Edit chrome, a line being drawn and the rename editor are not. */
-const TERRAIN = ['layer-domains', 'layer-capabilities', 'layer-connectors'];
+/**
+ * The map itself: every layer stack, exactly as the stage has them. A hidden
+ * layer is not drawn on the stage, so it is not in here either, and a dimmed
+ * one carries its opacity on the group — the picture is what is on screen.
+ * Edit chrome, a line being drawn and the rename editor are not the map.
+ */
+const TERRAIN = ['layer-stacks'];
 
 /** Targets, not ink: invisible on the stage, and no use in a picture. */
 const CHROME = '.title-hit, .snaps, .connector__hit, .connector__rim, .slot';
@@ -71,6 +76,8 @@ export async function diagramSvg(diagram, { title = '' } = {}) {
     for (const node of content.querySelectorAll(SHAPES)) inlineStyle(node);
     for (const node of content.querySelectorAll('*')) {
       for (const name of node.getAttributeNames()) {
+        // `opacity` on a layer group is how a dimmed layer is dimmed, so it
+        // stays; class and data-* only ever meant something to the stage.
         if (name === 'class' || name.startsWith('data-')) node.removeAttribute(name);
       }
     }

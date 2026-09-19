@@ -335,7 +335,7 @@ space: everything it holds sits under `data/`, so one volume covers the lot.
 
 ## Shape defaults
 
-What a new domain or capability looks like is set in one file, [`app/js/defaults.js`](app/js/defaults.js):
+What a new shape looks like is set in one file, [`app/js/defaults.js`](app/js/defaults.js):
 
 ```js
 export const DOMAIN_SHAPE = Object.freeze({
@@ -354,6 +354,40 @@ export const CAPABILITY_SHAPE = Object.freeze({
   fontWeight: 'regular',
   sizeScale: 1,
   stretch: 2,
+});
+
+export const TOUCHPOINT_SHAPE = Object.freeze({
+  title: 'New touchpoint',
+  color: '#7fc6d8',
+  fontSize: 32,
+  fontWeight: 'regular',
+  sizeScale: 1,
+  stretch: 2,
+});
+
+export const ACTOR_SHAPE = Object.freeze({
+  title: 'New actor',
+  color: '#a1a4ec',
+  fontSize: 32,
+  fontWeight: 'regular',
+  sizeScale: 1,
+});
+```
+
+The same file holds the stack a new map is drawn on, and where each kind of
+shape is added unless the layer picker says otherwise:
+
+```js
+export const LAYERS = Object.freeze([
+  Object.freeze({ key: 'core', title: 'Core Business Domains' }),
+  Object.freeze({ key: 'presentation', title: 'Presentation' }),
+]);
+
+export const HOME_LAYER = Object.freeze({
+  domain: 'core',
+  capability: 'core',
+  touchpoint: 'presentation',
+  actor: 'presentation',
 });
 ```
 
@@ -396,6 +430,7 @@ A shape stores a palette swatch, not a color. When a shape is created, its defau
 
   A capability that lands inside a domain, including one added with **Add lobe** from the domain's ⋮ menu, takes the domain's color instead of the default. This happens only when it is added, so you can change the color afterwards.
 - **Reset shapes** appears at the bottom of the details panel when a domain is selected. It sets the domain's color, opacity, font size, weight and title size back to `DOMAIN_SHAPE`. It sets the color, font size, weight, shape size and stretch of every capability in the domain back to `CAPABILITY_SHAPE`. Titles, icons, positions and a dragged title width don't change.
+- **Add a touchpoint** uses `TOUCHPOINT_SHAPE` and **Add an actor** uses `ACTOR_SHAPE`. Neither belongs to a domain, so both land on open ground beside the map, on the layer the **Add to** picker names — Presentation unless it has been changed.
 - **Reset colors**, below it, gives every capability in the domain the domain's color.
 - **Map files**: if a file leaves out a field, the field gets its default. The exception is color, which falls back to swatch 1.
 

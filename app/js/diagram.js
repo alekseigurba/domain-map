@@ -2,7 +2,8 @@
 // intents. It never talks to the API itself — it calls back into `actions`.
 
 import {
-  store, select, childrenOf, stackingOrder, patchLocal, find, scopeOf, connectorEnds, oneLine,
+  store, select, childrenOf, stackingOrder, stackedList, patchLocal, find, scopeOf,
+  connectorEnds, oneLine, layerStack, layerOf, connectorLayer, isHidden,
 } from './store.js';
 import * as geo from './geometry.js';
 
@@ -30,12 +31,20 @@ const LABEL_RADIUS = 8;  // --radius-m: two rows are too tall to read as a pill
 const LABEL_LIFT = 16;   // clear of the line it names
 const LABEL_MAX = 260;
 
+/** How much of a dimmed layer still shows. One step, not a slider. */
+const DIM_OPACITY = 0.35;
+
 const svg = document.getElementById('diagram');
 const viewport = document.getElementById('viewport');
-const layers = {
-  domains: document.getElementById('layer-domains'),
-  capabilities: document.getElementById('layer-capabilities'),
-  connectors: document.getElementById('layer-connectors'),
+
+/**
+ * The paint order of the stage, which is not the map's layers: the map's are
+ * built inside `stacks`, one group of its own per layer, bottom first. What is
+ * below is the chrome that rides above every one of them — the edit handles,
+ * the line being drawn, what the pointer is naming, and the rename editor.
+ */
+const zOrder = {
+  stacks: document.getElementById('layer-stacks'),
   edit: document.getElementById('layer-edit'),
   draft: document.getElementById('layer-draft'),
   hover: document.getElementById('layer-hover'),
@@ -173,10 +182,22 @@ function computeLayout() {
     map.set(capability.id, { x: capability.x, y: capability.y, rx: size.rx, ry: size.ry });
   }
 
+  // Touchpoints and actors have no domain to be laid out inside, so each one
+  // sits where it says it does. `shape` is what tells a snap point whether it
+  // is going round an oval or along four flat faces.
+  for (const kind of ['touchpoint', 'actor']) {
+    for (const record of store[kind === 'actor' ? 'actors' : 'touchpoints']) {
+      const size = geo.sizeOf(kind, record);
+      map.set(record.id, {
+        x: record.x, y: record.y, rx: size.rx, ry: size.ry, shape: size.shape,
+      });
+    }
+  }
+
   return { views, map };
 }
 
-/** Where a capability sits and how big it is — the layout, resolved. */
+/** Where an element sits and how big it is — the layout, resolved. */
 export function capabilityPosition(id) {
   return positions.get(id) ?? null;
 }
@@ -187,8 +208,8 @@ export function capabilityPosition(id) {
  */
 export function resolvedPoints(connector) {
   if (connector.anchored) return { fromPoint: connector.fromPoint, toPoint: connector.toPoint };
-  const from = positions.get(connector.fromCapabilityId);
-  const to = positions.get(connector.toCapabilityId);
+  const from = positions.get(connector.fromId);
+  const to = positions.get(connector.toId);
   if (!from || !to) return null;
   const { fromPoint, toPoint } = geo.closestSnapPair(from, from, to, to);
   return { fromPoint, toPoint };
@@ -228,20 +249,53 @@ export function render() {
 
   renderView();
 
-  layers.domains.replaceChildren(...views.map(renderDomain));
-  // Paint order is the stack, so a shape sent to the back lands at the back.
-  layers.capabilities.replaceChildren(...stackingOrder().map(renderCapability));
-  layers.connectors.replaceChildren(...store.connectors.map(renderConnector).filter(Boolean));
-  layers.edit.replaceChildren(
+  zOrder.stacks.replaceChildren(...layerStack().map((layer) => renderLayer(layer, views)));
+  zOrder.edit.replaceChildren(
     ...views.flatMap(renderLobeHandles),
     ...views.flatMap(renderTitleWidth),
     ...renderConnectorEnds(),
     ...views.flatMap(renderKebab));   // last, so it stays on top of the grips
-  layers.draft.replaceChildren(...(draft ? [renderDraft()] : []));
-  layers.hover.replaceChildren(...renderConnectorLabel());
+  zOrder.draft.replaceChildren(...(draft ? [renderDraft()] : []));
+  zOrder.hover.replaceChildren(...renderConnectorLabel());
   positionRenameEditor();
 
   svg.dataset.connecting = draft ? 'true' : 'false';
+}
+
+/**
+ * One layer of the map, as its own stack of groups. Painting them in layer
+ * order is what makes "on top" true of everything on an upper layer rather
+ * than most of it — the layer above owns its connectors as well as its shapes.
+ *
+ * A hidden layer is not drawn at all. That takes it out of the picture and out
+ * of the way of the pointer in one go, and it is what Export SVG copies.
+ */
+function renderLayer(layer, views) {
+  const group = el('g', { class: 'map-layer', 'data-layer': layer.key });
+  if (layer.hidden) return group;
+  // Dimming multiplies whatever opacity each shape already carries, so a
+  // domain drawn at 20% goes quieter still rather than jumping to one value.
+  if (layer.dimmed) group.setAttribute('opacity', DIM_OPACITY);
+
+  const mine = views.filter(({ domain }) => domain.layer === layer.key);
+  const on = (type) => (record) => layerOf(type, record) === layer.key;
+
+  group.append(
+    el('g', { class: 'stack stack--domains' }, mine.map(renderDomain)),
+    // Paint order is the stack, so a shape sent to the back lands at the back.
+    el('g', { class: 'stack stack--capabilities' },
+      stackingOrder().filter(on('capability')).map(renderCapability)),
+    el('g', { class: 'stack stack--touchpoints' },
+      stackedList('touchpoint').filter(on('touchpoint')).map(renderTouchpoint)),
+    el('g', { class: 'stack stack--actors' },
+      stackedList('actor').filter(on('actor')).map(renderActor)),
+    el('g', { class: 'stack stack--connectors' },
+      store.connectors
+        .filter((connector) => connectorLayer(connector) === layer.key)
+        .map(renderConnector)
+        .filter(Boolean)),
+  );
+  return group;
 }
 
 function renderDomain({ domain, layout }) {
@@ -454,7 +508,7 @@ export function startRename(domainId) {
   input.name = 'domain-title-editor';
   input.setAttribute('aria-label', 'Domain title');
   holder.appendChild(input);
-  layers.overlay.appendChild(holder);
+  zOrder.overlay.appendChild(holder);
   renaming = { domainId, original: domain.title, node: holder, input };
 
   input.addEventListener('input', () => {
@@ -603,28 +657,126 @@ function renderCapability(capability) {
   }
 
   group.appendChild(textNode('cap__text', size, 0, size.textY, ink));
+  const snaps = renderSnaps(capability.id, 'capability', size);
+  if (snaps) group.appendChild(snaps);
 
-  if (editMode) {
-    const snaps = el('g', { class: 'snaps' });
-    for (const point of geo.snapPoints(size.rx, size.ry)) {
-      const isActive = draft && draft.fromId === capability.id && draft.fromPoint === point.index;
-      const snap = el('g', {
-        class: 'snap-point',
-        'data-type': 'snap',
-        'data-id': capability.id,
-        'data-index': point.index,
-      });
-      snap.appendChild(el('circle', { class: 'snap-hit', cx: point.x, cy: point.y, r: SNAP_HIT_RADIUS }));
-      snap.appendChild(el('circle', {
-        class: `snap${isActive ? ' snap--active' : ''}`,
-        cx: point.x,
-        cy: point.y,
-        r: SNAP_RADIUS,
-      }));
-      snaps.appendChild(snap);
-    }
-    group.appendChild(snaps);
+  return group;
+}
+
+/**
+ * The points a line may be hung off, round whatever shape this is. Every kind
+ * that can be connected carries the same twenty-four, so a line moved from an
+ * oval to a touchpoint lands on the point facing the same way.
+ */
+function renderSnaps(id, kind, size) {
+  if (!editMode) return null;
+  const snaps = el('g', { class: 'snaps' });
+
+  for (const point of geo.snapPoints(size)) {
+    const isActive = draft && draft.fromId === id && draft.fromPoint === point.index;
+    const snap = el('g', {
+      class: 'snap-point',
+      'data-type': 'snap',
+      'data-id': id,
+      'data-kind': kind,
+      'data-index': point.index,
+    });
+    snap.appendChild(el('circle', { class: 'snap-hit', cx: point.x, cy: point.y, r: SNAP_HIT_RADIUS }));
+    snap.appendChild(el('circle', {
+      class: `snap${isActive ? ' snap--active' : ''}`,
+      cx: point.x,
+      cy: point.y,
+      r: SNAP_RADIUS,
+    }));
+    snaps.appendChild(snap);
   }
+  return snaps;
+}
+
+/** A touchpoint: a rounded rectangle with its label inside, and an icon above it. */
+function renderTouchpoint(touchpoint) {
+  const position = positions.get(touchpoint.id);
+  const size = geo.touchpointSize(touchpoint);
+  const selected = store.selection.type === 'touchpoint' && store.selection.id === touchpoint.id;
+  const dragging = drag?.kind === 'element' && drag.id === touchpoint.id;
+
+  const group = el('g', {
+    class: `touchpoint${selected ? ' touchpoint--selected' : ''}`
+      + `${dragging ? ' touchpoint--dragging' : ''}`,
+    'data-type': 'touchpoint',
+    'data-id': touchpoint.id,
+    transform: `translate(${position.x} ${position.y})`,
+  });
+
+  group.appendChild(el('rect', {
+    class: 'touchpoint__box',
+    x: -size.rx,
+    y: -size.ry,
+    width: size.rx * 2,
+    height: size.ry * 2,
+    rx: size.corner,
+    ry: size.corner,
+    fill: colorOf(touchpoint.colorIndex),
+  }));
+
+  if (touchpoint.icon && size.iconSize > 0) {
+    group.appendChild(el('image', {
+      class: 'cap__icon',
+      href: actions.iconUrl(touchpoint.icon),
+      x: -size.iconSize / 2,
+      y: size.iconY - size.iconSize / 2,
+      width: size.iconSize,
+      height: size.iconSize,
+      preserveAspectRatio: 'xMidYMid meet',
+    }));
+  }
+
+  group.appendChild(textNode('cap__text', size, 0, size.textY, CAPABILITY_INK));
+  const snaps = renderSnaps(touchpoint.id, 'touchpoint', size);
+  if (snaps) group.appendChild(snaps);
+
+  return group;
+}
+
+/**
+ * An actor: a figure in a see-through circle with a rim, its name under the
+ * figure. The circle is the shape a line attaches to, which is why the rim is
+ * drawn rather than implied — it is the edge the snap points sit on.
+ */
+function renderActor(actor) {
+  const position = positions.get(actor.id);
+  const size = geo.actorSize(actor);
+  const selected = store.selection.type === 'actor' && store.selection.id === actor.id;
+  const dragging = drag?.kind === 'element' && drag.id === actor.id;
+
+  const group = el('g', {
+    class: `actor${selected ? ' actor--selected' : ''}${dragging ? ' actor--dragging' : ''}`,
+    'data-type': 'actor',
+    'data-id': actor.id,
+    transform: `translate(${position.x} ${position.y})`,
+  });
+
+  group.appendChild(el('circle', {
+    class: 'actor__ring',
+    r: size.rx,
+    fill: colorOf(actor.colorIndex),
+  }));
+
+  // The same silhouette the profile avatar wears, drawn at the size this actor
+  // is: a head and the shoulders under it, on a 24-unit grid.
+  const scale = size.figureSize / 24;
+  const figure = el('g', {
+    class: 'actor__figure',
+    transform: `translate(${-size.figureSize / 2} ${size.figureY - size.figureSize / 2})`
+      + ` scale(${scale})`,
+  });
+  figure.appendChild(el('circle', { cx: 12, cy: 9, r: 4 }));
+  figure.appendChild(el('path', { d: 'M4.5 20.5c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5' }));
+  group.appendChild(figure);
+
+  group.appendChild(textNode('cap__text', size, 0, size.textY, CAPABILITY_INK));
+  const snaps = renderSnaps(actor.id, 'actor', size);
+  if (snaps) group.appendChild(snaps);
 
   return group;
 }
@@ -638,10 +790,10 @@ const bendPairs = (flat) => {
 };
 const bendFlat = (points) => points.flatMap((p) => [Math.round(p.x), Math.round(p.y)]);
 
-/** A snap point of an oval, in world coordinates. */
+/** A snap point of a shape, in world coordinates. */
 function pointOn(at, index) {
-  const angle = (index * 2 * Math.PI) / geo.SNAP_COUNT;
-  return { x: at.x + at.rx * Math.cos(angle), y: at.y + at.ry * Math.sin(angle) };
+  const [point] = geo.snapPoints(at).slice(index % geo.SNAP_COUNT, (index % geo.SNAP_COUNT) + 1);
+  return { x: at.x + point.x, y: at.y + point.y };
 }
 
 /**
@@ -652,8 +804,8 @@ function pointOn(at, index) {
  */
 function lineGeometry(connector) {
   const ends = {
-    from: { id: connector.fromCapabilityId, point: connector.fromPoint },
-    to: { id: connector.toCapabilityId, point: connector.toPoint },
+    from: { id: connector.fromId, kind: connector.fromKind, point: connector.fromPoint },
+    to: { id: connector.toId, kind: connector.toKind, point: connector.toPoint },
   };
 
   // Not anchored: the line hangs off whichever pair of points is closest now.
@@ -665,7 +817,10 @@ function lineGeometry(connector) {
 
   const held = drag?.kind === 'connector-end' && drag.id === connector.id ? drag : null;
   if (held) {
-    if (held.capabilityId) ends[held.end].id = held.capabilityId;
+    if (held.targetId) {
+      ends[held.end].id = held.targetId;
+      ends[held.end].kind = held.targetKind;
+    }
     if (held.pointIndex !== null) ends[held.end].point = held.pointIndex;
   }
 
@@ -685,8 +840,10 @@ function lineGeometry(connector) {
     : [];
 
   return {
-    fromCapabilityId: ends.from.id,
-    toCapabilityId: ends.to.id,
+    fromId: ends.from.id,
+    fromKind: ends.from.kind,
+    toId: ends.to.id,
+    toKind: ends.to.kind,
     fromPoint: ends.from.point,
     toPoint: ends.to.point,
     from,
@@ -729,7 +886,7 @@ function renderConnectorLabel() {
   if (!hoveredConnectorId) return [];
   const connector = find('connector', hoveredConnectorId);
   const path = connector
-    && layers.connectors.querySelector(`.connector-group[data-id="${connector.id}"] .connector`);
+    && zOrder.stacks.querySelector(`.connector-group[data-id="${connector.id}"] .connector`);
   if (!path) return [];
 
   const at = path.getPointAtLength(path.getTotalLength() / 2);
@@ -768,22 +925,30 @@ function renderDraft() {
   return el('path', { class: 'connector--draft', d: `M ${from.x} ${from.y} L ${draft.x} ${draft.y}` });
 }
 
-function endpointOf(capabilityId, pointIndex) {
-  const position = positions.get(capabilityId);
+function endpointOf(elementId, pointIndex) {
+  const position = positions.get(elementId);
   return position ? pointOn(position, pointIndex) : null;
 }
 
 /**
- * The capability under a world point, topmost first. The catchment reaches a
- * little past the oval so a line end can be dropped on a shape without having
- * to land inside it.
+ * The element under a world point that a line may end on, topmost first. The
+ * catchment reaches a little past the shape so an end can be dropped on it
+ * without having to land inside it.
+ *
+ * Kinds are searched from the top of the stack down, and anything on a hidden
+ * layer is not there to be landed on — it is not drawn either.
  */
-function capabilityAt(x, y) {
-  for (let i = store.capabilities.length - 1; i >= 0; i--) {
-    const capability = store.capabilities[i];
-    const at = positions.get(capability.id);
-    if (!at) continue;
-    if (Math.hypot((x - at.x) / at.rx, (y - at.y) / at.ry) <= 1.25) return capability.id;
+function elementAt(x, y) {
+  for (const kind of ['actor', 'touchpoint', 'capability']) {
+    const list = kind === 'capability' ? store.capabilities : stackedList(kind);
+    for (let i = list.length - 1; i >= 0; i--) {
+      const record = list[i];
+      const at = positions.get(record.id);
+      if (!at || isHidden(layerOf(kind, record))) continue;
+      if (Math.hypot((x - at.x) / at.rx, (y - at.y) / at.ry) <= 1.25) {
+        return { id: record.id, kind };
+      }
+    }
   }
   return null;
 }
@@ -806,6 +971,7 @@ function targetOf(event) {
     ? {
       type: node.dataset.type,
       id: node.dataset.id,
+      kind: node.dataset.kind,
       index: node.dataset.index,
       lobe: node.dataset.lobe,
       end: node.dataset.end,
@@ -820,7 +986,14 @@ function targetOf(event) {
  */
 function hitAt(clientX, clientY) {
   const node = document.elementFromPoint(clientX, clientY)?.closest?.('[data-type]');
-  return node ? { type: node.dataset.type, id: node.dataset.id, index: node.dataset.index } : null;
+  return node
+    ? {
+      type: node.dataset.type,
+      id: node.dataset.id,
+      kind: node.dataset.kind,
+      index: node.dataset.index,
+    }
+    : null;
 }
 
 /** The domain whose blob covers this world point, topmost first. */
@@ -890,12 +1063,13 @@ function onPointerDown(event) {
   }
 
   if (target?.type === 'snap') {
-    select('capability', target.id);
+    select(target.kind ?? 'capability', target.id);
     if (!editMode) { render(); return; }
     // Either gesture works from here: drag to the far end and release, or
     // release where you are and click the far end afterwards.
     draft = {
       fromId: target.id,
+      fromKind: target.kind ?? 'capability',
       fromPoint: Number(target.index),
       x: world.x,
       y: world.y,
@@ -916,7 +1090,8 @@ function onPointerDown(event) {
       pointerId: event.pointerId,
       world,
       pointIndex: null,
-      capabilityId: null,
+      targetId: null,
+      targetKind: null,
       moved: false,
     };
     render();
@@ -1055,6 +1230,25 @@ function onPointerDown(event) {
     return;
   }
 
+  if (target?.type === 'touchpoint' || target?.type === 'actor') {
+    const record = find(target.type, target.id);
+    select(target.type, target.id);
+    if (!editMode) { render(); return; }
+    // Neither kind belongs to a domain, so there is no drop target to look for:
+    // it simply goes where it is put.
+    drag = {
+      kind: 'element',
+      elementKind: target.type,
+      id: target.id,
+      pointerId: event.pointerId,
+      world,
+      origin: { x: record.x, y: record.y },
+      moved: false,
+    };
+    render();
+    return;
+  }
+
   if (target?.type === 'domain') {
     const domain = find('domain', target.id);
     select('domain', target.id);
@@ -1137,17 +1331,25 @@ function onPointerMove(event) {
     return;
   }
 
+  if (drag.kind === 'element') {
+    patchLocal(drag.elementKind, drag.id, { x: drag.origin.x + dx, y: drag.origin.y + dy });
+    scheduleRender();
+    return;
+  }
+
   if (drag.kind === 'connector-end') {
     // The end follows the cursor onto whichever capability it is over — its own
     // or another one — and takes the nearest point on that oval. It will not
     // land on the capability at the far end: a line to itself is not a line.
     const connector = find('connector', drag.id);
-    const farEnd = drag.end === 'from' ? connector?.toCapabilityId : connector?.fromCapabilityId;
-    const over = capabilityAt(world.x, world.y);
-    drag.capabilityId = over && over !== farEnd ? over : null;
+    const farEnd = drag.end === 'from' ? connector?.toId : connector?.fromId;
+    const over = elementAt(world.x, world.y);
+    const landed = over && over.id !== farEnd ? over : null;
+    drag.targetId = landed?.id ?? null;
+    drag.targetKind = landed?.kind ?? null;
 
-    const landing = drag.capabilityId
-      ?? (drag.end === 'from' ? connector?.fromCapabilityId : connector?.toCapabilityId);
+    const landing = drag.targetId
+      ?? (drag.end === 'from' ? connector?.fromId : connector?.toId);
     const position = positions.get(landing);
     if (position) {
       drag.pointIndex = geo.nearestSnapIndex(position, world.x - position.x, world.y - position.y);
@@ -1237,13 +1439,16 @@ function onPointerUp(event) {
   if (finished.kind === 'domain') {
     const domain = find('domain', finished.id);
     actions.moveDomain?.(finished.id, domain.x, domain.y);
+  } else if (finished.kind === 'element') {
+    const record = find(finished.elementKind, finished.id);
+    actions.moveElement?.(finished.elementKind, finished.id, record.x, record.y);
   } else if (finished.kind === 'title') {
     actions.moveTitle?.(finished.id, Math.round(finished.titleX), Math.round(finished.titleY));
   } else if (finished.kind === 'connector-end') {
     // Placed by hand, so the line stops re-attaching itself from now on.
     if (finished.pointIndex !== null) {
       actions.moveConnectorEnd?.(
-        finished.id, finished.end, finished.pointIndex, finished.capabilityId);
+        finished.id, finished.end, finished.pointIndex, finished.targetId, finished.targetKind);
     }
   } else if (finished.kind === 'bend') {
     actions.shapeConnector?.(finished.id, bendFlat(finished.points));
@@ -1268,7 +1473,9 @@ function onPointerUp(event) {
 function finishDraft(target) {
   const finished = draft;
   draft = null;
-  actions.createConnector?.(finished.fromId, finished.fromPoint, target.id, Number(target.index));
+  actions.createConnector?.(
+    { id: finished.fromId, kind: finished.fromKind, point: finished.fromPoint },
+    { id: target.id, kind: target.kind ?? 'capability', point: Number(target.index) });
 }
 
 /**
@@ -1377,7 +1584,12 @@ export function contentBounds() {
   const { views, map } = computeLayout();
   const boxes = [];
 
+  // What is hidden is not on the map to be fitted to: Fit to screen fills the
+  // stage with what can actually be seen.
+  const shown = (type, record) => !isHidden(layerOf(type, record));
+
   for (const { domain, layout } of views) {
+    if (!shown('domain', domain)) continue;
     boxes.push({
       minX: domain.x + layout.bounds.minX,
       minY: domain.y + layout.bounds.minY,
@@ -1385,15 +1597,17 @@ export function contentBounds() {
       maxY: domain.y + layout.bounds.maxY,
     });
   }
-  for (const capability of store.capabilities) {
-    const position = map.get(capability.id);
-    if (!position) continue;
-    boxes.push({
-      minX: position.x - position.rx,
-      minY: position.y - position.ry,
-      maxX: position.x + position.rx,
-      maxY: position.y + position.ry,
-    });
+  for (const type of ['capability', 'touchpoint', 'actor']) {
+    for (const record of (type === 'capability' ? store.capabilities : stackedList(type))) {
+      const position = map.get(record.id);
+      if (!position || !shown(type, record)) continue;
+      boxes.push({
+        minX: position.x - position.rx,
+        minY: position.y - position.ry,
+        maxX: position.x + position.rx,
+        maxY: position.y + position.ry,
+      });
+    }
   }
   if (boxes.length === 0) return { minX: -400, minY: -300, maxX: 400, maxY: 300 };
 
@@ -1426,7 +1640,7 @@ export function centerOn(type, id) {
   const rect = svg.getBoundingClientRect();
   let point = null;
 
-  if (type === 'capability') {
+  if (type === 'capability' || type === 'touchpoint' || type === 'actor') {
     point = positions.get(id) ?? null;
   } else if (type === 'domain') {
     const domain = find('domain', id);
@@ -1434,8 +1648,8 @@ export function centerOn(type, id) {
   } else if (type === 'connector') {
     const connector = find('connector', id);
     const points = connector && (resolvedPoints(connector) ?? connector);
-    const from = points && endpointOf(connector.fromCapabilityId, points.fromPoint);
-    const to = points && endpointOf(connector.toCapabilityId, points.toPoint);
+    const from = points && endpointOf(connector.fromId, points.fromPoint);
+    const to = points && endpointOf(connector.toId, points.toPoint);
     if (from && to) point = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
   }
   if (!point) return;

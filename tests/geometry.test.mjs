@@ -520,6 +520,69 @@ check('a lobe follows the shape scale', (() => {
 // against whatever palette the map has.
 geo.setPalette(['#527a42', '#86a27b', '#cbd7c6', '#e5ebe3', '#014bb3', '#d6e6ff',
   '#4925cb', '#e6d4ff', '#ef706b', '#ff7429', '#3e5c73', '#d4d1cf']);
+// --- touchpoints and actors ---------------------------------------------------
+
+// A touchpoint is a rounded rectangle and an actor a circle, but both carry the
+// same twenty-four snap points a capability does, so a line moved from one to
+// another lands on the point facing the same way.
+
+const touchpoint = geo.touchpointSize({ title: 'Checkout widget', fontSize: 32, sizeScale: 1, stretch: 2 });
+const actor = geo.actorSize({ title: 'Shopper', fontSize: 32, sizeScale: 1 });
+
+check('a touchpoint is a rectangle', touchpoint.shape === 'rect');
+check('an actor is a circle', actor.shape === 'circle');
+check('an actor has one radius', actor.rx === actor.ry, `${actor.rx} vs ${actor.ry}`);
+check('the corners of a touchpoint never exceed its shorter half-side',
+  touchpoint.corner <= Math.min(touchpoint.rx, touchpoint.ry));
+
+const tpPoints = geo.snapPoints(touchpoint);
+const acPoints = geo.snapPoints(actor);
+check('a touchpoint has the same number of snap points as anything else',
+  tpPoints.length === geo.SNAP_COUNT && acPoints.length === geo.SNAP_COUNT);
+
+// Every point of a rectangle sits *on* an edge: one coordinate is at the full
+// half-width or half-height, and neither is past it.
+const onEdge = (point, size) => {
+  const atX = Math.abs(Math.abs(point.x) - size.rx) < 1e-6;
+  const atY = Math.abs(Math.abs(point.y) - size.ry) < 1e-6;
+  const inside = Math.abs(point.x) <= size.rx + 1e-6 && Math.abs(point.y) <= size.ry + 1e-6;
+  return (atX || atY) && inside;
+};
+check('every snap point of a touchpoint sits on its edge',
+  tpPoints.every((point) => onEdge(point, touchpoint)));
+
+check('snap 0 is due right of a touchpoint',
+  Math.abs(tpPoints[0].x - touchpoint.rx) < 1e-6 && Math.abs(tpPoints[0].y) < 1e-6);
+check('and a quarter of the way round is squarely below it',
+  Math.abs(tpPoints[geo.SNAP_COUNT / 4].y - touchpoint.ry) < 1e-6);
+
+// The way out of a flat face is the axis of that face, not the angle the point
+// was placed at — which is what keeps a line leaving a wide box square to it.
+const rightNormal = geo.snapNormal(touchpoint, 0);
+const bottomNormal = geo.snapNormal(touchpoint, geo.SNAP_COUNT / 4);
+check('a point on the right face faces right',
+  rightNormal.x === 1 && rightNormal.y === 0);
+check('a point on the bottom face faces down',
+  bottomNormal.x === 0 && bottomNormal.y === 1);
+
+check('the normals of an actor still radiate, as those of a circle do',
+  Math.abs(geo.snapNormal(actor, 0).x - 1) < 1e-6
+  && Math.abs(geo.snapNormal(actor, geo.SNAP_COUNT / 4).y - 1) < 1e-6);
+
+check('sizeOf measures each kind the way that kind is measured',
+  geo.sizeOf('touchpoint', { title: 'A', fontSize: 32 }).shape === 'rect'
+  && geo.sizeOf('actor', { title: 'A', fontSize: 32 }).shape === 'circle'
+  && geo.sizeOf('capability', { title: 'A', fontSize: 32 }).shape === undefined);
+
+// The label has to fit the shape it is in, which is the whole reason each kind
+// measures its own text box.
+check('the words of a touchpoint stay inside its box',
+  touchpoint.width <= touchpoint.rx * 2 + 1e-6);
+check('the words of an actor stay inside its circle',
+  actor.width <= actor.rx * 2 + 1e-6);
+check('an actor keeps room for its figure above the words',
+  actor.figureSize > 0 && actor.figureY < actor.textY);
+
 check('a colour in the palette is found as its own swatch',
   geo.swatchFor('#d4d1cf') === 12 && geo.swatchFor('#86a27b') === 2,
   `${geo.swatchFor('#d4d1cf')}, ${geo.swatchFor('#86a27b')}`);

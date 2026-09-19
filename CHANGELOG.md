@@ -2,13 +2,49 @@
 
 What changed in each release, newest first. A release is a version in
 `package.json` and a git tag of the same name — see "Publish a version of this
-package" in the [README](README.md). A release with more to say than fits here
-has a page of its own under [docs/releases/](docs/releases/).
+package" in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). A release with more to
+say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+The map gains layers, and two new kinds of element to put on them.
+**Breaking**: map files are version 2, and a 2.0.x deployment refuses one. There
+is no migration to run — a version 1 file still reads, and everything in it
+lands on the base layer. Full notes:
+[docs/releases/2.1.0.md](docs/releases/2.1.0.md).
+
+### Added
+
+- **Layers.** A map holds an ordered stack, bottom first, and ships with two:
+  "Core Business Domains" (the base) and "Presentation". The list is data, so a
+  third layer is a row in the file rather than a release.
+- **A layer control** in the bottom left corner of the diagram. The eye hides a
+  layer above the base; the base layer cannot be hidden, only dimmed. Using it
+  changes your tab alone — in Edit mode it sets what the map opens at for
+  everyone, and that is saved with the map.
+- **Touchpoints and actors**, two kinds of their own alongside domains and
+  capabilities: a rounded box and a ringed figure, both on the Presentation
+  layer, neither belonging to a domain. **Add a touchpoint** and **Add an
+  actor** sit under Add a capability, with an **Add to** picker saying which
+  layer a new shape lands on, and each kind gets a section in the menu and in
+  the details panel.
+- **Connectors between any two shapes** that carry connection points — a
+  capability, a touchpoint or an actor. A line belongs to the topmost layer it
+  touches, so hiding that layer takes the line with it.
+- **Type**, on every kind of element: a picker over a list of choices, with a
+  box to add one. Each kind keeps its own list, the lists travel with the map,
+  and a choice something is typed with cannot be removed — it says how many
+  hold it instead.
+
 ### Changed
 
+- **Export SVG** writes what is on screen: a hidden layer is not in the file,
+  and a dimmed one is dimmed in it. Export (JSON) still writes the whole map.
+- **View mode** shows title, description, owner and type as text rather than as
+  greyed-out boxes, drops the icon picker entirely, and no longer offers a fold
+  control on the one section it leaves.
+- The "Drag to pan…" line under the map is gone; the layer control has that
+  corner, and what the line said is in **Getting around**.
 - An empty `OWNER_EMAILS` makes everyone who signs in an owner, where before it
   left nobody able to edit. The server still warns about it at startup. A
   deployment that relied on an empty list to keep the map read-only needs to

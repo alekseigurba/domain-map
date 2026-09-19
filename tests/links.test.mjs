@@ -32,7 +32,15 @@ setMap({
     cap('c2', 'Dunning'),
     cap('c3', 'Dunning'), // a deliberate duplicate
   ],
-  connectors: [{ id: 'x1', fromCapabilityId: 'c1', fromPoint: 0, toCapabilityId: 'c2', toPoint: 6 }],
+  connectors: [{
+    id: 'x1',
+    fromId: 'c1',
+    fromKind: 'capability',
+    fromPoint: 0,
+    toId: 'c2',
+    toKind: 'capability',
+    toPoint: 6,
+  }],
 });
 
 check('a capability resolves to its title', slugFor('capability', 'c1') === 'payment-authorization');

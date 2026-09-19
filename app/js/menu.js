@@ -4,6 +4,7 @@
 
 import {
   store, select, childrenOf, orphans, find, internalConnectors, publicConnectors, connectorLabel,
+  stackedList,
 } from './store.js';
 import { COLORS } from './geometry.js';
 
@@ -106,15 +107,20 @@ function revealSelection() {
     if (record) opened.add(record.domainId ?? 'unassigned');
     return;
   }
+  if (type === 'touchpoint' || type === 'actor') {
+    opened.add(`${type}s`);
+    return;
+  }
   if (type === 'domain') {
     opened.add(id);
     return;
   }
   if (type === 'connector') {
     const record = find('connector', id);
-    const from = record && find('capability', record.fromCapabilityId);
-    const to = record && find('capability', record.toCapabilityId);
-    if (from && to && from.domainId && from.domainId === to.domainId) {
+    const from = record && find(record.fromKind, record.fromId);
+    const to = record && find(record.toKind, record.toId);
+    if (from && to && record.fromKind === 'capability' && record.toKind === 'capability'
+      && from.domainId && from.domainId === to.domainId) {
       opened.add(from.domainId);
       opened.add(`${from.domainId}:internal`);
     } else {
@@ -176,6 +182,26 @@ export function renderMenu() {
       }
       nodes.push(group);
     }
+  }
+
+  // Touchpoints and actors belong to no domain, so each kind is one flat list
+  // of its own. The layer each one is on is what its row says instead.
+  for (const [kind, heading] of [['touchpoint', 'Touchpoints'], ['actor', 'Actors']]) {
+    const list = stackedList(kind);
+    if (list.length === 0) continue;
+
+    nodes.push(caption(`${kind}s`, heading));
+    if (!opened.has(`${kind}s`)) continue;
+
+    const group = document.createElement('div');
+    group.className = 'tree__group';
+    for (const record of list) {
+      group.appendChild(row(item(kind, record, {
+        text: record.title,
+        color: colorOf(record.colorIndex),
+      })));
+    }
+    nodes.push(group);
   }
 
   const crossing = publicConnectors();

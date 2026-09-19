@@ -29,15 +29,101 @@
   gap: var(--gap-1);
 }
 
-.hint {
+/* --- the layer control --------------------------------------------------- */
+
+/* The corner that used to hold the "Drag to pan…" line. One row per layer,
+   topmost first, because that is the order they are stacked on the map. */
+.layers {
   position: absolute;
   left: var(--gap-3);
   bottom: var(--gap-3);
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--gap-1);
   font-size: var(--fs-xs);
-  color: var(--ink-soft);
-  pointer-events: none;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
 }
+
+.layers__row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-1);
+  padding: 2px 2px 2px var(--gap-1);
+  border-radius: var(--radius-s);
+}
+
+.layers__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+/* A hidden layer says so: the row goes as quiet as the layer has. */
+.layers__row--hidden .layers__name {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.layers__row--dimmed .layers__name { color: var(--ink-soft); }
+
+.layers__btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.layers__btn:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+/* The base layer has nothing under it to be shown instead, so its eye is dead. */
+.layers__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.layers__btn[aria-pressed="true"] { color: var(--ink); }
+
+/* Drawn rather than lettered: an eye open or struck through, and a half-filled
+   disc for dimming. currentColor, so the states above carry them. */
+.layers__eye::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px auto;
+  border: 1.5px solid currentcolor;
+  border-radius: 80% 10%;
+  transform: rotate(45deg);
+}
+
+.layers__eye[aria-pressed="false"]::before { border-style: dotted; }
+
+.layers__dim::before {
+  content: "";
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 2px auto;
+  border: 1.5px solid currentcolor;
+  border-radius: 50%;
+  background: linear-gradient(to right, currentcolor 50%, transparent 50%);
+}
+
+.layers__dim[aria-pressed="true"]::before { background: currentcolor; }
 
 /* --- domains ------------------------------------------------------------- */
 
@@ -101,6 +187,45 @@
   dominant-baseline: central;
   pointer-events: none;
 }
+
+/* --- touchpoints and actors ---------------------------------------------- */
+
+/* Both wear the palette and take the same snap points a capability does; what
+   sets them apart is their geometry — a rounded box, and a ringed figure. */
+.touchpoint,
+.actor { cursor: move; }
+
+.touchpoint--dragging,
+.actor--dragging { opacity: 0.85; }
+
+.touchpoint__box {
+  stroke: var(--capability-border);
+  stroke-width: var(--capability-border-width);
+}
+
+.touchpoint--selected .touchpoint__box,
+.actor--selected .actor__ring {
+  stroke: var(--selection);
+  stroke-opacity: 0.9;
+}
+
+/* See-through, so the terrain under an actor still reads: it stands on the map
+   rather than covering it. The rim is the edge its snap points sit on. */
+.actor__ring {
+  fill-opacity: 0.45;
+  stroke: var(--capability-border);
+  stroke-width: 2.5;
+}
+
+.actor__figure {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.actor__figure circle { fill: var(--ink); stroke: none; }
 
 /* --- capabilities -------------------------------------------------------- */
 
@@ -242,6 +367,10 @@
 
 .cap:hover .snap-hit,
 .cap--selected .snap-hit,
+.touchpoint:hover .snap-hit,
+.touchpoint--selected .snap-hit,
+.actor:hover .snap-hit,
+.actor--selected .snap-hit,
 .diagram[data-connecting="true"] .snap-hit { pointer-events: all; }
 
 .snap {
@@ -255,6 +384,10 @@
 
 .cap:hover .snap,
 .cap--selected .snap,
+.touchpoint:hover .snap,
+.touchpoint--selected .snap,
+.actor:hover .snap,
+.actor--selected .snap,
 .diagram[data-connecting="true"] .snap { opacity: 1; }
 
 .snap-point:hover .snap,

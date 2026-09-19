@@ -3,6 +3,7 @@
 
 import {
   store, selected, find, patchLocal, scopeOf, connectorLabel, slugFor, oneLine, withBreaks,
+  typesFor, layerByKey, layerOf,
 } from './store.js';
 import {
   COLORS, FONT_SIZES, CAPABILITY_FONT_SIZES, FONT_WEIGHTS, SIZE_SCALES, TITLE_SCALES,
@@ -51,7 +52,7 @@ function section(title, fields, key = title) {
   const isOpen = !editMode || opened.has(key);
 
   const heading = document.createElement(editMode ? 'button' : 'span');
-  heading.className = 'section__title';
+  heading.className = `section__title${editMode ? '' : ' section__title--static'}`;
   heading.textContent = title;
   if (editMode) {
     heading.type = 'button';
@@ -382,6 +383,67 @@ function checkbox(name, hint, checked, onChange) {
   return input;
 }
 
+/**
+ * The Type of an element: one of the choices its kind offers, with a box to
+ * add a new one. Each kind keeps its own list — a domain's types and a
+ * capability's are different vocabularies — and the lists live in the document
+ * beside the palette, so they travel with an export.
+ *
+ * Browsing shows the value and nothing to change it with, like every other
+ * field here.
+ */
+function typeField(kind, record) {
+  if (!editMode) return staticText(record.type || '—');
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'type-pick';
+
+  const choices = typesFor(kind);
+  // A value whose choice has gone (a hand-edited file, say) still shows: the
+  // panel says what the record holds, never quietly a different thing.
+  const options = [{ value: '', label: '—' }, ...choices.map((one) => ({ value: one, label: one }))];
+  if (record.type && !choices.includes(record.type)) {
+    options.push({ value: record.type, label: `${record.type} (not in the list)` });
+  }
+
+  const picker = select(options, record.type ?? '', (value) => patch(kind, record, { type: value }));
+  picker.classList.add('type-pick__choice');
+
+  // Adding a choice and picking it are one gesture: what you have just named is
+  // what you meant this element to be.
+  const adding = document.createElement('input');
+  adding.className = 'field__input type-pick__new';
+  adding.placeholder = 'Add a type…';
+  adding.maxLength = 60;
+  adding.title = 'Type a new choice and press Enter';
+
+  const add = () => {
+    const wanted = adding.value.trim();
+    if (!wanted) return;
+    adding.value = '';
+    handlers.onAddType?.(kind, wanted, record.id);
+  };
+  adding.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    add();
+  });
+  adding.addEventListener('blur', add);
+
+  // Taking a choice off the list. It is refused while anything is typed with
+  // it, and says how many — nothing is cleared behind the author's back.
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'btn btn--icon type-pick__remove';
+  remove.textContent = '−';
+  remove.title = 'Remove the selected type from the list';
+  remove.disabled = !record.type || !choices.includes(record.type);
+  remove.addEventListener('click', () => handlers.onRemoveType?.(kind, record.type));
+
+  wrapper.append(picker, remove, adding);
+  return wrapper;
+}
+
 /** A value to read rather than edit. */
 function staticText(value) {
   const element = document.createElement('div');
@@ -390,9 +452,11 @@ function staticText(value) {
   return element;
 }
 
-/** Domain titles are bold by default; capability labels are not. */
+/** A domain title is bold by default; every label on a shape is not. */
+const onAShape = (type) => type === 'capability' || type === 'touchpoint' || type === 'actor';
+
 const weightDefault = (type) =>
-  (type === 'capability' ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT);
+  (onAShape(type) ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT);
 
 function weightField(type, record) {
   return field('Weight', select(
@@ -403,11 +467,11 @@ function weightField(type, record) {
 }
 
 function fontSizeField(type, record) {
-  const sizes = type === 'capability' ? CAPABILITY_FONT_SIZES : FONT_SIZES;
+  const sizes = onAShape(type) ? CAPABILITY_FONT_SIZES : FONT_SIZES;
 
   return field('Font size', select(
     sizes.map((size) => ({ value: size, label: `${size} px` })),
-    record.fontSize ?? (type === 'capability' ? DEFAULT_FONT_SIZE : undefined),
+    record.fontSize ?? (onAShape(type) ? DEFAULT_FONT_SIZE : undefined),
     (value) => patch(type, record, { fontSize: Number(value) }),
   ), { inline: true });
 }
@@ -417,6 +481,10 @@ const timesLabel = (value) => `${Number(value.toFixed(2))}x`;
 
 /** What the permalink for this record looks like — the slug, not the raw id. */
 const slugOf = (type, record) => slugFor(type, record.id) ?? '—';
+
+/** The layer the selection sits on, named as the layer control names it. */
+const layerNameOf = (type, record) =>
+  layerByKey(layerOf(type, record))?.title ?? '—';
 
 /** Read-only facts about the selection, set apart below its fields. */
 function meta(lines) {
@@ -436,13 +504,20 @@ function meta(lines) {
  * label, `trail` facts at the foot.
  * Headed by what the selection is, but opened and shut as one panel for both.
  */
+const HEADINGS = {
+  domain: 'Domain',
+  capability: 'Capability',
+  touchpoint: 'Touchpoint',
+  actor: 'Actor',
+};
+
 function metadataSection(type, record, { lead = [], trail = [] }) {
   // The slug is made from the title, so it follows the title as it is typed —
   // the panel itself is not rebuilt mid-edit.
   const label = staticText(slugOf(type, record));
   const refreshLabel = () => { label.textContent = slugOf(type, record); };
 
-  return section(type === 'capability' ? 'Capability' : 'Domain', [
+  return section(HEADINGS[type] ?? 'Element', [
     field('Label', label),
     ...lead,
     // A domain title can carry the breaks Ctrl-Enter puts in it on the shape.
@@ -453,9 +528,14 @@ function metadataSection(type, record, { lead = [], trail = [] }) {
     })),
     field('Description', liveText(type, record, 'description', { multiline: true })),
     field('Owner', liveText(type, record, 'owner')),
+    // What kind of thing this is, from the list its kind keeps.
+    field('Type', typeField(type, record)),
     // An icon says what a capability *is*, so it belongs with its name rather
-    // than among the controls for how it is drawn.
-    ...(type === 'capability' ? [field('Icon', iconField(type, record))] : []),
+    // than among the controls for how it is drawn. Browsing has nothing to
+    // choose with, so the picker is not shown at all.
+    ...(editMode && (type === 'capability' || type === 'touchpoint')
+      ? [field('Icon', iconField(type, record))]
+      : []),
     ...(trail.length ? [meta(trail)] : []),
   ], 'Metadata');
 }
@@ -494,9 +574,27 @@ export function renderDetails() {
       ), { inline: true }),
       field('Color', swatches(type, record)),
     ]));
+  } else if (type === 'touchpoint' || type === 'actor') {
+    // Neither belongs to a domain, so what frames it is the layer it is on.
+    nodes.push(metadataSection(type, record, {
+      lead: [field('Layer', staticText(layerNameOf(type, record)))],
+    }));
+    nodes.push(section('Shape', [
+      fontSizeField(type, record),
+      weightField(type, record),
+      field('Shape size', select(
+        SIZE_SCALES.map((value) => ({ value, label: timesLabel(value) })),
+        record.sizeScale ?? 1,
+        (value) => patch(type, record, { sizeScale: Number(value) }),
+      ), { inline: true }),
+      field('Color', swatches(type, record)),
+    ]));
   } else if (type === 'domain') {
     const count = store.capabilities.filter((c) => c.domainId === record.id).length;
-    nodes.push(metadataSection(type, record, { trail: [`Capabilities: ${count}`] }));
+    nodes.push(metadataSection(type, record, {
+      lead: [field('Layer', staticText(layerNameOf(type, record)))],
+      trail: [`Capabilities: ${count}`],
+    }));
     nodes.push(section('Shape', [
       fontSizeField(type, record),
       weightField(type, record),
@@ -527,11 +625,14 @@ export function renderDetails() {
     // belongs to no one domain, and says so rather than leaving the row out:
     // the field is then in the same place whichever line is selected.
     const home = internal
-      ? find('domain', find('capability', record.fromCapabilityId)?.domainId)
+      ? find('domain', find('capability', record.fromId)?.domainId)
       : null;
     nodes.push(section(internal ? 'Domain connector' : 'Public connector', [
       field('Label', staticText(connectorLabel(record))),
       field('Domain', staticText(internal ? home?.title ?? '—' : 'Across domains')),
+      // A line belongs to the topmost layer it touches, which is the layer that
+      // takes it away when it is hidden.
+      field('Layer', staticText(layerNameOf(type, record))),
       field('Description', liveText(type, record, 'description', { multiline: true })),
     ], 'Metadata'));
     nodes.push(section('Shape', [

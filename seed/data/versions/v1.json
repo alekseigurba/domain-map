@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "title": "Pay & Credit Domain",
   "palette": [
     "#86a27b",
@@ -27,11 +27,42 @@
     "#9f4e4e",
     "#d86161"
   ],
+  "layers": [
+    {
+      "key": "core",
+      "title": "Core Business Domains"
+    },
+    {
+      "key": "presentation",
+      "title": "Presentation"
+    }
+  ],
+  "types": {
+    "domain": [
+      "Core",
+      "Supporting"
+    ],
+    "capability": [
+      "Engine",
+      "System of record",
+      "Process"
+    ],
+    "touchpoint": [
+      "Customer channel",
+      "Merchant channel",
+      "Internal"
+    ],
+    "actor": [
+      "Customer",
+      "Partner",
+      "Internal"
+    ]
+  },
   "domains": [
     {
       "key": "customer-merchant-management",
       "title": "Customer\n& Merchant Management",
-      "shape": { "position": "4322,-1139", "titlePosition": "187,-18", "color": 3, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
+      "shape": { "position": "4322,-1139", "titlePosition": "265,-39", "color": 3, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
     },
     {
       "key": "credit-risk-assessment",
@@ -60,7 +91,7 @@
       "domain": "customer-merchant-management",
       "title": "Identity & Access",
       "description": "Handles user registration, authentication, permissions, and profile management for both consumers and merchants",
-      "shape": { "position": "193,199", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+      "shape": { "position": "224,177", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
     },
     {
       "key": "merchant-onboarding",
@@ -105,9 +136,9 @@
       "shape": { "position": "238,-117", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "order": 3 }
     },
     {
-      "key": "payment-authorization",
+      "key": "checkout-engine",
       "domain": "checkout-order-processing",
-      "title": "Payment Authorization",
+      "title": "Checkout Engine",
       "description": "Integrates into merchant websites via SDKs/APIs to offer BNPL payment options at the point of sale",
       "shape": { "position": "105,22", "color": 1, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 0 }
     },
@@ -175,6 +206,59 @@
       "shape": { "position": "73,-247", "color": 2, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "order": 3 }
     }
   ],
+  "touchpoints": [
+    {
+      "key": "checkout-widget",
+      "layer": "presentation",
+      "title": "Checkout\nwidget",
+      "type": "Customer channel",
+      "shape": { "position": "3165,-1557", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+    },
+    {
+      "key": "consumer-app",
+      "layer": "presentation",
+      "title": "Consumer app",
+      "type": "Customer channel",
+      "shape": { "position": "3866,-1576", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+    },
+    {
+      "key": "merchant-dashboard",
+      "layer": "presentation",
+      "title": "Merchant\ndashboard",
+      "type": "Merchant channel",
+      "shape": { "position": "4905,-818", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+    },
+    {
+      "key": "service-console",
+      "layer": "presentation",
+      "title": "Service console",
+      "type": "Internal",
+      "shape": { "position": "4834,-518", "color": 2, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "order": 0 }
+    }
+  ],
+  "actors": [
+    {
+      "key": "shopper",
+      "layer": "presentation",
+      "title": "Shopper",
+      "type": "Customer",
+      "shape": { "position": "3539,-1821", "color": 9, "size": 32, "weight": "regular", "scale": 1.2, "order": 0 }
+    },
+    {
+      "key": "merchant",
+      "layer": "presentation",
+      "title": "Merchant",
+      "type": "Partner",
+      "shape": { "position": "5232,-824", "color": 9, "size": 32, "weight": "regular", "scale": 1.4, "order": 0 }
+    },
+    {
+      "key": "support-agent",
+      "layer": "presentation",
+      "title": "Support agent",
+      "type": "Internal",
+      "shape": { "position": "5233,-519", "color": 9, "size": 32, "weight": "regular", "scale": 1.4, "order": 0 }
+    }
+  ],
   "connectors": [
     {
       "from": "fraud-detection",
@@ -195,7 +279,7 @@
       "anchored": false
     },
     {
-      "from": "payment-authorization",
+      "from": "checkout-engine",
       "to": "order-management",
       "description": "[The Core Purchase Path]  The checkout UI acts as the upstream feeder. It hands off finalized shopping carts to the Order Domain, which assumes ownership of the state machine (e.g., changing from Pending to Authorized).",
       "fromPoint": 8,
@@ -231,7 +315,7 @@
       "anchored": true
     },
     {
-      "from": "payment-authorization",
+      "from": "checkout-engine",
       "to": "underwriting-engine",
       "description": "[The Core Purchase Path] During checkout, the engine fires a blocking, synchronous request to the Underwriting and Fraud services. The transaction cannot proceed until Risk returns an approval or denial within a ~200ms SLA.",
       "fromPoint": 12,
@@ -240,7 +324,7 @@
       "anchored": false
     },
     {
-      "from": "payment-authorization",
+      "from": "checkout-engine",
       "to": "fraud-detection",
       "description": "[The Core Purchase Path] During checkout, the engine fires a blocking, synchronous request to the Underwriting and Fraud services. The transaction cannot proceed until Risk returns an approval or denial within a ~200ms SLA.",
       "fromPoint": 11,
@@ -304,7 +388,7 @@
     },
     {
       "from": "customer-profile",
-      "to": "payment-authorization",
+      "to": "checkout-engine",
       "description": "[Personalization & Auto-fill] To maximize conversion rates, the Checkout Engine queries the Customer Profile to pull saved shipping addresses, phone numbers, and preferred payment methods. This allows for a \"one-click\" checkout experience.",
       "fromPoint": 12,
       "toPoint": 0,
@@ -313,7 +397,7 @@
     },
     {
       "from": "customer-profile",
-      "to": "payment-authorization",
+      "to": "checkout-engine",
       "description": "[Personalization & Auto-fill] o maximize conversion rates, the Checkout Engine queries the Customer Profile to pull saved shipping addresses, phone numbers, and preferred payment methods. This allows for a \"one-click\" checkout experience.\n[Risk Mitigation] The Checkout Engine checks the historical tenure of the customer profile. A brand-new profile created 2 minutes ago triggers high-risk workflows, whereas a 5-year-old profile with a history of on-time payments bypasses heavy verification.",
       "fromPoint": 12,
       "toPoint": 0,
@@ -322,7 +406,7 @@
     },
     {
       "from": "merchant-onboarding",
-      "to": "payment-authorization",
+      "to": "checkout-engine",
       "description": "[Feature Flags & Branding] The Checkout UI dynamically adjusts based on the merchant’s profile. For example, it checks the merchant's contract to see if they support Pay-in-4, Long-term Financing (0% APR), or both, and displays the correct promotional messaging on the store's product page.",
       "fromPoint": 13,
       "toPoint": 1,
@@ -336,7 +420,11 @@
       "fromPoint": 9,
       "toPoint": 21,
       "lineStyle": "curved",
-      "anchored": true
+      "anchored": true,
+      "bendPoints": [
+        3865,
+        -613
+      ]
     },
     {
       "from": "merchant-onboarding",
@@ -346,6 +434,142 @@
       "toPoint": 18,
       "lineStyle": "straight",
       "anchored": false
+    },
+    {
+      "from": "shopper",
+      "fromKind": "actor",
+      "to": "consumer-app",
+      "toKind": "touchpoint",
+      "description": "The shopper browses plans, tracks instalments and pays early from the app.",
+      "fromPoint": 2,
+      "toPoint": 18,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "shopper",
+      "fromKind": "actor",
+      "to": "checkout-widget",
+      "toKind": "touchpoint",
+      "description": "At the merchant’s checkout, the shopper picks Pay in 4 and is underwritten in the widget.",
+      "fromPoint": 10,
+      "toPoint": 18,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "merchant",
+      "fromKind": "actor",
+      "to": "merchant-dashboard",
+      "toKind": "touchpoint",
+      "description": "The merchant reconciles settlements and reviews disputes from the dashboard.",
+      "fromPoint": 12,
+      "toPoint": 0,
+      "lineStyle": "curved",
+      "anchored": false
+    },
+    {
+      "from": "support-agent",
+      "fromKind": "actor",
+      "to": "service-console",
+      "toKind": "touchpoint",
+      "description": "Support answers customers from the console, with the account and its ledger beside them.",
+      "fromPoint": 12,
+      "toPoint": 0,
+      "lineStyle": "curved",
+      "anchored": false
+    },
+    {
+      "from": "checkout-widget",
+      "fromKind": "touchpoint",
+      "to": "checkout-engine",
+      "description": "Every checkout is authorized here before the shopper is told yes.",
+      "fromPoint": 5,
+      "toPoint": 14,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "checkout-widget",
+      "fromKind": "touchpoint",
+      "to": "fraud-detection",
+      "description": "Device and behavioural signals are scored while the widget is still open.",
+      "fromPoint": 7,
+      "toPoint": 22,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "consumer-app",
+      "fromKind": "touchpoint",
+      "to": "identity-access",
+      "description": "Sign-in, profile and permissions for the consumer.",
+      "fromPoint": 4,
+      "toPoint": 14,
+      "lineStyle": "curved",
+      "anchored": true,
+      "bendPoints": [
+        4072,
+        -1391,
+        4361,
+        -1169
+      ]
+    },
+    {
+      "from": "consumer-app",
+      "fromKind": "touchpoint",
+      "to": "loan-management",
+      "description": "Instalments are paid, rescheduled and settled from the app.",
+      "fromPoint": 7,
+      "toPoint": 22,
+      "lineStyle": "curved",
+      "anchored": true,
+      "bendPoints": [
+        3996,
+        -1166,
+        3869,
+        -745
+      ]
+    },
+    {
+      "from": "merchant-dashboard",
+      "fromKind": "touchpoint",
+      "to": "merchant-onboarding",
+      "description": "Onboarding, contracts and store configuration.",
+      "fromPoint": 13,
+      "toPoint": 0,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "merchant-dashboard",
+      "fromKind": "touchpoint",
+      "to": "merchant-settlement",
+      "description": "What the merchant is owed, and when it lands.",
+      "fromPoint": 11,
+      "toPoint": 23,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "service-console",
+      "fromKind": "touchpoint",
+      "to": "customer-profile",
+      "description": "The account as support sees it.",
+      "fromPoint": 13,
+      "toPoint": 3,
+      "lineStyle": "curved",
+      "anchored": true
+    },
+    {
+      "from": "service-console",
+      "fromKind": "touchpoint",
+      "to": "dispute-refund-management",
+      "description": "Disputes are raised and worked from the console.",
+      "fromPoint": 11,
+      "toPoint": 23,
+      "lineStyle": "curved",
+      "anchored": true
     }
   ]
 }

@@ -27,7 +27,6 @@
     "scaffold",
     "seed",
     "tests",
-    "BRANDING.md",
     "CHANGELOG.md",
     "LICENSE",
     "design-system.md",
@@ -35,7 +34,7 @@
   ],
   "scripts": {
     "start": "node --env-file=dev.env scripts/serve.mjs app 8000",
-    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/auth.test.mjs && node tests/versions.test.mjs"
+    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/layers.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/auth.test.mjs && node tests/versions.test.mjs"
   },
   "dependencies": {
     "pg": "8.23.0"

@@ -6,8 +6,12 @@ import {
   connectorLabel, oneLine,
   createDomain, updateDomain, deleteDomain,
   createCapability, updateCapability, deleteCapability,
+  createTouchpoint, updateTouchpoint, deleteTouchpoint,
+  createActor, updateActor, deleteActor,
   createConnector as addConnector, updateConnector, deleteConnector,
   restore, updateMap,
+  layerStack, layerByKey, layerState, setLayerState, resetLayerState,
+  addTypeChoice, removeTypeChoice, setTypeChoices, typesFor,
 } from './store.js';
 import { fromDocument, toDocument, stringify, validate } from './document.js';
 import * as files from './files.js';
@@ -29,9 +33,11 @@ import { loadIcons } from './icons.js';
 import {
   CAPABILITY_FONT_SIZES, SIZE_SCALES, OVAL_STRETCHES, DEFAULT_FONT_SIZE, DEFAULT_FONT_WEIGHT,
   DEFAULT_CAPABILITY_FONT_WEIGHT, DEFAULT_STRETCH, DOMAIN_GAP,
-  capabilitySize, layoutDomain, newLobeSpot, setPalette, swatchFor,
+  capabilitySize, sizeOf, layoutDomain, newLobeSpot, setPalette, swatchFor,
 } from './geometry.js';
-import { DOMAIN_SHAPE, CAPABILITY_SHAPE } from './defaults.js';
+import {
+  DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE, HOME_LAYER,
+} from './defaults.js';
 import * as undoStack from './history.js';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
@@ -39,7 +45,8 @@ const SETTINGS_KEY = 'data/settings.json';
 
 const statusBar = document.getElementById('status');
 const statsBar = document.getElementById('stats');
-const hint = document.getElementById('hint');
+const layerControl = document.getElementById('layer-control');
+const layerPick = document.getElementById('layer-pick');
 const main = document.querySelector('.main');
 
 let syncingHash = false;
@@ -144,9 +151,9 @@ function applyEditMode() {
   document.getElementById('menu-actions').hidden = !editMode;
   document.getElementById('details-actions').hidden = !editMode;
   document.getElementById('import-map').disabled = !editMode;
-  if (editMode) hint.textContent = 'Drag to pan · scroll to zoom · click a connection point to start a connector';
-  else if (isOwner()) hint.textContent = 'Drag to pan · scroll to zoom · press Edit to make changes';
-  else hint.textContent = 'Drag to pan · scroll to zoom';
+  // The layer picker only means anything while something can be added.
+  document.getElementById('layer-pick-field').hidden = !editMode;
+  renderLayerControl();
   showSaveState();
   showSelectionActions();
 }
@@ -154,8 +161,13 @@ function applyEditMode() {
 function setEditMode(next) {
   if (editMode === next) return;
   editMode = next;
-  if (editMode) undoStack.mark(EDIT_MARK);
-  else closeKebab();
+  if (editMode) {
+    undoStack.mark(EDIT_MARK);
+    // The layer control writes the document from here on, so anything this tab
+    // was hiding for its own sake goes back to what the map says — otherwise
+    // the control would be writing one thing and showing another.
+    resetLayerState();
+  } else closeKebab();
   setDiagramEditMode(editMode);
   setDetailsEditMode(editMode);
   applyEditMode();
@@ -592,8 +604,12 @@ function keepSession() {
         map: {
           title: store.title,
           palette: store.palette,
+          layers: store.layers,
+          types: store.types,
           domains: store.domains,
           capabilities: store.capabilities,
+          touchpoints: store.touchpoints,
+          actors: store.actors,
           connectors: store.connectors,
         },
         history: undoStack.kept(),
@@ -693,12 +709,16 @@ async function applySettings() {
 const writerFor = {
   capability: updateCapability,
   domain: updateDomain,
+  touchpoint: updateTouchpoint,
+  actor: updateActor,
   connector: updateConnector,
 };
 
 const removerFor = {
   capability: deleteCapability,
   domain: deleteDomain,
+  touchpoint: deleteTouchpoint,
+  actor: deleteActor,
   connector: deleteConnector,
 };
 
@@ -717,6 +737,8 @@ function applyUndo(calls) {
     else if (call.op === 'delete') removerFor[call.type]?.(call.id);
     else if (call.op === 'restore') restore(call.removed);
     else if (call.op === 'palette') usePalette(call.palette);
+    else if (call.op === 'types') setTypeChoices(call.kind, call.choices);
+    else if (call.op === 'layer') setLayerState(call.key, call.state, { saved: true });
   }
 }
 
@@ -734,6 +756,117 @@ function patch(type, id, body, label = 'Saving') {
   return run(label, () => write(id, body));
 }
 
+// --- the layer control -------------------------------------------------------
+
+// The corner the "Drag to pan…" line used to hold. One row per layer, topmost
+// first, because that is the order they are stacked in on the map.
+//
+// What it writes depends on the mode. Browsing, it changes this tab and nothing
+// else — reading a map never edits it. In Edit mode it writes the document, so
+// what an owner leaves showing is what the map opens at once it is published.
+
+/** Which layer a new shape lands on. Reset to each kind's own home as it is used. */
+let addingTo = null;
+
+/** "capability" does not take an -s, so the plurals are written down. */
+const PLURALS = {
+  domain: 'domains',
+  capability: 'capabilities',
+  touchpoint: 'touchpoints',
+  actor: 'actors',
+};
+
+/** "1 capability", "3 capabilities" — a count and the thing it counts. */
+const counted = (kind, howMany) =>
+  `${howMany} ${howMany === 1 ? kind : PLURALS[kind] ?? `${kind}s`}`;
+
+/**
+ * Change a layer's state. Browsing, that is this tab's business and nothing
+ * else's. In Edit mode it is a change to the map, so it goes down as one:
+ * recorded for Ctrl-Z, and unwound by Cancel along with everything else.
+ */
+function changeLayer(key, changes) {
+  if (!editMode) return setLayerState(key, changes);
+
+  const was = layerState(key);
+  undoStack.record('Changing a layer',
+    [{ op: 'layer', key, state: { hidden: was.hidden, dimmed: was.dimmed } }]);
+  return setLayerState(key, changes, { saved: true });
+}
+
+function layerButton(className, label, pressed, onClick, { disabled = false } = {}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `layers__btn ${className}`;
+  button.title = label;
+  button.setAttribute('aria-label', label);
+  button.setAttribute('aria-pressed', String(pressed));
+  button.disabled = disabled;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function renderLayerControl() {
+  const stack = layerStack();
+  const rows = [];
+
+  // Topmost first: the control reads the way the map is stacked, from the top
+  // of the pile down.
+  for (const layer of [...stack].reverse()) {
+    const row = document.createElement('div');
+    row.className = `layers__row${layer.hidden ? ' layers__row--hidden' : ''}`
+      + `${layer.dimmed ? ' layers__row--dimmed' : ''}`;
+
+    const name = document.createElement('span');
+    name.className = 'layers__name';
+    name.textContent = layer.title;
+    row.appendChild(name);
+
+    // Nothing sits under the base layer, so hiding it would leave an empty
+    // stage. It dims instead, which is the whole point of dimming.
+    row.appendChild(layerButton(
+      'layers__dim', `Dim ${layer.title}`, layer.dimmed,
+      () => changeLayer(layer.key, { dimmed: !layer.dimmed })));
+
+    row.appendChild(layerButton(
+      'layers__eye', layer.hidden ? `Show ${layer.title}` : `Hide ${layer.title}`, !layer.hidden,
+      () => changeLayer(layer.key, { hidden: !layer.hidden }),
+      { disabled: layer.base }));
+
+    rows.push(row);
+  }
+
+  layerControl.replaceChildren(...rows);
+  renderLayerPick();
+}
+
+/** The options of the "Add to" picker, from the map's own stack. */
+function renderLayerPick() {
+  if (!layerPick) return;
+  const stack = layerStack();
+  const wanted = stack.some((layer) => layer.key === addingTo) ? addingTo : null;
+
+  layerPick.replaceChildren(...stack.map((layer) => {
+    const option = document.createElement('option');
+    option.value = layer.key;
+    option.textContent = layer.title;
+    option.selected = layer.key === wanted;
+    return option;
+  }));
+  if (wanted) layerPick.value = wanted;
+}
+
+/**
+ * The layer a new shape of this kind goes on: whatever the picker has been set
+ * to, or the kind's own home — the base layer for a domain or a capability,
+ * Presentation for a touchpoint or an actor.
+ */
+function layerFor(kind) {
+  if (addingTo && layerByKey(addingTo)) return addingTo;
+  const home = HOME_LAYER[kind];
+  return layerByKey(home) ? home : store.layers[0]?.key ?? null;
+}
+
 // --- placing new shapes ------------------------------------------------------
 
 /**
@@ -748,7 +881,9 @@ function patch(type, id, body, label = 'Saving') {
  * @param halfWidth how far the new shape reaches from its own centre
  */
 function freeSpot(halfWidth = 0, gap = DOMAIN_GAP) {
-  if (store.domains.length === 0 && store.capabilities.length === 0) return viewportCenter();
+  const empty = store.domains.length === 0 && store.capabilities.length === 0
+    && store.touchpoints.length === 0 && store.actors.length === 0;
+  if (empty) return viewportCenter();
 
   const bounds = contentBounds();
   return {
@@ -780,6 +915,21 @@ const capabilityLook = () => ({
   stretch: CAPABILITY_SHAPE.stretch,
 });
 
+const touchpointLook = () => ({
+  colorIndex: swatchFor(TOUCHPOINT_SHAPE.color),
+  fontSize: TOUCHPOINT_SHAPE.fontSize,
+  fontWeight: TOUCHPOINT_SHAPE.fontWeight,
+  sizeScale: TOUCHPOINT_SHAPE.sizeScale,
+  stretch: TOUCHPOINT_SHAPE.stretch,
+});
+
+const actorLook = () => ({
+  colorIndex: swatchFor(ACTOR_SHAPE.color),
+  fontSize: ACTOR_SHAPE.fontSize,
+  fontWeight: ACTOR_SHAPE.fontWeight,
+  sizeScale: ACTOR_SHAPE.sizeScale,
+});
+
 async function addDomain() {
   // How wide an empty domain draws, so it sits *beside* the map rather than
   // with its left half over it.
@@ -788,6 +938,7 @@ async function addDomain() {
   const created = await run('Adding domain', () => createDomain({
     title: DOMAIN_SHAPE.title,
     ...domainLook(),
+    layer: layerFor('domain'),
     x: spot.x,
     y: spot.y,
   }));
@@ -839,6 +990,9 @@ async function addCapability(domainId = null, { keepSelection = false, over = nu
     title: CAPABILITY_SHAPE.title,
     ...capabilityLook(),
     ...(home ? { colorIndex: home.colorIndex } : {}),
+    // A capability in a domain is on that domain's layer: the lobe and the blob
+    // it is cut into cannot come apart.
+    layer: home ? home.layer : layerFor('capability'),
     ...place,
   }));
   if (created) {
@@ -848,6 +1002,33 @@ async function addCapability(domainId = null, { keepSelection = false, over = nu
     // Loose on the map it may have landed out of sight; anywhere else it is
     // right beside what was selected.
     if (!created.domainId && !over) centerOn('capability', created.id);
+  }
+}
+
+/**
+ * A touchpoint or an actor lands clear of everything already on the map, on the
+ * layer the picker names — Presentation unless it has been changed. Neither
+ * belongs to a domain, so there is no lobe to find it a seat in.
+ */
+async function addElement(kind) {
+  const shape = kind === 'touchpoint' ? TOUCHPOINT_SHAPE : ACTOR_SHAPE;
+  const look = kind === 'touchpoint' ? touchpointLook() : actorLook();
+  const create = kind === 'touchpoint' ? createTouchpoint : createActor;
+
+  const spot = freeSpot(sizeOf(kind, shape).rx);
+  const label = `Adding ${kind === 'touchpoint' ? 'a touchpoint' : 'an actor'}`;
+  const created = await run(label, () => create({
+    title: shape.title,
+    ...look,
+    layer: layerFor(kind),
+    x: spot.x,
+    y: spot.y,
+  }));
+
+  if (created) {
+    undoStack.record(label, [undoDelete(kind, created.id)]);
+    select(kind, created.id);
+    centerOn(kind, created.id);
   }
 }
 
@@ -1065,7 +1246,8 @@ function openKebab(domainId) {
 
 /** `#/capability/payment-authorization` — the title, normalized, not the id. */
 function parseHash() {
-  const match = /^#\/(domain|capability|connector)\/([a-z0-9-]+)$/.exec(location.hash);
+  const match = /^#\/(domain|capability|touchpoint|actor|connector)\/([a-z0-9-]+)$/
+    .exec(location.hash);
   return match ? { type: match[1], slug: match[2] } : null;
 }
 
@@ -1105,6 +1287,8 @@ let lastSelectionId = null;
 const DELETE_LABELS = {
   domain: 'Delete domain',
   capability: 'Delete capability',
+  touchpoint: 'Delete touchpoint',
+  actor: 'Delete actor',
   connector: 'Delete connector',
 };
 
@@ -1158,8 +1342,14 @@ function renderAll(reason) {
   renderMenu();
   if (reason !== 'live') renderDetails();
   renderPalette();
-  statsBar.textContent =
-    `${store.domains.length} domains · ${store.capabilities.length} capabilities · ${store.connectors.length} connectors`;
+  renderLayerControl();
+  statsBar.textContent = [
+    `${store.domains.length} domains`,
+    `${store.capabilities.length} capabilities`,
+    ...(store.touchpoints.length ? [`${store.touchpoints.length} touchpoints`] : []),
+    ...(store.actors.length ? [`${store.actors.length} actors`] : []),
+    `${store.connectors.length} connectors`,
+  ].join(' · ');
   showSelectionActions();
   writeHash();
 }
@@ -1238,6 +1428,29 @@ initDetails({
   onIcons: files.listIcons,
   onIconUpload: files.saveIcon,
   iconUrl: files.iconUrl,
+  // Naming a new Type and giving it to the selection are one gesture: what you
+  // have just named is what you meant this element to be.
+  onAddType: async (kind, choice, id) => {
+    const before = [...typesFor(kind)];
+    const added = addTypeChoice(kind, choice);
+    if (!added) return;
+    undoStack.record('Adding a type', [{ op: 'types', kind, choices: before }]);
+    if (id) await patch(kind, id, { type: added }, 'Adding a type');
+    else status(`Added the type "${added}"`);
+  },
+  // A choice in use stays. Nothing is cleared behind the author's back; the
+  // count is the thing to go and change first.
+  onRemoveType: (kind, choice) => {
+    const before = [...typesFor(kind)];
+    const { removed, used } = removeTypeChoice(kind, choice);
+    if (removed) {
+      undoStack.record('Removing a type', [{ op: 'types', kind, choices: before }]);
+      status(`Removed the type "${choice}"`);
+      return;
+    }
+    status(`${counted(kind, used)} ${used === 1 ? 'uses' : 'use'} "${choice}", `
+      + 'so it stays in the list.', true);
+  },
 });
 
 initPalette({
@@ -1284,29 +1497,44 @@ initDiagram({
   // Moved by hand, so the line keeps the point it was put on.
   // An end carries its capability with it when it is dropped on another shape;
   // a null id leaves it on the one it was already on.
-  moveConnectorEnd: (id, end, index, capabilityId) => patch(
+  moveConnectorEnd: (id, end, index, targetId, targetKind) => patch(
     'connector',
     id,
     end === 'from'
-      ? { fromPoint: index, fromCapabilityId: capabilityId ?? undefined, anchored: true }
-      : { toPoint: index, toCapabilityId: capabilityId ?? undefined, anchored: true },
+      ? {
+        fromPoint: index,
+        fromId: targetId ?? undefined,
+        fromKind: targetId ? targetKind : undefined,
+        anchored: true,
+      }
+      : {
+        toPoint: index,
+        toId: targetId ?? undefined,
+        toKind: targetId ? targetKind : undefined,
+        anchored: true,
+      },
     'Moving the line end'),
   // Shaped by hand, so the line keeps the bends it was given.
   shapeConnector: (id, bendPoints) => patch(
     'connector', id, { bendPoints, anchored: true }, 'Bending the line'),
   openKebab,
-  createConnector: async (fromId, fromPoint, toId, toPoint) => {
+  moveElement: (kind, id, x, y) => patch(kind, id, { x, y }, 'Moving'),
+  createConnector: async (from, to) => {
     // A line inside one domain is short and reads better straight; one that
-    // crosses a boundary has ground to cover, so it bows out of the way.
-    const from = find('capability', fromId);
-    const to = find('capability', toId);
-    const internal = from?.domainId && from.domainId === to?.domainId;
+    // crosses a boundary has ground to cover, so it bows out of the way. Only
+    // two capabilities in the same domain can be inside one.
+    const fromRecord = find(from.kind, from.id);
+    const toRecord = find(to.kind, to.id);
+    const internal = from.kind === 'capability' && to.kind === 'capability'
+      && fromRecord?.domainId && fromRecord.domainId === toRecord?.domainId;
 
     const created = await run('Connecting', () => addConnector({
-      fromCapabilityId: fromId,
-      fromPoint,
-      toCapabilityId: toId,
-      toPoint,
+      fromId: from.id,
+      fromKind: from.kind,
+      fromPoint: from.point,
+      toId: to.id,
+      toKind: to.kind,
+      toPoint: to.point,
       lineStyle: internal ? 'straight' : 'curved',
     }));
     if (created) undoStack.record('Connecting', [undoDelete('connector', created.id)]);
@@ -1327,6 +1555,9 @@ window.addEventListener('beforeunload', (event) => {
 document.getElementById('add-domain').addEventListener('click', addDomain);
 document.getElementById('collapse-all').addEventListener('click', () => collapseAll());
 document.getElementById('add-capability').addEventListener('click', addCapabilityHere);
+document.getElementById('add-touchpoint').addEventListener('click', () => addElement('touchpoint'));
+document.getElementById('add-actor').addEventListener('click', () => addElement('actor'));
+layerPick.addEventListener('change', () => { addingTo = layerPick.value || null; });
 document.getElementById('delete-selected').addEventListener('click', deleteSelection);
 resetShapesButton.addEventListener('click', () => {
   if (store.selection.type === 'domain') resetShapes(store.selection.id);
@@ -1479,12 +1710,17 @@ window.addEventListener('keydown', async (event) => {
 
   const { type, id } = store.selection;
   const record = type ? find(type, id) : null;
+  // A touchpoint and an actor carry the same type, size and colour a capability
+  // does, so the shape keys reach all three. An actor is the one exception:
+  // it is a circle, so there is nothing for the lean keys to do to it.
+  const onAShape = type === 'capability' || type === 'touchpoint' || type === 'actor';
+  const pickShape = () => status('Pick a capability, touchpoint or actor first.', true);
 
   // Cmd/Ctrl-B, the way it works everywhere else.
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
     event.preventDefault();
-    if (type !== 'domain' && type !== 'capability') return status('Pick a shape first.', true);
-    const fallback = type === 'capability' ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT;
+    if (type !== 'domain' && !onAShape) return status('Pick a shape first.', true);
+    const fallback = onAShape ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT;
     const bold = (record.fontWeight ?? fallback) === 'bold';
     patch(type, id, { fontWeight: bold ? 'regular' : 'bold' }, bold ? 'Unbolding' : 'Bolding');
     return;
@@ -1493,8 +1729,8 @@ window.addEventListener('keydown', async (event) => {
   // Ctrl with plus or minus steps a capability through its own type scale.
   if ((event.metaKey || event.ctrlKey) && ['+', '=', '-', '_'].includes(event.key)) {
     event.preventDefault();
-    if (type !== 'capability') return status('Pick a capability first.', true);
-    stepFontSize(record, event.key === '-' || event.key === '_' ? -1 : 1);
+    if (!onAShape) return pickShape();
+    stepFontSize(type, record, event.key === '-' || event.key === '_' ? -1 : 1);
     return;
   }
 
@@ -1503,8 +1739,8 @@ window.addEventListener('keydown', async (event) => {
   // are what actually arrive; the other two cover the layouts where they do not.
   if (event.shiftKey && !event.altKey && ['+', '=', '-', '_'].includes(event.key)) {
     event.preventDefault();
-    if (type !== 'capability') return status('Pick a capability first.', true);
-    stepSizeScale(record, event.key === '-' || event.key === '_' ? -1 : 1);
+    if (!onAShape) return pickShape();
+    stepSizeScale(type, record, event.key === '-' || event.key === '_' ? -1 : 1);
     return;
   }
 
@@ -1516,8 +1752,10 @@ window.addEventListener('keydown', async (event) => {
   const lean = { '<': -1, '>': 1 }[event.key] ?? { Comma: -1, Period: 1 }[event.code];
   if ((event.metaKey || event.ctrlKey) && lean) {
     event.preventDefault();
-    if (type !== 'capability') return status('Pick a capability first.', true);
-    stepStretch(record, lean);
+    // An actor is a circle: there is no lean to step.
+    if (type !== 'capability' && type !== 'touchpoint')
+      return status('Pick a capability or a touchpoint first.', true);
+    stepStretch(type, record, lean);
     return;
   }
 
@@ -1537,30 +1775,30 @@ window.addEventListener('keydown', async (event) => {
   }
 });
 
-/** One step along the capability type scale, stopping at either end. */
-function stepFontSize(capability, direction) {
+/** One step along the shape type scale, stopping at either end. */
+function stepFontSize(type, record, direction) {
   const sizes = CAPABILITY_FONT_SIZES;
-  const now = sizes.indexOf(capability.fontSize ?? DEFAULT_FONT_SIZE);
+  const now = sizes.indexOf(record.fontSize ?? DEFAULT_FONT_SIZE);
   const next = sizes[Math.min(sizes.length - 1, Math.max(0, (now < 0 ? 1 : now) + direction))];
-  if (next === capability.fontSize) return status(direction > 0 ? 'Largest already' : 'Smallest already');
-  patch('capability', capability.id, { fontSize: next }, 'Resizing the type');
+  if (next === record.fontSize) return status(direction > 0 ? 'Largest already' : 'Smallest already');
+  patch(type, record.id, { fontSize: next }, 'Resizing the type');
 }
 
 /** One step along the shape scale — the oval itself, not the type in it. */
-function stepSizeScale(capability, direction) {
-  const now = SIZE_SCALES.indexOf(capability.sizeScale ?? 1);
+function stepSizeScale(type, record, direction) {
+  const now = SIZE_SCALES.indexOf(record.sizeScale ?? 1);
   const next = SIZE_SCALES[Math.min(SIZE_SCALES.length - 1, Math.max(0, (now < 0 ? 0 : now) + direction))];
-  if (next === capability.sizeScale) return status(direction > 0 ? 'Largest already' : 'Smallest already');
-  patch('capability', capability.id, { sizeScale: next }, 'Resizing the shape');
+  if (next === record.sizeScale) return status(direction > 0 ? 'Largest already' : 'Smallest already');
+  patch(type, record.id, { sizeScale: next }, 'Resizing the shape');
 }
 
-/** One step between tall and wide — which way the oval leans, not how big it is. */
-function stepStretch(capability, direction) {
-  const at = OVAL_STRETCHES.indexOf(capability.stretch ?? DEFAULT_STRETCH);
+/** One step between tall and wide — which way the shape leans, not how big it is. */
+function stepStretch(type, record, direction) {
+  const at = OVAL_STRETCHES.indexOf(record.stretch ?? DEFAULT_STRETCH);
   const now = at < 0 ? OVAL_STRETCHES.indexOf(DEFAULT_STRETCH) : at;
   const next = Math.min(OVAL_STRETCHES.length - 1, Math.max(0, now + direction));
   if (next === now) return status(direction > 0 ? 'Widest already' : 'Tallest already');
-  patch('capability', capability.id, { stretch: OVAL_STRETCHES[next] },
+  patch(type, record.id, { stretch: OVAL_STRETCHES[next] },
     direction > 0 ? 'Widening the shape' : 'Narrowing the shape');
 }
 
