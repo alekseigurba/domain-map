@@ -25,7 +25,7 @@
     "#a85bad",
     "#f1982b",
     "#9f4e4e",
-    "#f56747"
+    "#d86161"
   ],
   "layers": [
     {
@@ -36,16 +36,37 @@
       "hidden": true
     }
   ],
+  "types": {
+    "domain": [
+      "Core",
+      "Supporting"
+    ],
+    "capability": [
+      "Engine",
+      "System of record",
+      "Process"
+    ],
+    "touchpoint": [
+      "Customer channel",
+      "Merchant channel",
+      "Internal"
+    ],
+    "actor": [
+      "Customer",
+      "Partner",
+      "Internal"
+    ]
+  },
   "domains": [
     {
       "key": "customer-merchant-management",
       "title": "Customer\n& Merchant Management",
-      "shape": { "position": "4400,-1201", "titlePosition": "234,-2", "color": 3, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
+      "shape": { "position": "4322,-1139", "titlePosition": "265,-39", "color": 3, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
     },
     {
       "key": "credit-risk-assessment",
       "title": "Credit & Risk\nAssessment",
-      "shape": { "position": "2688,-1112", "titlePosition": "73,-354", "color": 9, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 824, "opacity": 20 }
+      "shape": { "position": "2733,-991", "titlePosition": "-152,-19", "color": 9, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 824, "opacity": 20 }
     },
     {
       "key": "checkout-order-processing",
@@ -55,12 +76,12 @@
     {
       "key": "treasury-merchant-settlements",
       "title": "Treasury &\nMerchant\nSettlements",
-      "shape": { "position": "4318,-313", "titlePosition": "147,175", "color": 5, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 605, "opacity": 20 }
+      "shape": { "position": "4201,-279", "titlePosition": "112,159", "color": 5, "size": 48, "weight": "regular", "titleScale": 1, "titleWidth": 605, "opacity": 20 }
     },
     {
       "key": "core-ledger-repayment",
       "title": "Core Ledger & Repayment",
-      "shape": { "position": "3234,-72", "titlePosition": "-247,40", "color": 2, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
+      "shape": { "position": "3302,-137", "titlePosition": "-247,40", "color": 2, "size": 48, "weight": "regular", "titleScale": 1, "opacity": 20 }
     }
   ],
   "capabilities": [
@@ -69,7 +90,7 @@
       "domain": "customer-merchant-management",
       "title": "Identity & Access",
       "description": "Handles user registration, authentication, permissions, and profile management for both consumers and merchants",
-      "shape": { "position": "193,199", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
+      "shape": { "position": "224,177", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "merchant-onboarding",
@@ -83,14 +104,14 @@
       "domain": "customer-merchant-management",
       "title": "Customer Profile",
       "description": "Maintains customer states, payment history, saved cards, and preferences",
-      "shape": { "position": "-95,-11", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
+      "shape": { "position": "-112,4", "color": 3, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "kyc-aml-compliance",
       "domain": "credit-risk-assessment",
       "title": "KYC / AML Compliance",
       "description": "Validates user identity (Know Your Customer) and runs Anti-Money Laundering checks during onboarding",
-      "shape": { "position": "-218,145", "color": 9, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 0 }
+      "shape": { "position": "-169,199", "color": 9, "size": 36, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 0 }
     },
     {
       "key": "fraud-detection",
@@ -104,14 +125,14 @@
       "domain": "credit-risk-assessment",
       "title": "Limit Management",
       "description": "Dynamically calculates and adjusts the maximum credit limit a customer can borrow",
-      "shape": { "position": "-167,-76", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 2 }
+      "shape": { "position": "-114,-200", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 2 }
     },
     {
       "key": "underwriting-engine",
       "domain": "credit-risk-assessment",
       "title": "Underwriting Engine",
       "description": "Evaluates creditworthiness in milliseconds using internal data, credit bureaus, and alternative data",
-      "shape": { "position": "210,-70", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 3 }
+      "shape": { "position": "238,-117", "color": 9, "size": 36, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 3 }
     },
     {
       "key": "checkout-engine",
@@ -182,126 +203,174 @@
       "title": "Ledger Engine",
       "description": "Serves as the immutable financial system of record tracking debits, credits, and account balances",
       "shape": { "position": "73,-247", "color": 2, "size": 48, "weight": "regular", "scale": 1.4, "stretch": 2, "opacity": 100, "order": 3 }
-    },
-    {
-      "key": "customer-service-portal",
-      "title": "Customer Service Portal",
-      "description": "[Internal Operations Tooling Layer] A high-security internal dashboard sitting behind an Enterprise Identity Provider (Okta, Azure AD).",
-      "shape": { "position": "3792,108", "color": 24, "size": 48, "weight": "regular", "scale": 1.6, "stretch": 2, "opacity": 100, "order": 3 }
     }
   ],
   "touchpoints": [
     {
-      "key": "customer-app",
-      "title": "Customer App",
-      "description": "A Mobile & Web Frontend that sits on top of your architecture and communicates with the backend exclusively via an API Gateway to handle routing, authentication, and session tokens.\n",
-      "shape": { "position": "2255,-432", "color": 1, "size": 48, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 0 },
+      "key": "checkout-widget",
+      "title": "Checkout\nwidget",
+      "type": "Customer channel",
+      "shape": { "position": "3165,-1557", "color": 1, "size": 48, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
       "connectors": [
         {
-          "to": "order-management",
-          "description": "View past purchases",
-          "fromPoint": 23,
-          "toPoint": 11,
-          "lineStyle": "curved",
-          "anchored": true
-        },
-        {
-          "to": "loan-management",
-          "description": "Fetch the amortization schedule.",
-          "fromPoint": 0,
-          "toPoint": 12,
-          "lineStyle": "straight",
-          "anchored": true
-        },
-        {
-          "to": "payment-gateway-integration",
-          "description": "[Pay Now] Securely process the card or ACH transaction.",
-          "fromPoint": 1,
+          "to": "checkout-engine",
+          "description": "Every checkout is authorized here before the shopper is told yes.",
+          "fromPoint": 5,
           "toPoint": 14,
-          "lineStyle": "curved",
-          "anchored": true,
-          "bendPoints": [
-            2881,
-            -293
-          ]
-        }
-      ]
-    },
-    {
-      "key": "back-office",
-      "title": "Back office",
-      "description": "[Internal Operations Tooling Layer] Internal Back-Office Suite. Simalrly to CS Portal, strictly partitioned using Role-Based Access Control (RBAC).",
-      "shape": { "position": "2257,-679", "color": 2, "size": 48, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 1 },
-      "connectors": [
-        {
-          "to": "underwriting-engine",
-          "description": "Manually review flagged transactions that hit \"grey areas.\"",
-          "fromPoint": 23,
-          "toPoint": 10,
           "lineStyle": "curved",
           "anchored": true
         },
         {
           "to": "fraud-detection",
-          "description": "Manually review flagged transactions that hit \"grey areas.\"",
-          "fromPoint": 1,
-          "toPoint": 9,
+          "description": "Device and behavioural signals are scored while the widget is still open.",
+          "fromPoint": 7,
+          "toPoint": 22,
           "lineStyle": "curved",
           "anchored": true
         }
       ]
     },
     {
-      "key": "finance-treasury-ops",
-      "title": "Finance/ Treasury Ops",
-      "description": "[Internal Operations Tooling Layer]",
-      "shape": { "position": "4943,-368", "color": 16, "size": 52, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 2 },
+      "key": "consumer-app",
+      "title": "Consumer app",
+      "type": "Customer channel",
+      "shape": { "position": "3866,-1576", "color": 1, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
       "connectors": [
         {
-          "to": "treasury-liquidity",
-          "description": "Monitor debt facility drawdowns and track total capital deployed.",
+          "to": "identity-access",
+          "description": "Sign-in, profile and permissions for the consumer.",
+          "fromPoint": 4,
+          "toPoint": 14,
+          "lineStyle": "curved",
+          "anchored": true,
+          "bendPoints": [
+            4072,
+            -1391,
+            4361,
+            -1169
+          ]
+        },
+        {
+          "to": "loan-management",
+          "description": "Instalments are paid, rescheduled and settled from the app.",
+          "fromPoint": 7,
+          "toPoint": 22,
+          "lineStyle": "curved",
+          "anchored": true,
+          "bendPoints": [
+            3996,
+            -1166,
+            3869,
+            -745
+          ]
+        }
+      ]
+    },
+    {
+      "key": "merchant-dashboard",
+      "title": "Merchant\ndashboard",
+      "type": "Merchant channel",
+      "shape": { "position": "4795,-712", "color": 12, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "connectors": [
+        {
+          "to": "merchant-onboarding",
+          "description": "Onboarding, contracts and store configuration.",
+          "fromPoint": 13,
+          "toPoint": 2,
+          "lineStyle": "curved",
+          "anchored": true
+        },
+        {
+          "to": "merchant-settlement",
+          "description": "What the merchant is owed, and when it lands.",
           "fromPoint": 11,
           "toPoint": 23,
           "lineStyle": "curved",
           "anchored": true
+        }
+      ]
+    },
+    {
+      "key": "service-console",
+      "title": "Service console",
+      "type": "Internal",
+      "shape": { "position": "4725,-453", "color": 11, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "connectors": [
+        {
+          "to": "customer-profile",
+          "description": "The account as support sees it.",
+          "fromPoint": 13,
+          "toPoint": 3,
+          "lineStyle": "curved",
+          "anchored": true,
+          "bendPoints": [
+            4492,
+            -778
+          ]
         },
         {
-          "to": "merchant-settlement",
-          "description": "Approve massive daily bulk payouts engineered by the Merchant Settlement domain.",
-          "fromPoint": 13,
-          "toPoint": 1,
+          "to": "dispute-refund-management",
+          "description": "Disputes are raised and worked from the console.",
+          "fromPoint": 11,
+          "toPoint": 23,
+          "lineStyle": "curved",
+          "anchored": true
+        }
+      ]
+    }
+  ],
+  "actors": [
+    {
+      "key": "shopper",
+      "title": "Shopper",
+      "type": "Customer",
+      "shape": { "position": "3539,-1821", "color": 1, "size": 36, "weight": "regular", "scale": 1.2, "opacity": 50, "order": 0 },
+      "interactions": [
+        {
+          "to": "consumer-app",
+          "description": "The shopper browses plans, tracks instalments and pays early from the app.",
+          "fromPoint": 2,
+          "toPoint": 18,
+          "lineStyle": "curved",
+          "anchored": true
+        },
+        {
+          "to": "checkout-widget",
+          "description": "At the merchant’s checkout, the shopper picks Pay in 4 and is underwritten in the widget.",
+          "fromPoint": 10,
+          "toPoint": 18,
           "lineStyle": "curved",
           "anchored": true
         }
       ]
     },
     {
-      "key": "merchant-portal",
-      "title": "Merchant Portal",
-      "description": "A standalone web application accessible via a strict merchant login page, hitting specific merchant-facing API Gateway routes.",
-      "shape": { "position": "4939,-625", "color": 18, "size": 48, "weight": "regular", "scale": 1.2, "stretch": 2, "opacity": 100, "order": 3 },
-      "connectors": [
+      "key": "merchant",
+      "title": "Merchant",
+      "type": "Partner",
+      "shape": { "position": "5149,-719", "color": 18, "size": 36, "weight": "regular", "scale": 1.4, "opacity": 50, "order": 0 },
+      "interactions": [
         {
-          "to": "merchant-settlement",
-          "description": "Fetches read-only views from the Merchant Settlement domain to show daily sales and settlement payouts.",
+          "to": "merchant-dashboard",
+          "description": "The merchant reconciles settlements and reviews disputes from the dashboard.",
           "fromPoint": 12,
           "toPoint": 0,
-          "lineStyle": "straight",
-          "anchored": true
-        },
-        {
-          "to": "merchant-onboarding",
-          "description": "Writes to the Merchant Onboarding domain to change bank payout details or api keys.",
-          "fromPoint": 13,
-          "toPoint": 5,
           "lineStyle": "curved",
           "anchored": true
-        },
+        }
+      ]
+    },
+    {
+      "key": "support-agent",
+      "title": "Support agent",
+      "type": "Internal",
+      "shape": { "position": "5073,-458", "color": 11, "size": 36, "weight": "regular", "scale": 1.4, "opacity": 50, "order": 0 },
+      "interactions": [
         {
-          "to": "dispute-refund-management",
-          "description": "Pshes an event to the Dispute & Refund Management domain to process a store refund.",
-          "fromPoint": 11,
-          "toPoint": 22,
+          "to": "service-console",
+          "description": "Support answers customers from the console, with the account and its ledger beside them.",
+          "fromPoint": 12,
+          "toPoint": 0,
           "lineStyle": "curved",
           "anchored": true
         }
@@ -313,8 +382,8 @@
       "from": "fraud-detection",
       "to": "kyc-aml-compliance",
       "description": "The fraud engine continuously streams device fingerprints and behavioral signals to the compliance service to flag synthetic identity attempts before document verification begins.",
-      "fromPoint": 12,
-      "toPoint": 0,
+      "fromPoint": 11,
+      "toPoint": 23,
       "lineStyle": "straight",
       "anchored": false
     },
@@ -322,10 +391,10 @@
       "from": "underwriting-engine",
       "to": "limit-management",
       "description": "Once the underwriting engine calculates a customer's real-time risk profile, it instantly pushes that data to Limit Management to issue, freeze, or adjust the user's spending limit.",
-      "fromPoint": 12,
-      "toPoint": 0,
+      "fromPoint": 13,
+      "toPoint": 1,
       "lineStyle": "straight",
-      "anchored": true
+      "anchored": false
     },
     {
       "from": "checkout-engine",
@@ -412,10 +481,10 @@
       "from": "merchant-settlement",
       "to": "merchant-onboarding",
       "description": "[The Settlement & Payout Path] To calculate the exact payout, the Settlement engine must reach into the Onboarding domain to fetch the specific merchant's contract details (e.g., deducting a 3.5% Merchant Discount Rate fee from the total).",
-      "fromPoint": 19,
+      "fromPoint": 20,
       "toPoint": 8,
       "lineStyle": "straight",
-      "anchored": true
+      "anchored": false
     },
     {
       "from": "dispute-refund-management",
@@ -431,7 +500,7 @@
       "to": "loan-management",
       "description": "[The Post-Purchase Lifecycle] If a customer initiates a return, the Dispute domain calculates the refund structure. It instructs Loan Management to rewrite or cancel future installments and orders the Ledger to balance the books.",
       "fromPoint": 13,
-      "toPoint": 22,
+      "toPoint": 23,
       "lineStyle": "curved",
       "anchored": true
     },
@@ -441,14 +510,23 @@
       "description": "[Personalization & Auto-fill] To maximize conversion rates, the Checkout Engine queries the Customer Profile to pull saved shipping addresses, phone numbers, and preferred payment methods. This allows for a \"one-click\" checkout experience.",
       "fromPoint": 12,
       "toPoint": 0,
+      "lineStyle": "curved",
+      "anchored": false
+    },
+    {
+      "from": "customer-profile",
+      "to": "checkout-engine",
+      "description": "[Personalization & Auto-fill] o maximize conversion rates, the Checkout Engine queries the Customer Profile to pull saved shipping addresses, phone numbers, and preferred payment methods. This allows for a \"one-click\" checkout experience.\n[Risk Mitigation] The Checkout Engine checks the historical tenure of the customer profile. A brand-new profile created 2 minutes ago triggers high-risk workflows, whereas a 5-year-old profile with a history of on-time payments bypasses heavy verification.",
+      "fromPoint": 12,
+      "toPoint": 0,
       "lineStyle": "straight",
-      "anchored": true
+      "anchored": false
     },
     {
       "from": "merchant-onboarding",
       "to": "checkout-engine",
       "description": "[Feature Flags & Branding] The Checkout UI dynamically adjusts based on the merchant’s profile. For example, it checks the merchant's contract to see if they support Pay-in-4, Long-term Financing (0% APR), or both, and displays the correct promotional messaging on the store's product page.",
-      "fromPoint": 12,
+      "fromPoint": 13,
       "toPoint": 1,
       "lineStyle": "straight",
       "anchored": false
@@ -457,67 +535,23 @@
       "from": "customer-profile",
       "to": "payment-gateway-integration",
       "description": "[Auto-Debit] When an installment is due, the Repayment engine pulls the active, tokenized payment method (e.g., a debit card or ACH token) securely saved within the Customer Profile to execute the automated clearing house or card charge.",
-      "fromPoint": 10,
+      "fromPoint": 9,
       "toPoint": 21,
       "lineStyle": "curved",
-      "anchored": true
+      "anchored": true,
+      "bendPoints": [
+        3865,
+        -613
+      ]
     },
     {
       "from": "merchant-onboarding",
       "to": "dispute-refund-management",
       "description": "[The Chargeback Link] If a customer demands a refund because an item never arrived, the Dispute/Repayments system checks the Merchant Profile to see their specific return policies, settlement reserve requirements, and automated dispute resolution workflows.",
-      "fromPoint": 6,
+      "fromPoint": 7,
       "toPoint": 18,
       "lineStyle": "straight",
       "anchored": false
-    },
-    {
-      "from": "customer-service-portal",
-      "to": "customer-profile",
-      "description": "[God-view] Fetch contact details for god-view aggregation.",
-      "fromPoint": 19,
-      "toPoint": 9,
-      "lineStyle": "curved",
-      "anchored": true,
-      "bendPoints": [
-        3873,
-        -549
-      ]
-    },
-    {
-      "from": "customer-service-portal",
-      "to": "loan-management",
-      "description": "[God-view] Fetch installment plans for god-view aggregation.",
-      "fromPoint": 18,
-      "toPoint": 23,
-      "lineStyle": "curved",
-      "anchored": true,
-      "bendPoints": [
-        3561,
-        -501
-      ]
-    },
-    {
-      "from": "customer-service-portal",
-      "to": "ledger-engine",
-      "description": "[God-view] Fetch exact financial balances for god-view aggregation.",
-      "fromPoint": 17,
-      "toPoint": 1,
-      "lineStyle": "curved",
-      "anchored": true
-    },
-    {
-      "from": "customer-service-portal",
-      "to": "dispute-refund-management",
-      "description": "Explicit permissions to trigger actions inside the Dispute & Refund domain (e.g., waiving a late fee or freezing an account due to suspected identity theft).",
-      "fromPoint": 20,
-      "toPoint": 11,
-      "lineStyle": "curved",
-      "anchored": true,
-      "bendPoints": [
-        3928,
-        -266
-      ]
     }
   ]
 }

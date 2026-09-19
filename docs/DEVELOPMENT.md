@@ -123,8 +123,8 @@ new one instead.
 seed: a domain added, two capabilities put in it, arranged, and one of them
 connected across to a capability in another domain. It closes on the eye in the
 layer control: the seed opens with the Presentation layer hidden, so showing it
-is the last thing the recording does, and the touchpoints and actors arrive
-over a map the viewer has already read.
+is the last thing the recording does, and the touchpoints arrive over a map the
+viewer has already read.
 
 It is captured rather than drawn — a Playwright script clicks and drags the app
 at 1440x900 and two device pixels to one, writes one PNG per frame with a
