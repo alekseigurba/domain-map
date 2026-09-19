@@ -15,6 +15,7 @@ import { extname, join, posix, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { validate } from '../app/js/document.js';
+import { validateVersionName } from '../app/js/rules.js';
 import { createAuth } from './auth.mjs';
 import { describeDatabase, migrate, openDatabase, waitForDatabase, withLock } from './database.mjs';
 import { fileStore } from './file-store.mjs';
@@ -211,6 +212,13 @@ export function createDomainMapServer(options = {}) {
   }
 
   /** A document the app could open, or a 400 in the words the app would use. */
+  /** A version's name as the client asked for it, trimmed and checked. */
+  function checkVersionName(name) {
+    const problem = validateVersionName(name);
+    if (problem) throw failure(400, problem);
+    return name.trim();
+  }
+
   function checkDocument(text) {
     if (typeof text !== 'string') throw failure(400, 'A version needs a document.');
     let parsed;
@@ -304,13 +312,20 @@ export function createDomainMapServer(options = {}) {
       }
       return sendJson(response, 200, await versions.save(name, checkDocument(document), base, by));
     }
+    // Renaming is not saving, so it does not carry a `base`: it changes what
+    // the version is called and nothing about what is in it.
+    if (method === 'PATCH') {
+      if (!isOwner) return ownersOnly();
+      const { name: wanted } = await readJson(request);
+      return sendJson(response, 200, await versions.rename(name, checkVersionName(wanted)));
+    }
     if (method === 'DELETE') {
       if (!isOwner) return ownersOnly();
       await versions.remove(name);
       response.writeHead(204).end();
       return;
     }
-    return notAllowed('GET, PUT, DELETE');
+    return notAllowed('GET, PUT, PATCH, DELETE');
   }
 
   /**

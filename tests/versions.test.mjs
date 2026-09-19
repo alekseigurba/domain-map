@@ -139,6 +139,7 @@ try {
     (await as(app, VIEWER, 'POST', '/api/versions', { document: mapText() })).status === 403);
   check('nor save over one', (await as(app, VIEWER, 'PUT', '/api/versions/v1',
     { document: mapText(), base: published.body.updatedAt })).status === 403);
+  check('nor rename one', (await as(app, VIEWER, 'PATCH', '/api/versions/v1', { name: 'mine' })).status === 403);
   check('nor delete one', (await as(app, VIEWER, 'DELETE', '/api/versions/v1')).status === 403);
   check('nor publish one', (await as(app, VIEWER, 'PUT', '/api/published', { name: 'v1' })).status === 403);
   check('nor write to the file store', (await as(app, VIEWER, 'PUT', '/api/files/data/settings.json', '{}')).status === 403);
@@ -195,11 +196,42 @@ try {
   check('saving over a version that is not there is a 404', (await as(app, OWNER, 'PUT', '/api/versions/gone',
     { document: mapText(), base: first.body.updatedAt })).status === 404);
 
+  // --- renaming ---
+  // A version's name is also its address, so renaming moves it: the old name
+  // stops answering and the new one starts. Nothing in the document changes,
+  // and neither does when it was last saved.
+  const was = list.body.versions.find((version) => version.name === 'v5');
+  const renamed = await as(app, OWNER, 'PATCH', '/api/versions/v5', { name: '  Q3 planning  ' });
+  check('an owner renames a version, and the name is trimmed',
+    renamed.status === 200 && renamed.body.name === 'Q3 planning', JSON.stringify(renamed.body));
+  check('renaming is not saving, so it leaves the times alone',
+    renamed.body.updatedAt === was.updatedAt && renamed.body.createdAt === was.createdAt);
+  const moved = await as(app, OWNER, 'GET', '/api/versions/Q3%20planning');
+  check('it answers to the new name, document and all',
+    moved.status === 200 && moved.body.document !== undefined);
+  check('and the old name is gone', (await as(app, OWNER, 'GET', '/api/versions/v5')).status === 404);
+  check('a name another version already has is refused',
+    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: 'v2' })).status === 409);
+  check('a blank name is refused',
+    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: '   ' })).status === 400);
+  check('and one with a slash in it, which would read as a path',
+    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: 'drafts/q3' })).status === 400);
+  check('renaming a version that is not there is a 404',
+    (await as(app, OWNER, 'PATCH', '/api/versions/gone', { name: 'x' })).status === 404);
+  check('and it can be named back',
+    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: 'v5' })).body.name === 'v5');
+
   // --- publishing, and the published version's guard ---
   const refused = await as(app, OWNER, 'DELETE', '/api/versions/v1');
   check('the published version cannot be deleted', refused.status === 409 && /published/.test(refused.body.error), JSON.stringify(refused.body));
   const publish = await as(app, OWNER, 'PUT', '/api/published', { name: 'v2' });
   check('an owner publishes another', publish.status === 200 && publish.body.published === true);
+  // The site points at the row, not at the name, so a rename cannot unpublish.
+  check('renaming the published version leaves it published',
+    (await as(app, OWNER, 'PATCH', '/api/versions/v2', { name: 'live' })).body.published === true);
+  check('and a viewer still lands on it',
+    (await as(app, VIEWER, 'GET', '/api/published')).body.name === 'live');
+  await as(app, OWNER, 'PATCH', '/api/versions/live', { name: 'v2' });
   check('which is what a viewer now sees',
     (await as(app, VIEWER, 'GET', '/api/published')).body.name === 'v2');
   check('and the one before is closed to them',

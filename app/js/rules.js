@@ -26,7 +26,7 @@ export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
 // is hidden or dimmed; the titles come from here.
 
 export const LAYERS = Object.freeze([
-  Object.freeze({ key: 'core', title: 'Core Business Domains' }),
+  Object.freeze({ key: 'core', title: 'Business Domains' }),
   Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
 ]);
 
@@ -109,6 +109,25 @@ export function connectorRule(fromKind, toKind) {
 }
 
 export const MAX_KEY_LENGTH = 64;
+
+/**
+ * How long a version's name may be. A version is named, not described: the name
+ * is also its address, since `?version=` names it, so it stays short enough to
+ * paste into one.
+ */
+export const MAX_VERSION_NAME_LENGTH = 64;
+
+/**
+ * What a version may be called. Anything but a slash, which would make the name
+ * look like a path and never reach the version it means.
+ */
+export function validateVersionName(name) {
+  if (typeof name !== 'string' || name.trim().length === 0) return 'A version needs a name.';
+  const bare = name.trim();
+  if (bare.length > MAX_VERSION_NAME_LENGTH)
+    return `A version's name must be at most ${MAX_VERSION_NAME_LENGTH} characters.`;
+  return bare.includes('/') ? "A version's name cannot hold a slash." : null;
+}
 
 /** A Type is a word or two picked from a list, not running copy. */
 export const MAX_TYPE_LENGTH = 60;

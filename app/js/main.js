@@ -359,6 +359,37 @@ async function publish(name) {
   }
 }
 
+/**
+ * Give a version another name. A version's name is also its address — a
+ * `?version=` link names it — so anything pointing at the old name stops
+ * working, and the question says so before it is answered.
+ *
+ * Nothing in the map changes, so a tab with this version open keeps whatever
+ * it was doing; it only learns what the thing it is editing is now called.
+ */
+async function rename(name) {
+  const wanted = prompt(
+    `Rename "${name}" to what? Any link that names "${name}" will stop working.`, name);
+  if (wanted === null) return;
+  const to = wanted.trim();
+  if (to === '' || to === name) return;
+
+  status('Renaming…');
+  try {
+    await api.renameVersion(name, to);
+  } catch (error) {
+    status(`Could not rename: ${error.message}`, true);
+    return;
+  }
+
+  // This tab may have it open, and the address may be naming it.
+  if (current?.name === name) current = { ...current, name: to };
+  if (publishedName === name) publishedName = to;
+  showVersionInUrl();
+  showSaveState();
+  status(`Renamed "${name}" to "${to}"`);
+}
+
 /** Delete a version for good. When it is the one open here, the published one takes its place. */
 async function removeVersion(name) {
   const open = name === current?.name;
@@ -438,6 +469,8 @@ function versionRow(version) {
   actions.append(
     rowButton('Open', open ? 'This is the version open here' : `Open "${version.name}"`,
       () => act(() => openVersion(version.name), { close: true }), { disabled: open }),
+    rowButton('Rename', `Give "${version.name}" another name`,
+      () => act(() => rename(version.name))),
     rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
       () => act(() => publish(version.name)), { disabled: published }),
     // The published version stays until another takes its place, so the map
@@ -812,7 +845,7 @@ function toggleLayer(layer) {
   if (type && !isVisible(type, find(type, id))) select(null, null);
 }
 
-function layerButton(className, label, pressed, onClick, { disabled = false } = {}) {
+function layerButton(className, icon, label, pressed, onClick, { disabled = false } = {}) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `layers__btn ${className}`;
@@ -820,6 +853,15 @@ function layerButton(className, label, pressed, onClick, { disabled = false } = 
   button.setAttribute('aria-label', label);
   button.setAttribute('aria-pressed', String(pressed));
   button.disabled = disabled;
+
+  // Drawn as an icon file, like every other control in the app: a brand that
+  // replaces the rest of them can replace these too.
+  const drawing = document.createElement('span');
+  drawing.className = 'icon';
+  drawing.dataset.icon = `icons/${icon}.svg`;
+  drawing.setAttribute('aria-hidden', 'true');
+  button.appendChild(drawing);
+
   button.addEventListener('click', onClick);
   return button;
 }
@@ -840,24 +882,30 @@ function renderLayerControl() {
     const name = document.createElement('span');
     name.className = 'layers__name';
     name.textContent = layer.title;
+    // The row it is on goes semibold when the layer is picked, and the control
+    // is only as wide as its widest title — so the box would grow as the
+    // selection moved. The title is written here twice, once invisibly at the
+    // heavier weight, and the width is the heavier one from the start.
+    name.dataset.title = layer.title;
     row.appendChild(name);
 
     // Which layer is being worked on. Only one at a time, and only while there
     // is something to add — so it is not there at all while browsing.
     if (editMode) {
       row.appendChild(layerButton(
-        'layers__pick', `Add to ${layer.title}`, chosen,
+        'layers__pick', chosen ? 'pick-on' : 'pick', `Add to ${layer.title}`, chosen,
         () => { selectLayer(layer.key, { saved: true }); }));
     }
 
     row.appendChild(layerButton(
-      'layers__dim', `Dim ${layer.title}`, layer.dimmed,
+      'layers__dim', layer.dimmed ? 'dim-on' : 'dim', `Dim ${layer.title}`, layer.dimmed,
       () => changeLayer(layer.key, { dimmed: !layer.dimmed })));
 
     // Nothing sits under the base layer, so hiding it would leave an empty
     // stage. It dims instead, which is the whole point of dimming.
     row.appendChild(layerButton(
-      'layers__eye', layer.hidden ? `Show ${layer.title}` : `Hide ${layer.title}`, !layer.hidden,
+      'layers__eye', layer.hidden ? 'eye-off' : 'eye',
+      layer.hidden ? `Show ${layer.title}` : `Hide ${layer.title}`, !layer.hidden,
       () => toggleLayer(layer),
       { disabled: layer.base }));
 
@@ -865,6 +913,7 @@ function renderLayerControl() {
   }
 
   layerControl.replaceChildren(...rows);
+  loadIcons(layerControl);
   renderAddButtons();
 }
 
@@ -892,9 +941,9 @@ function renderAddButtons() {
   const kinds = layer ? kindsAddableTo(layer) : [];
   addRow.hidden = kinds.length === 0;
 
-  addRow.replaceChildren(...kinds.map((kind) => {
+  const buttons = kinds.map((kind) => {
     const button = document.createElement('button');
-    button.className = 'btn btn--chip btn--chip-icon add-shape';
+    button.className = 'btn btn--chip add-shape';
     button.type = 'button';
     button.dataset.kind = kind;
     button.title = ADD_LABELS[kind];
@@ -912,7 +961,26 @@ function renderAddButtons() {
     button.append(icon, label);
     button.addEventListener('click', () => addOfKind(kind));
     return button;
-  }));
+  });
+
+  // Every button is as wide as the longest of all four labels, not of the two
+  // on offer — so the box is the same size on either layer and switching layers
+  // changes what the buttons say and nothing else. The four are laid out at
+  // zero height to find that width, rather than a number kept in the
+  // stylesheet that the labels could drift away from.
+  const sizer = document.createElement('div');
+  sizer.className = 'add-shapes__sizer';
+  sizer.setAttribute('aria-hidden', 'true');
+  for (const label of Object.values(ADD_LABELS)) {
+    const ghost = document.createElement('span');
+    ghost.className = 'btn btn--chip add-shape';
+    const mark = document.createElement('span');
+    mark.className = 'icon';
+    ghost.append(mark, document.createTextNode(label));
+    sizer.appendChild(ghost);
+  }
+
+  addRow.replaceChildren(...buttons, sizer);
   // The icons are inlined SVG, fetched once and cached by icons.js.
   if (kinds.length > 0) loadIcons(addRow);
 }

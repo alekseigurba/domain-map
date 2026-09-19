@@ -114,15 +114,14 @@
         <button class="btn btn--icon" id="zoom-out" title="Zoom out">&minus;</button>
         <button class="btn btn--icon" id="zoom-fit" title="Fit to screen">&#9723;</button>
       </div>
-      <!-- The layer control, one row per layer topmost first, and beside it the
-           Add buttons for whichever layer is being worked on. What used to
-           stand here was the "Drag to pan…" line; it lives in Getting around
-           now. main.js fills both: the rows from the model's stack, the buttons
-           from the kinds that layer takes. -->
-      <div class="stage__foot">
-        <div class="layers" id="layer-control" role="group" aria-label="Layers"></div>
-        <div class="add-shapes" id="add-shapes" role="group" aria-label="Add a shape" hidden></div>
-      </div>
+      <!-- Two corners: making at the top, reading at the bottom. The Add
+           buttons offer whichever kinds the layer being worked on takes; the
+           layer control is one row per layer, topmost first. What used to stand
+           at the foot was the "Drag to pan…" line; it lives in Getting around
+           now. main.js fills both, from the kinds that layer takes and from the
+           model's stack. -->
+      <div class="add-shapes" id="add-shapes" role="group" aria-label="Add a shape" hidden></div>
+      <div class="layers" id="layer-control" role="group" aria-label="Layers"></div>
       <!-- Said over an empty stage when there is no map to show: a version this
            person may not open, or nothing published yet. -->
       <div class="notice" id="notice" role="status" hidden>

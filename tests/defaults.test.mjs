@@ -79,6 +79,10 @@ check('the actor color is hex', isHex(ACTOR_SHAPE.color), String(ACTOR_SHAPE.col
 check('an actor has no lean to set', ACTOR_SHAPE.stretch === undefined);
 check('and starts half see-through, so the terrain under it reads',
   ACTOR_SHAPE.opacity === 50, String(ACTOR_SHAPE.opacity));
+// A person standing outside the business should not arrive the size of a part
+// of it, so an actor starts two steps up the scale everything else starts at.
+check('an actor starts larger than a capability',
+  ACTOR_SHAPE.sizeScale > CAPABILITY_SHAPE.sizeScale, String(ACTOR_SHAPE.sizeScale));
 check('a capability and a touchpoint start solid',
   CAPABILITY_SHAPE.opacity === 100 && TOUCHPOINT_SHAPE.opacity === 100);
 check('every opacity is a step of the slider',

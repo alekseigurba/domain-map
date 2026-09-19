@@ -61,6 +61,9 @@ export const createVersion = (document) => call('POST', 'api/versions', { docume
 /** Write over `name`, unless it has been saved since `base`, its `updatedAt` when opened. */
 export const saveVersion = (name, document, base) => call('PUT', path(name), { document, base });
 
+/** Give `name` another name. The name is also its address, so old links to it stop working. */
+export const renameVersion = (name, to) => call('PATCH', path(name), { name: to });
+
 export const deleteVersion = (name) => call('DELETE', path(name));
 
 export const publishVersion = (name) => call('PUT', 'api/published', { name });

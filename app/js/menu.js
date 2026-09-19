@@ -1,10 +1,10 @@
 // The hierarchy sidebar. Mirrors the diagram exactly — same items, same
-// selection. Lines that stay inside a domain are listed under it; only the ones
-// that cross a boundary get a section of their own.
+// selection. A line hangs under the element it starts from, so the tree holds
+// nothing but the shapes a map is drawn from and the lines that leave them.
 
 import {
-  store, select, childrenOf, orphans, find, internalConnectors, publicConnectors, connectorLabel,
-  stackedList, ownedBy, connectorScope,
+  store, select, childrenOf, orphans, find, connectorLabel, connectorTarget,
+  stackedList, ownedBy, oneLine,
 } from './store.js';
 import { COLORS } from './geometry.js';
 
@@ -22,24 +22,36 @@ let openedFor = null;
 
 const colorOf = (index) => COLORS[(index || 1) - 1] ?? COLORS[0];
 
-/** What an element's own lines are called, where they hang under it. */
-const OWN_LINES = {
-  actor: 'User interactions',
-  touchpoint: 'Touchpoint connectors',
-};
-
-function item(type, record, { depth = 0, text: caption, color }) {
+function item(type, record, { depth = 0, text: caption, color, lead, hint, line }) {
   const button = document.createElement('button');
-  button.className = `tree__item${depth ? ` tree__item--depth-${depth}` : ''}`;
+  button.className = `tree__item${depth ? ` tree__item--depth-${depth}` : ''}`
+    + `${line ? ' tree__item--line' : ''}`;
   button.dataset.type = type;
   button.dataset.id = record.id;
   button.setAttribute('role', 'option');
   button.setAttribute('aria-selected', String(store.selection.type === type && store.selection.id === record.id));
+  // The row may say less than the thing is called — a line names only where it
+  // goes. The full name is on the pointer, and on the row for a screen reader,
+  // so nothing is only available by eye.
+  if (hint) {
+    button.title = hint;
+    button.setAttribute('aria-label', hint);
+  }
 
   const swatch = document.createElement('span');
   swatch.className = `tree__swatch tree__swatch--${type}`;
-  if (color) swatch.style.background = color;
+  // A line's swatch is drawn as a rule rather than a block, so its colour is
+  // the edge and not the fill.
+  if (color) swatch.style[type === 'connector' ? 'borderTopColor' : 'background'] = color;
   button.appendChild(swatch);
+
+  // "to", in the quieter ink: a label on the value beside it, not part of it.
+  if (lead) {
+    const word = document.createElement('span');
+    word.className = 'tree__lead';
+    word.textContent = lead;
+    button.appendChild(word);
+  }
 
   const text = document.createElement('span');
   text.className = 'tree__label';
@@ -80,11 +92,11 @@ const toggleFor = (key) => ({
 });
 
 /** A folding heading for the sections that are not a single shape. */
-function caption(key, text, depth = 0) {
+function caption(key, text) {
   const heading = document.createElement('span');
   heading.className = 'tree__caption';
   heading.textContent = text;
-  return row(heading, toggleFor(key), depth);
+  return row(heading, toggleFor(key));
 }
 
 /** Fold everything at once — a long map is easier to read from the top. */
@@ -124,23 +136,48 @@ function revealSelection() {
   if (type === 'connector') {
     const record = find('connector', id);
     if (!record) return;
-    const scope = connectorScope(record);
 
-    // A line hangs under whatever owns it, so opening up to it means opening
-    // that element's section and the element's own list of lines.
-    if (scope === 'interaction' || scope === 'touchpoint') {
+    // A line hangs under the element it starts from, so opening up to it means
+    // opening that element — and whatever holds the element in turn.
+    if (record.fromKind === 'capability') {
+      opened.add(find('capability', record.fromId)?.domainId ?? 'unassigned');
+    } else {
       opened.add(`${record.fromKind}s`);
-      opened.add(record.fromId);
-      return;
     }
-    if (scope === 'internal') {
-      const from = find('capability', record.fromId);
-      opened.add(from.domainId);
-      opened.add(`${from.domainId}:internal`);
-      return;
-    }
-    opened.add('connectors');
+    opened.add(record.fromId);
   }
+}
+
+/**
+ * An element's row, and directly beneath it the lines that leave it. One rule
+ * for every kind: a line belongs to the end it starts from, so a domain
+ * connector hangs under the capability it leaves and an interaction under the
+ * actor. There is no heading in between and nothing lists a line twice.
+ */
+function branch(kind, record, depth = 0) {
+  const own = ownedBy(kind, record.id);
+  const rows = [row(
+    item(kind, record, { depth, text: record.title, color: colorOf(record.colorIndex) }),
+    own.length === 0 ? null : toggleFor(record.id),
+    depth,
+  )];
+
+  if (own.length === 0 || !opened.has(record.id)) return rows;
+  for (const connector of own) {
+    // Where the line comes from is the row above it, so the row says only where
+    // it goes. Not a direction on the line — a line has none — but a direction
+    // read from where the eye already is.
+    const target = connectorTarget(connector);
+    rows.push(row(item('connector', connector, {
+      depth: depth + 1,
+      text: oneLine(target?.title ?? 'unknown'),
+      color: target ? colorOf(target.colorIndex) : null,
+      lead: 'to',
+      hint: oneLine(connectorLabel(connector)),
+      line: true,
+    }), null, depth + 1));
+  }
+  return rows;
 }
 
 export function renderMenu() {
@@ -149,35 +186,16 @@ export function renderMenu() {
 
   for (const domain of store.domains) {
     const children = childrenOf(domain.id);
-    const internal = internalConnectors(domain.id);
-    const expanded = opened.has(domain.id);
 
     const group = document.createElement('div');
     group.className = 'tree__group';
     group.appendChild(row(
       item('domain', domain, { text: domain.title, color: colorOf(domain.colorIndex) }),
-      children.length === 0 && internal.length === 0 ? null : toggleFor(domain.id),
+      children.length === 0 ? null : toggleFor(domain.id),
     ));
 
-    if (expanded) {
-      for (const capability of children) {
-        group.appendChild(row(item('capability', capability, {
-          depth: 1,
-          text: capability.title,
-          color: colorOf(capability.colorIndex),
-        }), null, 1));
-      }
-
-      // Plumbing that never leaves this domain belongs to this domain.
-      if (internal.length > 0) {
-        const key = `${domain.id}:internal`;
-        group.appendChild(caption(key, 'Domain Connectors', 1));
-        if (opened.has(key)) {
-          for (const connector of internal) {
-            group.appendChild(row(item('connector', connector, { depth: 2, text: connectorLabel(connector) }), null, 2));
-          }
-        }
-      }
+    if (opened.has(domain.id)) {
+      for (const capability of children) group.append(...branch('capability', capability, 1));
     }
     nodes.push(group);
   }
@@ -188,12 +206,7 @@ export function renderMenu() {
     if (opened.has('unassigned')) {
       const group = document.createElement('div');
       group.className = 'tree__group';
-      for (const capability of loose) {
-        group.appendChild(row(item('capability', capability, {
-          text: capability.title,
-          color: colorOf(capability.colorIndex),
-        })));
-      }
+      for (const capability of loose) group.append(...branch('capability', capability));
       nodes.push(group);
     }
   }
@@ -209,39 +222,8 @@ export function renderMenu() {
 
     const group = document.createElement('div');
     group.className = 'tree__group';
-
-    for (const record of list) {
-      // An actor's lines are its interactions; a touchpoint's are what it
-      // reaches into the business. Either way they belong to the element.
-      const own = ownedBy(kind, record.id);
-      group.appendChild(row(
-        item(kind, record, { text: record.title, color: colorOf(record.colorIndex) }),
-        own.length === 0 ? null : toggleFor(record.id),
-      ));
-      if (own.length === 0 || !opened.has(record.id)) continue;
-
-      const key = `${record.id}:lines`;
-      group.appendChild(caption(key, OWN_LINES[kind], 1));
-      if (!opened.has(key)) continue;
-      for (const connector of own) {
-        group.appendChild(row(
-          item('connector', connector, { depth: 2, text: connectorLabel(connector) }), null, 2));
-      }
-    }
+    for (const record of list) group.append(...branch(kind, record));
     nodes.push(group);
-  }
-
-  const crossing = publicConnectors();
-  if (crossing.length > 0) {
-    nodes.push(caption('connectors', 'Connectors'));
-    if (opened.has('connectors')) {
-      const group = document.createElement('div');
-      group.className = 'tree__group';
-      for (const connector of crossing) {
-        group.appendChild(row(item('connector', connector, { text: connectorLabel(connector) })));
-      }
-      nodes.push(group);
-    }
   }
 
   tree.replaceChildren(...nodes);

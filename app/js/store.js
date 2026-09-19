@@ -337,6 +337,13 @@ export function connectorEnds(connector) {
   return [from?.title ?? '?', to?.title ?? '?'];
 }
 
+/**
+ * Where a line lands, as the element itself. The menu shows a line under the
+ * end it starts from, so this far end is the only half of the label worth
+ * printing — and its colour is what says which shape it is.
+ */
+export const connectorTarget = (connector) => find(connector.toKind, connector.toId);
+
 /** What a line is called, in the menu and the details alike. */
 export function connectorLabel(connector) {
   // A connection has two ends, not a direction — so a dash, not an arrow.
@@ -367,28 +374,15 @@ export function withBreaks(text, from) {
   return text.replace(/(?<=\S)\s+(?=\S)/g, (space) => (after.has(++gap) ? '\n' : space));
 }
 
-/** The internal lines of one domain — they hang under it in the menu. */
-export function internalConnectors(domainId) {
-  return store.connectors.filter((connector) => {
-    const [from] = endpointsOf(connector);
-    return scopeOf(connector) === 'internal' && from?.domainId === domainId;
-  });
-}
-
 /**
- * Everything that crosses a boundary, listed once at the top level. Only lines
- * between two capabilities land here: an actor's and a touchpoint's hang under
- * the element that owns them.
- */
-export function publicConnectors() {
-  return store.connectors.filter((connector) =>
-    connector.fromKind === 'capability' && scopeOf(connector) === 'public');
-}
-
-/**
- * The lines one actor or touchpoint owns. A line is owned by its upper end, so
- * an actor's line to a touchpoint is the actor's — it is a User interaction,
- * and never also a Touchpoint connector.
+ * The lines one element starts. A line is owned by its upper end, so an actor's
+ * line to a touchpoint is the actor's — it is a User interaction, and never
+ * also a Touchpoint connector. Between two capabilities there is no upper end
+ * and the line falls to the one it was drawn from, which is the same rule seen
+ * from the only angle left.
+ *
+ * This is what the menu files a line by: every line hangs under the element
+ * this returns it for, and under no other.
  */
 export const ownedBy = (kind, id) =>
   store.connectors.filter((connector) =>
@@ -401,12 +395,16 @@ export function connectorScope(connector) {
   return scopeOf(connector);
 }
 
-/** The heading a line is given, in the menu and in the details alike. */
+/**
+ * What a line is called in the details panel. The two capability lines are the
+ * same line differing only in where the far end lands, so they are named as a
+ * pair and the distinction carries itself.
+ */
 export const CONNECTOR_NAMES = {
   interaction: 'User interaction',
   touchpoint: 'Touchpoint connector',
-  internal: 'Domain connector',
-  public: 'Public connector',
+  internal: 'Internal domain connector',
+  public: 'Cross-domain connector',
 };
 
 // --- human-readable links ----------------------------------------------------

@@ -15,7 +15,7 @@ lands on the base layer. Full notes:
 
 ### Added
 
-- **Layers.** Two of them, bottom first: "Core Business Domains" and
+- **Layers.** Two of them, bottom first: "Business Domains" and
   "Presentation Layer". They are a fixed conceptual model, not a list a map may
   edit — which layer an element is on follows from what it is, so a domain is
   always core and an actor is always presentation.
@@ -38,16 +38,43 @@ lands on the base layer. Full notes:
   is drawn. A line is filed under its upper end whichever way round it was
   drawn, so an actor's line is always the actor's, and presentation lines are
   drawn in their own deep teal.
-- **User interactions** and **Touchpoint connectors**: an actor's lines and a
-  touchpoint's hang under it in the menu, the way a domain's own lines do, and
-  are written under it in the file. The details panel heads a line with the same
-  name the menu filed it under.
+- **A line hangs under what it starts from**: in the menu, every connector sits
+  directly beneath its own element — a capability's lines under the capability,
+  a touchpoint's under the touchpoint, an actor's under the actor. No headings,
+  no section of connectors at the foot of the tree, and no line listed twice.
+  An actor's and a touchpoint's lines are written under them in the file too.
+- **A line's row says where it goes**, not where it came from: "to" in the
+  quieter ink, then the far end's title in the far end's own colour. Where it
+  came from is the row above it. The whole name is on the pointer, on the row
+  for a screen reader, and in the Details panel.
+- **The four lines are named** in the details panel: User interaction,
+  Touchpoint connector, and **Internal domain connector** / **Cross-domain
+  connector** as a pair — what was one Public connector and one Domain
+  connector.
 - **Type**, on every kind of element: a picker over a list of choices, with a
   box to add one. Each kind keeps its own list, the lists travel with the map,
   and a choice something is typed with cannot be removed — it says how many hold
   it instead.
+- The **Add** buttons moved to the top left corner of the diagram, opposite the
+  layer control at the foot. All four share one width, so switching layers
+  changes what they say and not how big they are, and each shows its border
+  only under the pointer, as a button in the header does.
+- The layer control's icons are **icon files** now rather than shapes drawn in
+  CSS, so a brand replaces them along with the rest. Each row holds its width
+  at what its title measures in bold, so picking a layer moves nothing.
+- The menu and Details panels are **a notch tighter** throughout — about a
+  third more of a long map on screen at once — and a section heading no longer
+  runs onto a second line.
+- **Rename a version**, from its row in the Versions dialog — dropped in 2.0.0
+  and back now. The name is also the version's address, so renaming moves it
+  and old `?version=` links fall back to the published map; the question says
+  so before it is answered. Renaming is not saving: nothing in the map changes,
+  and neither does when it was last saved.
 - **Opacity**, on every kind, on one scale of 10 to 100. A capability and a
   touchpoint start solid, an actor at half, a domain at the 20 it always had.
+- A new actor arrives at 1.4× rather than 1×: a person standing outside the
+  business should not be the size of a part of it. Actors already drawn keep
+  the size they were drawn at.
 
 ### Changed
 

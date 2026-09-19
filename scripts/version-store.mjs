@@ -105,6 +105,29 @@ export function versionStore(pool) {
     if (deleted === 0) throw failure(404, `There is no version "${name}".`);
   }
 
+  /**
+   * Give a version another name. The name is also the version's address — a
+   * `?version=` link names it — so a link to the old one stops working, which
+   * is what the dialog warns about before it asks.
+   *
+   * `updated_at` is left where it is: renaming is not a save, and a tab that
+   * has the version open can still write to it afterwards.
+   */
+  async function rename(from, to) {
+    if (from === to) return read(from);
+
+    let rows;
+    try {
+      ({ rows } = await pool.query(
+        'update versions set name = $2 where name = $1 returning name', [from, to]));
+    } catch (error) {
+      if (error.code === '23505') throw failure(409, `There is already a version called "${to}".`);
+      throw error;
+    }
+    if (!rows[0]) throw failure(404, `There is no version "${from}".`);
+    return read(to);
+  }
+
   async function publish(name) {
     const { rowCount } = await pool.query(
       'update site set published_version_id = v.id from versions v where v.name = $1', [name]);
@@ -143,5 +166,5 @@ export function versionStore(pool) {
     return entries.map((entry) => entry.name);
   }
 
-  return { list, read, published, create, save, remove, publish, importIfEmpty };
+  return { list, read, published, create, save, rename, remove, publish, importIfEmpty };
 }

@@ -201,12 +201,17 @@ and swap round, label first and icon last.
 `.btn--icon` is the larger 32px control the stage uses, and the only one that is
 not a chip.
 
-The tree below the head is rows of the same 13px: a caret column kept even where
-there is nothing to fold so labels line up, a swatch in the shape's own color
-whose silhouette says which kind it is, and an ellipsized label. The selected
-row is `--selected-row` and semibold. The sections after the domains —
-Unassigned Capabilities and Connectors — stand a `--gap-3` apart
+The tree below the head is rows of the same 13px: an 18px caret column kept even
+where there is nothing to fold so labels line up, a swatch in the shape's own
+color whose silhouette says which kind it is, and an ellipsized label. The
+selected row is `--selected-row` and semibold. The sections after the domains —
+Unassigned Capabilities, Touchpoints and Actors — stand a `--gap-3` apart
 from the list above them.
+
+A connector has no section of its own. Every line hangs directly under the
+element it starts from — a capability's lines under the capability, an actor's
+under the actor — one indent deeper, with no heading in between. One rule for
+all four kinds, and no line listed twice.
 
 ### Details panel
 
@@ -214,8 +219,8 @@ An **accordion**: a first section headed by what is selected, **Domain** or
 **Capability** (title, description, owner, and a capability's icon — what the
 thing *is*), then Shape (how it looks). A capability's domain heads its section;
 a domain's capability count closes its own. A connector's first section is named
-for its kind — **Public connector** across a boundary, **Domain connector**
-within one — and holds its **Label**: the two capabilities it joins, with a dash
+for its kind — **Cross-domain connector** and **Internal domain connector** as a
+pair, **Touchpoint connector**, **User interaction** — and holds its **Label**: the two capabilities it joins, with a dash
 between them, as the menu names it. Those headings all open and
 shut as one panel, so the choice holds as the selection moves between kinds. The heading is the control that
 opens its own section. Every control in it is the same size — the title is not
@@ -380,7 +385,7 @@ directory does not shadow:
 
 ```js
 export const LAYERS = Object.freeze([
-  Object.freeze({ key: 'core', title: 'Core Business Domains' }),
+  Object.freeze({ key: 'core', title: 'Business Domains' }),
   Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
 ]);
 

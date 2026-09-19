@@ -112,6 +112,10 @@ check('its per-element layers are read without them',
 check('a hidden layer it saved still opens hidden',
   lifted.layers.find((one) => one.key === 'presentation').hidden === true);
 check('and its flat lines are taken up', lifted.connectors.length === 2);
+// The file names the layers it was written with. They are the model's to name,
+// so a rename in rules.js cannot be undone by an older file saying otherwise.
+check('the titles it carried are not taken up',
+  lifted.layers.every((one) => one.title === undefined));
 
 const liftedOut = toDocument({ ...lifted, palette: [] });
 check('writing it puts the lines under their owners',
@@ -316,11 +320,20 @@ check('an actor’s line is a user interaction',
   store_.connectorScope(interaction) === 'interaction');
 check('a touchpoint’s is a touchpoint connector',
   store_.connectorScope(reach) === 'touchpoint');
-check('and each is named for the section that files it',
+check('and each is named for what it joins',
   store_.CONNECTOR_NAMES.interaction === 'User interaction'
-  && store_.CONNECTOR_NAMES.touchpoint === 'Touchpoint connector');
-check('the top-level list is capability lines only',
-  store_.publicConnectors().every((one) => one.fromKind === 'capability'));
+  && store_.CONNECTOR_NAMES.touchpoint === 'Touchpoint connector'
+  && store_.CONNECTOR_NAMES.internal === 'Internal domain connector'
+  && store_.CONNECTOR_NAMES.public === 'Cross-domain connector');
+// Every line hangs under the element it starts from, capability lines among
+// them — which is what lets the menu file all four kinds by one rule.
+check('a capability owns the lines it starts',
+  store_.ownedBy('capability', invoicing.id)
+    .every((one) => one.fromKind === 'capability' && one.fromId === invoicing.id));
+check('and a line is owned by exactly one element',
+  store_.store.connectors.every((one) =>
+    store_.ownedBy(one.fromKind, one.fromId).includes(one)
+    && !store_.ownedBy(one.toKind, one.toId).includes(one)));
 
 const removed = store_.deleteTouchpoint(made.id);
 check('deleting a touchpoint takes the lines that hung off it',

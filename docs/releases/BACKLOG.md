@@ -1,6 +1,5 @@
 # Backlog
 
-- Presentation/Tooling layers, Actors/Users
 - Slideshow mode - domain/capability postcards with metadata.
 - Teams (owners, maintainers, enablers?).
 - People overlays (by function? e.g. product, engineering).
@@ -13,4 +12,4 @@
 - Apply labels (and contents?) from metadata (e.g., title, team, etc.).
 - A viewer who follows a `?version=` link is turned away rather than shown the published map. Worth revisiting.
 - Roles come from `OWNER_EMAILS` only. Entra ID app roles, and an in-app way to hand out rights, are still open.
-- Versions carry no note or description, so the list is names, times and who saved them.
+- Versions carry no note or description. A version can be named now, but there is nowhere to say what it was for.

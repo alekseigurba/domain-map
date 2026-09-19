@@ -399,7 +399,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--gap-2) 0;
+  padding: var(--gap-1) 0;
 }
 
 .tree__group + .tree__group { margin-top: var(--gap-1); }
@@ -410,15 +410,17 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 .tree__row { display: flex; align-items: center; }
 
-/* Caret column, kept even when a domain has nothing to fold, so labels line up. */
+/* Caret column, kept even when a domain has nothing to fold, so labels line up.
+   Wide enough to aim at: the glyph is small by nature, and the column around it
+   is what the pointer actually hits. */
 .tree__toggle {
   flex: none;
-  width: 14px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: none;
   background: transparent;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
   color: var(--ink-soft);
   cursor: pointer;
@@ -433,7 +435,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   gap: var(--gap-2);
   flex: 1;
   min-width: 0;
-  padding: var(--space-025) var(--space-075) var(--space-025) var(--space-050);
+  padding: 2px var(--space-075) 2px var(--space-050);
   border: none;
   background: transparent;
   font-size: var(--fs-200);
@@ -449,7 +451,19 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 .tree__item--depth-1 { padding-left: 22px; }
 .tree__item--depth-2 { padding-left: 40px; }
-.tree__row--depth-1 .tree__caption { padding-left: 22px; }
+
+/* A line's row. Smaller than the shapes, and a short step inside the element
+   it belongs to rather than a full level out — it is already under the thing
+   it starts from, so the indent has only to say "this hangs off that". */
+.tree__item--line { font-size: 12px; }
+.tree__item--line.tree__item--depth-1 { padding-left: 16px; }
+.tree__item--line.tree__item--depth-2 { padding-left: 30px; }
+
+/* "to", not part of the name beside it. */
+.tree__lead {
+  flex: none;
+  color: var(--ink-soft);
+}
 
 /* The icon carries the shape's own colour, and its silhouette says which kind. */
 .tree__swatch {
@@ -523,11 +537,14 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--space-075);
+  padding: var(--space-050);
   font-size: var(--fs-200);
 }
 
-.field { margin-bottom: var(--gap-4); }
+/* A panel is read down, so what it costs to read is mostly the space between
+   its rows. Every step here is one notch tighter than it reads naturally,
+   which is about a third more of a long map on screen at once. */
+.field { margin-bottom: var(--gap-2); }
 
 .field__label {
   display: block;
@@ -642,13 +659,16 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   gap: var(--gap-2);
   width: 100%;
   margin: 0;
-  padding: var(--gap-2) 0;
+  padding: var(--gap-1) 0;
   border: none;
   border-bottom: 1px solid var(--line);
   background: transparent;
-  font-size: var(--fs-200);
+  /* A step down from the panel's own type, and the tracking eased: at 13px
+     with 0.1em between the letters, INTERNAL DOMAIN CONNECTOR is wider than
+     the panel and heads its section on two lines. */
+  font-size: 12px;
   font-weight: var(--fw-semibold);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: left;
   color: var(--ink-soft);
@@ -657,7 +677,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 .section__title::before {
   content: "▾";
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -674,7 +694,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .section__title--static::before { content: none; }
 .section__title--static:hover { color: var(--ink-soft); }
 
-.section__body { padding-top: var(--gap-3); }
+.section__body { padding-top: var(--gap-2); }
 
 .slider {
   display: flex;
@@ -928,6 +948,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 .versions__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--gap-1);
 }
@@ -1235,9 +1256,9 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   .layers { font-size: 10px; }
   .layers__name { max-width: 84px; }
 
-  /* Side by side there is no room for both; the buttons go under the rows. */
-  .stage__foot { flex-direction: column; align-items: flex-start; }
-  .add-shapes { flex-direction: row; flex-wrap: wrap; }
+  /* The two controls sit in opposite corners, so neither has to give way to
+     the other on a narrow screen — they only have to clear the header. */
+  .add-shapes { top: var(--gap-2); left: var(--gap-2); }
 
   /* The sheet is a row of the layout rather than something floating over it, so
      the map keeps a stage of its own to be fitted to and the zoom stack never

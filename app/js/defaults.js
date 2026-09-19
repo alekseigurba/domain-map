@@ -51,8 +51,13 @@ export const ACTOR_SHAPE = Object.freeze({
   color: '#a1a4ec',
   fontSize: 32,
   fontWeight: 'regular',
-  /** The Shape size multiple. An actor is a circle, so it has no stretch. */
-  sizeScale: 1,
+  /**
+   * The Shape size multiple. An actor is a circle, so it has no stretch. Two
+   * steps up the scale rather than one: at 1 an actor reads as a capability
+   * that happens to be round, and a person standing outside the business
+   * should not look like a part of it.
+   */
+  sizeScale: 1.4,
   /**
    * Percent, 10 to 100 in steps of 10. Half, so the terrain under an actor
    * still reads: it stands on the map rather than covering it.

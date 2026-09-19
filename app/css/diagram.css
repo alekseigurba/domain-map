@@ -33,23 +33,17 @@
 
 /* The corner that used to hold the "Drag to pan…" line: the layer rows, and
    beside them the Add buttons for whichever layer is being worked on. */
-.stage__foot {
+.layers {
   position: absolute;
   left: var(--gap-3);
   bottom: var(--gap-3);
-  display: flex;
-  align-items: flex-end;
-  gap: var(--gap-2);
-}
-
-.layers {
   display: flex;
   flex-direction: column;
   gap: 1px;
   padding: var(--gap-1);
   font-size: var(--fs-xs);
   background: color-mix(in srgb, var(--paper) 88%, transparent);
-  border: 1px solid var(--rule);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-m);
 }
 
@@ -89,7 +83,22 @@
 
 .layers__row--selected .layers__name { font-weight: var(--fw-semibold); }
 
+/* The control is only as wide as its widest title, and the picked row goes
+   semibold — so the box would grow and shrink as the selection moved between
+   layers. Every title is laid out a second time at the heavier weight, with no
+   height and nothing to see, and the row is that width from the start. */
+.layers__name::after {
+  content: attr(data-title);
+  display: block;
+  height: 0;
+  overflow: hidden;
+  font-weight: var(--fw-semibold);
+  visibility: hidden;
+}
+
 .layers__btn {
+  display: grid;
+  place-items: center;
   flex: none;
   width: 20px;
   height: 20px;
@@ -103,7 +112,7 @@
 
 .layers__btn:hover:not(:disabled) {
   color: var(--ink);
-  border-color: var(--rule);
+  border-color: var(--line-strong);
 }
 
 /* The base layer has nothing under it to be shown instead, so its eye is dead. */
@@ -114,80 +123,77 @@
 
 .layers__btn[aria-pressed="true"] { color: var(--ink); }
 
-/* Drawn rather than lettered, in currentColor so the states above carry them. */
-
-/* The eye: a lid, with an eyeball in it while the layer is shown and none
-   while it is hidden. */
-.layers__eye::before {
-  content: "";
-  display: block;
-  position: relative;
-  width: 15px;
-  height: 15px;
-  margin: 1px auto;
-  border: 1.5px solid currentcolor;
-  border-radius: 80% 10%;
-  transform: rotate(45deg);
+/* Drawn as icon files now, like every other control in the app — a brand that
+   replaces those replaces these. Stroked in currentColor, so the states above
+   (quiet, hovered, pressed, disabled) carry them without a rule of their own. */
+.layers__btn .icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.layers__eye::after {
-  content: "";
-  display: block;
-  width: 5px;
-  height: 5px;
-  margin: -10px auto 0;
-  border-radius: 50%;
-  background: currentcolor;
-}
-
-/* Shut: the lid stays, the eyeball goes. */
-.layers__eye[aria-pressed="false"]::after { background: none; }
-
-.layers__dim::before {
-  content: "";
-  display: block;
-  width: 13px;
-  height: 13px;
-  margin: 2px auto;
-  border: 1.5px solid currentcolor;
-  border-radius: 50%;
-  background: linear-gradient(to right, currentcolor 50%, transparent 50%);
-}
-
-.layers__dim[aria-pressed="true"]::before { background: currentcolor; }
-
-/* A box that is ticked while this is the layer being added to. */
-.layers__pick::before {
-  content: "";
-  display: block;
-  width: 12px;
-  height: 12px;
-  margin: 3px auto;
-  border: 1.5px solid currentcolor;
-  border-radius: 3px;
-}
-
+/* Picked: the tick and its box take the selection's own colour. */
 .layers__pick[aria-pressed="true"] { color: var(--selection); }
-
-.layers__pick[aria-pressed="true"]::before {
-  background: var(--selection);
-  box-shadow: inset 0 0 0 2px var(--paper);
-}
 
 /* --- adding a shape ------------------------------------------------------- */
 
 /* Only the kinds the selected layer takes, so the row says what this layer is
    for as much as it offers a way to fill it. */
 .add-shapes {
+  position: absolute;
+  left: var(--gap-3);
+  top: var(--gap-3);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  width: max-content;
   gap: var(--gap-1);
 }
 
+/* Icon then label, reading left to right. Not one of the square icon-only
+   chips: an Add button names the kind it adds, so it is as wide as the name.
+   The fill stays — over a domain's own colour a word with nothing behind it is
+   not a word anyone can read — but the border waits to be pointed at, the way a
+   button in the header does. */
 .add-shapes .add-shape {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--gap-2);
+  padding: 0 var(--space-075);
+  border-color: transparent;
   white-space: nowrap;
   background: color-mix(in srgb, var(--paper) 88%, transparent);
+}
+
+.add-shapes .add-shape:hover,
+.add-shapes .add-shape:focus-visible { border-color: var(--line-strong); }
+
+/* All four labels laid out at no height: what makes every button the width of
+   the longest of the four rather than of whichever two are on offer, so the box
+   does not resize as the selected layer changes. */
+.add-shapes__sizer {
+  display: flex;
+  flex-direction: column;
+  height: 0;
+  /* It is a flex child like the buttons, so it takes a gap above it that
+     nothing fills. Cancel that, or the box carries 4px of empty floor. */
+  margin-top: calc(-1 * var(--gap-1));
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.add-shapes .icon {
+  flex: none;
+  width: var(--icon-s);
+  height: var(--icon-s);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* --- domains ------------------------------------------------------------- */
