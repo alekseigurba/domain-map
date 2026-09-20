@@ -319,14 +319,10 @@
   stroke-opacity: 0.9;
 }
 
-/* Flattened to the same black the title is drawn in: brightness(0) takes any
-   drawing to black and keeps its transparency. Line icons come through as
-   themselves; a full-colour one comes through as a silhouette. */
-.cap__icon {
-  filter: brightness(0);
-  opacity: 0.85;
-  pointer-events: none;
-}
+/* Drawn as the file has it. An icon used to be flattened to the title's black,
+   which turned a full-colour drawing into a silhouette and threw away the one
+   thing a set of icons told apart by colour had to say. */
+.cap__icon { pointer-events: none; }
 
 /* --- connectors ---------------------------------------------------------- */
 

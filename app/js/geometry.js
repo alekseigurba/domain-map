@@ -108,9 +108,27 @@ const PAD_Y = 0.14;
    the box is drawn around the text, so any slack there reads as a gap. */
 const TITLE_PAD_X = 0.1;
 
-/* A capability's icon, as shares of its font size: how big, and the air under it. */
-const ICON_SHARE = 1.15;
-const ICON_GAP = 0.28;
+/* A shape's icon, as shares of its font size. It is drawn half as large again as
+   the type beside it, which is what lets a drawing hold its own against a word,
+   and gives way down to the type's own size before the words lose a row to it.
+   ICON_PAD is the air kept between it and the rim. */
+const ICON_SHARE = 1.5;
+const ICON_MIN_SHARE = 1;
+const ICON_PAD = 0.25;
+/* The air between an icon and the words, measured from what is drawn to what is
+   drawn: the ink of the icon on one side, the letters on the other. A little
+   more is wanted beside a title than over one, where the eye is already used to
+   the space between two rows. */
+const ICON_GAP = 0.2;
+const ICON_SIDE_GAP = 0.3;
+/* A row of type is a box taller than its letters. This is how far the capitals
+   sit under the top of it, and the baseline over the foot of it — air the gap
+   above would otherwise be added to, which is how an icon came to float. */
+const TYPE_INSET_TOP = 0.22;
+const TYPE_INSET_BOTTOM = 0.1;
+/* An icon far from square is given its long side: a wide drawing held to a
+   square box comes out a sliver. This is how far past the square it may go. */
+const ICON_LONG_SIDE = 1.5;
 
 const LOBE_PAD = 34;      // ring of blob around each capability
 const BODY_REACH = 0.6;   // how far past its outermost lobes' middles the body reaches, as a share of their radii
@@ -253,6 +271,226 @@ function ovalRadii(stretch) {
   };
 }
 
+/** Which side of its title an icon sits on. Mirrors rules.js. */
+export const ICON_PLACEMENTS = ['top', 'left', 'bottom', 'right'];
+export const DEFAULT_ICON_PLACEMENT = 'top';
+
+/**
+ * Where the drawing is inside each icon's file, as the diagram has measured it.
+ * Most icons are drawn with a margin round them, and a wide one in a square
+ * file has a great deal over and under it. Laid out by the file, that margin
+ * turns up on the map as a gap nobody asked for; laid out by the ink, the gap
+ * is the one chosen here. Measuring takes a canvas, so it is the diagram's job —
+ * this only keeps what it found, the way setPalette keeps the colours.
+ */
+const iconInks = new Map();
+
+/** The whole file, square: what an icon is taken for until it has been measured. */
+export const WHOLE_ICON = Object.freeze({ x: 0, y: 0, width: 1, height: 1, aspect: 1 });
+
+/**
+ * `ink` is the box the drawing covers, as shares of the picture, and `aspect`
+ * the picture's own width over its height.
+ */
+export function setIconInk(name, ink) {
+  iconInks.set(name, ink);
+}
+
+export const iconInkOf = (name) => iconInks.get(name) ?? WHOLE_ICON;
+
+/** How far an SVG icon's lines may be thinned or thickened, as a multiple of the file's own. Mirrors rules.js. */
+export const MIN_ICON_WEIGHT = 0.5;
+export const MAX_ICON_WEIGHT = 4;
+export const DEFAULT_ICON_WEIGHT = 1;
+
+/** The weight a record draws its icon at. Only an SVG has lines to weigh. */
+export const iconWeightOf = (record) =>
+  (/\.svg$/i.test(record.icon ?? '') ? record.iconWeight || DEFAULT_ICON_WEIGHT : DEFAULT_ICON_WEIGHT);
+
+/**
+ * What an icon's ink is kept under. The same file drawn heavier covers a little
+ * more of its picture, so each weight is measured as a drawing of its own.
+ */
+export const iconKeyOf = (record) => {
+  const weight = iconWeightOf(record);
+  return weight === DEFAULT_ICON_WEIGHT ? record.icon : `${record.icon}@${weight}`;
+};
+
+/**
+ * How wide and how tall an icon's ink is drawn, as multiples of its nominal
+ * size. A square drawing is that size both ways. Any other keeps its area, so a
+ * wide one and a tall one weigh the same on the map, until its long side meets
+ * ICON_LONG_SIDE; past that it is simply scaled to fit.
+ */
+function inkShares(ink) {
+  const aspect = (ink.width * ink.aspect) / ink.height || 1;
+  if (aspect >= 1) {
+    const wide = Math.min(Math.sqrt(aspect), ICON_LONG_SIDE);
+    return { wide, tall: wide / aspect };
+  }
+  const tall = Math.min(Math.sqrt(1 / aspect), ICON_LONG_SIDE);
+  return { wide: tall * aspect, tall };
+}
+
+/**
+ * Where to put an icon's <image> so that its ink lands on the box the layout
+ * gave it: the picture is scaled until the drawing is the size wanted, and its
+ * margin is left to hang outside, where it shows as nothing.
+ */
+export function iconImageBox(size, ink = WHOLE_ICON) {
+  const width = size.iconWidth / ink.width;
+  const height = width / ink.aspect;
+  return {
+    x: size.iconX - size.iconWidth / 2 - ink.x * width,
+    y: size.iconY - size.iconHeight / 2 - ink.y * height,
+    width,
+    height,
+  };
+}
+
+/**
+ * How far a box may go inside a shape before its corners meet the rim: `up`
+ * for a box so wide, from the middle towards the top or the foot, and `out`
+ * for a box so tall, towards either side. In an oval a narrow box gets nearly
+ * the whole radius and one as wide as the oval gets none; in a rectangle the
+ * way is the same whatever the box.
+ */
+const reachIn = (rx, ry, curved = true) => ({
+  up: (width) => (curved ? ry * Math.sqrt(Math.max(0, 1 - (width / 2 / rx) ** 2)) : ry),
+  out: (height) => (curved ? rx * Math.sqrt(Math.max(0, 1 - (height / 2 / ry) ** 2)) : rx),
+});
+
+/**
+ * The icon and the words along one axis, the icon first. `reach` is how far
+ * from the middle the icon's outer edge may go; `earliest` and `latest` are the
+ * bounds on where the words may start, from the shape they are in. The icon
+ * takes what the words leave, between `least` and `full`, and `along` turns its
+ * nominal size into its length on this axis.
+ *
+ * The pair straddles the middle for as long as it fits there. One too long for
+ * that moves towards the icon's side, where the room is, and one too long for
+ * the shape altogether is centred in the room there is, so it spills evenly.
+ */
+function settle({ reach, earliest, latest, extent, gap, along, full, least }) {
+  const iconSize = Math.max(least, Math.min(full, (reach + latest - gap) / along));
+  const length = iconSize * along;
+  const soonest = Math.max(length + gap - reach, earliest);
+  const centred = (length + gap - extent) / 2;
+  const start = soonest > latest
+    ? (soonest + latest) / 2
+    : Math.min(Math.max(centred, soonest), latest);
+  return { iconSize, iconAt: start - gap - length / 2, wordsAt: start + extent / 2 };
+}
+
+/**
+ * An icon and a block of words, laid out as one. `roomX` by `roomY` is the box
+ * the words wrap into, and `reach` how far a box may go in the shape — which is
+ * what lets the pair use the shape rather than the box. An icon is small, so it
+ * fits up in the crown of an oval or out in the end of one, where a row of
+ * words never would; and a short row at the far end may sit further out than a
+ * full one, which is room handed on to the icon.
+ *
+ * The words are wrapped first, into the room left by the smallest icon, and the
+ * icon then takes what they leave, up to `full`. Adding an icon used to cost a
+ * title a row outright — which sent people to a smaller font to get the row
+ * back, and the icon, sized off the font, shrank with it.
+ */
+function iconStack({ title, fontSize, fontWeight, roomX, roomY, reach, full, least, placement, ink }) {
+  const lineHeight = fontSize * 1.18;
+  const pad = fontSize * ICON_PAD;
+  const shares = inkShares(ink ?? WHOLE_ICON);
+  const side = placement === 'left' || placement === 'right';
+  // Right and bottom are left and top seen in a mirror: laid out the one way,
+  // and turned round at the end.
+  const turned = placement === 'right' || placement === 'bottom' ? -1 : 1;
+
+  let block;
+  let laid;
+  if (side) {
+    const gap = fontSize * ICON_SIDE_GAP;
+    const edge = reach.out(full * shares.tall) - pad;
+    const rows = Math.max(1, Math.min(MAX_CAPABILITY_LINES, Math.floor(roomY / lineHeight)));
+    // The words give up the width the smallest icon needs, and no more.
+    const wrapAt = Math.max(fontSize, edge + roomX / 2 - least * shares.wide - gap);
+    block = textBlock(title, fontSize, fontWeight, wrapAt, rows);
+
+    // Every row is centred on the same line, and each may run as far out as
+    // the shape allows at the height it sits — further in the middle rows of an
+    // oval than in the first and last.
+    const widths = block.lines.map((line) => measure(line, fontSize, fontWeight));
+    const limits = block.lines.map((line, row) => {
+      const top = -block.height / 2 + row * lineHeight;
+      const far = Math.max(Math.abs(top), Math.abs(top + lineHeight));
+      return Math.max(roomX / 2, reach.out(far * 2) - fontSize * PAD_X);
+    });
+    laid = settle({
+      reach: edge,
+      earliest: Math.max(...limits.map((limit, row) => widths[row] / 2 - limit)) - block.width / 2,
+      latest: Math.min(...limits.map((limit, row) => limit - widths[row] / 2)) - block.width / 2,
+      extent: block.width,
+      gap,
+      along: shares.wide,
+      full,
+      least,
+    });
+  } else {
+    // The gap is between ink and letters, so the air the row of type carries
+    // on the icon's side of it is taken off.
+    const inset = placement === 'bottom' ? TYPE_INSET_BOTTOM : TYPE_INSET_TOP;
+    const gap = fontSize * (ICON_GAP - inset);
+    const edge = reach.up(full * shares.wide) - pad;
+    // Text that still will not fit is cut with an ellipsis, as it always was.
+    const rows = Math.max(1, Math.min(
+      MAX_CAPABILITY_LINES,
+      Math.floor((edge + roomY / 2 - least * shares.tall - gap) / lineHeight),
+    ));
+    block = textBlock(title, fontSize, fontWeight, roomX, rows);
+
+    // Where the words may start, row by row, counting from the icon: each
+    // row's corners have to stay as clear of the rim as the box keeps them. A
+    // row wider than the box has already spilt, and is held to the box rather
+    // than pushed further out.
+    const lines = placement === 'bottom' ? [...block.lines].reverse() : block.lines;
+    const limits = lines.map((line) => Math.max(
+      roomY / 2,
+      reach.up(measure(line, fontSize, fontWeight) + fontSize * PAD_X * 2) - fontSize * PAD_Y,
+    ));
+    laid = settle({
+      reach: edge,
+      earliest: Math.max(...limits.map((limit, row) => -limit - row * lineHeight)),
+      latest: Math.min(...limits.map((limit, row) => limit - (row + 1) * lineHeight)),
+      extent: block.height,
+      gap,
+      along: shares.tall,
+      full,
+      least,
+    });
+  }
+
+  // Everything is measured from the middle of the shape, to the middle of each.
+  // `|| 0` because turning nothing round leaves a minus nought behind.
+  const iconAt = laid.iconAt * turned || 0;
+  const wordsAt = laid.wordsAt * turned || 0;
+  return {
+    block,
+    iconSize: laid.iconSize,
+    iconWidth: laid.iconSize * shares.wide,
+    iconHeight: laid.iconSize * shares.tall,
+    iconX: side ? iconAt : 0,
+    iconY: side ? 0 : iconAt,
+    textX: side ? wordsAt : 0,
+    textY: side ? 0 : wordsAt,
+  };
+}
+
+/** What a shape with no icon says about one: there is none, and the words have the middle. */
+const NO_ICON = Object.freeze({
+  iconSize: 0, iconWidth: 0, iconHeight: 0, iconX: 0, iconY: 0, textX: 0, textY: 0,
+});
+
+const placementOf = (record) =>
+  (ICON_PLACEMENTS.includes(record.iconPlacement) ? record.iconPlacement : DEFAULT_ICON_PLACEMENT);
+
 /**
  * Oval for a capability. `sizeScale` sets how big it is and `stretch` which
  * way it leans; the text wraps into it, and is free to spill outside.
@@ -272,29 +510,28 @@ export function capabilitySize(capability) {
   const roomX = Math.max(fontSize, (rx / Math.SQRT2) * 2 - fontSize * PAD_X * 2);
   const roomY = (ry / Math.SQRT2) * 2 - fontSize * PAD_Y * 2;
 
-  const iconSize = capability.icon ? fontSize * ICON_SHARE : 0;
-  const gap = iconSize ? fontSize * ICON_GAP : 0;
+  if (!capability.icon) {
+    const rows = Math.max(1, Math.min(MAX_CAPABILITY_LINES, Math.floor(roomY / (fontSize * 1.18))));
+    const block = textBlock(capability.title, fontSize, fontWeight, roomX, rows);
+    return { rx, ry, ...block, ...NO_ICON };
+  }
 
-  // However many rows are left under the icon, up to a sane ceiling. Text that
-  // still will not fit is cut with an ellipsis, as it always was.
-  const lineHeight = fontSize * 1.18;
-  const rows = Math.max(1, Math.min(
-    MAX_CAPABILITY_LINES,
-    Math.floor((roomY - iconSize - gap) / lineHeight),
-  ));
-  const block = textBlock(capability.title, fontSize, fontWeight, roomX, rows);
-
-  const stack = block.height + iconSize + gap;
-  return {
-    rx,
-    ry,
-    ...block,
-    iconSize,
-    // Both measured from the middle of the oval: the icon takes the top of the
-    // stack, the words what is left under it.
-    iconY: iconSize ? -(stack - iconSize) / 2 : 0,
-    textY: iconSize ? (iconSize + gap) / 2 : 0,
-  };
+  // The words still wrap into that box. The pair is not held to it: the icon
+  // may go past the edge of the box, and a short row past the far one, for as
+  // long as their corners stay clear of the rim.
+  const { block, ...stack } = iconStack({
+    title: capability.title,
+    fontSize,
+    fontWeight,
+    roomX,
+    roomY,
+    reach: reachIn(rx, ry),
+    full: fontSize * ICON_SHARE,
+    least: fontSize * ICON_MIN_SHARE,
+    placement: placementOf(capability),
+    ink: iconInkOf(iconKeyOf(capability)),
+  });
+  return { rx, ry, ...block, ...stack };
 }
 
 // --- touchpoints and actors --------------------------------------------------
@@ -319,32 +556,36 @@ export function touchpointSize(touchpoint) {
 
   const roomX = Math.max(fontSize, rx * 2 - fontSize * PAD_X * 2);
   const roomY = ry * 2 - fontSize * PAD_Y * 2;
+  const shape = { shape: 'rect', rx, ry, corner: Math.min(rx, ry) * TOUCHPOINT_RADIUS_SHARE };
 
-  const iconSize = touchpoint.icon ? fontSize * ICON_SHARE : 0;
-  const gap = iconSize ? fontSize * ICON_GAP : 0;
+  if (!touchpoint.icon) {
+    const rows = Math.max(1, Math.min(MAX_CAPABILITY_LINES, Math.floor(roomY / (fontSize * 1.18))));
+    const block = textBlock(touchpoint.title, fontSize, fontWeight, roomX, rows);
+    return { ...shape, ...block, ...NO_ICON };
+  }
 
-  const lineHeight = fontSize * 1.18;
-  const rows = Math.max(1, Math.min(
-    MAX_CAPABILITY_LINES,
-    Math.floor((roomY - iconSize - gap) / lineHeight),
-  ));
-  const block = textBlock(touchpoint.title, fontSize, fontWeight, roomX, rows);
-
-  const stack = block.height + iconSize + gap;
-  return {
-    shape: 'rect',
-    rx,
-    ry,
-    corner: Math.min(rx, ry) * TOUCHPOINT_RADIUS_SHARE,
-    ...block,
-    iconSize,
-    iconY: iconSize ? -(stack - iconSize) / 2 : 0,
-    textY: iconSize ? (iconSize + gap) / 2 : 0,
-  };
+  // A box has no crown to go into: whatever the icon's size, the way to the
+  // edge is the same, so the pair gets the room the words get and no more.
+  const { block, ...stack } = iconStack({
+    title: touchpoint.title,
+    fontSize,
+    fontWeight,
+    roomX,
+    roomY,
+    reach: reachIn(rx, ry, false),
+    full: fontSize * ICON_SHARE,
+    least: fontSize * ICON_MIN_SHARE,
+    placement: placementOf(touchpoint),
+    ink: iconInkOf(iconKeyOf(touchpoint)),
+  });
+  return { ...shape, ...block, ...stack };
 }
 
-/** How much of an actor's circle the figure takes, and where the label sits. */
-const ACTOR_FIGURE_SHARE = 0.46;
+/* How much of an actor's circle the figure takes: what it is drawn at with room
+   to spare, and what it gives way to when the name under it needs the rows. The
+   figure is measured by its ink, not by the grid it was drawn on. */
+const ACTOR_FIGURE_SHARE = 0.42;
+const ACTOR_FIGURE_MIN_SHARE = 0.32;
 
 /**
  * An actor is a circle with a figure in the top of it and its name under that.
@@ -357,27 +598,31 @@ export function actorSize(actor) {
   const scale = actor.sizeScale || 1;
   const r = BASE_RY * scale;
 
-  // The words sit in the widest box that fits the circle, as they do in an oval.
+  // The words sit in the widest box that fits the circle, as they do in an oval,
+  // and the figure goes out past it the way an oval's icon does.
   const roomX = Math.max(fontSize, (r / Math.SQRT2) * 2 - fontSize * PAD_X * 2);
-  const figure = r * ACTOR_FIGURE_SHARE;
-  const gap = fontSize * ICON_GAP;
+  const { block, iconSize, iconX, iconY, textX, textY } = iconStack({
+    title: actor.title,
+    fontSize,
+    fontWeight,
+    roomX,
+    roomY: (r / Math.SQRT2) * 2 - fontSize * PAD_Y * 2,
+    reach: reachIn(r, r),
+    full: r * ACTOR_FIGURE_SHARE,
+    least: r * ACTOR_FIGURE_MIN_SHARE,
+    placement: placementOf(actor),
+  });
 
-  const lineHeight = fontSize * 1.18;
-  const rows = Math.max(1, Math.min(
-    MAX_CAPABILITY_LINES,
-    Math.floor(((r / Math.SQRT2) * 2 - figure - gap) / lineHeight),
-  ));
-  const block = textBlock(actor.title, fontSize, fontWeight, roomX, rows);
-
-  const stack = block.height + figure + gap;
   return {
     shape: 'circle',
     rx: r,
     ry: r,
     ...block,
-    figureSize: figure,
-    figureY: -(stack - figure) / 2,
-    textY: (figure + gap) / 2,
+    figureSize: iconSize,
+    figureX: iconX,
+    figureY: iconY,
+    textX,
+    textY,
   };
 }
 

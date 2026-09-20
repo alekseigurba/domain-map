@@ -520,11 +520,55 @@ check('an icon leaves the oval alone as well', (() => {
   const withIcon = geo.capabilitySize({ ...cap, icon: 'gear.svg' });
   return withIcon.rx === plain.rx && withIcon.ry === plain.ry;
 })());
-check('  ...and takes its room from the words', (() => {
-  const cap = { title: 'Consumer lending platform for retail', fontSize: 22 };
+// The icon is narrow, so it rides up into the crown of the oval, where a row of
+// words would never fit. Adding one used to cost the title a row outright.
+check('  ...and leaves the words the rows they had', (() => {
+  const cap = { title: 'Consumer lending platform' };
   const plain = geo.capabilitySize(cap);
   const withIcon = geo.capabilitySize({ ...cap, icon: 'gear.svg' });
-  return withIcon.lines.length < plain.lines.length;
+  return plain.lines.length === 2 && withIcon.lines.join(' ') === plain.lines.join(' ');
+})());
+check('the icon is drawn larger than the type under it', (() => {
+  const size = geo.capabilitySize({ title: 'Invoicing', fontSize: 32, icon: 'gear.svg' });
+  return size.iconSize > size.fontSize;
+})());
+check('the icon gives way before the words lose a row', (() => {
+  const shape = { fontSize: 72, sizeScale: 2, icon: 'gear.svg' };
+  const roomy = geo.capabilitySize({ ...shape, title: 'Pay' });
+  const crowded = geo.capabilitySize({ ...shape, title: 'Transfers Transfers' });
+  return crowded.lines.length === 2
+    && crowded.iconSize < roomy.iconSize && crowded.iconSize >= crowded.fontSize;
+})());
+check('a stack too tall for the middle climbs into the crown', (() => {
+  const size = geo.capabilitySize({ title: 'Consumer lending platform', icon: 'gear.svg' });
+  const top = size.iconY - size.iconSize / 2;
+  const bottom = size.textY + size.height / 2;
+  return -top > bottom;
+})());
+check('  ...and the corners of the icon stay inside the oval', (() => {
+  const size = geo.capabilitySize({ title: 'Consumer lending platform', icon: 'gear.svg' });
+  const x = size.iconSize / 2;
+  const y = size.iconY - size.iconSize / 2;
+  return (x / size.rx) ** 2 + (y / size.ry) ** 2 < 1;
+})());
+// A short last row may sink past the foot of the box the words wrap into, and
+// what it gives up goes to the icon. No row's corners may leave the oval for it.
+const rowsInside = (size) => size.lines.every((line, row) => {
+  const x = geo.measure(line, size.fontSize, size.fontWeight) / 2;
+  const top = size.textY - size.height / 2 + row * size.lineHeight;
+  return [top, top + size.lineHeight].every((y) => (x / size.rx) ** 2 + (y / size.ry) ** 2 < 1);
+});
+check('a short last row hands the room under it to the icon', (() => {
+  const shape = { fontSize: 72, sizeScale: 2, icon: 'gear.svg' };
+  const even = geo.capabilitySize({ ...shape, title: 'Transfers Transfers' });
+  const short = geo.capabilitySize({ ...shape, title: 'Transfers Pay' });
+  return even.lines.length === 2 && short.lines.length === 2 && short.iconSize > even.iconSize;
+})());
+check('  ...and every row stays inside the oval all the same', (() => {
+  const shape = { fontSize: 72, sizeScale: 2, icon: 'gear.svg' };
+  return rowsInside(geo.capabilitySize({ ...shape, title: 'Transfers Pay' }))
+    && rowsInside(geo.capabilitySize({ ...shape, title: 'Transfers Transfers' }))
+    && rowsInside(geo.capabilitySize({ title: 'Consumer lending platform', icon: 'gear.svg' }));
 })());
 check('the icon sits above the words', (() => {
   const size = geo.capabilitySize({ title: 'Invoicing', fontSize: 22, icon: 'gear.svg' });
@@ -538,8 +582,111 @@ check('the two are centred together', (() => {
 })());
 check('no icon means no room taken for one', (() => {
   const size = geo.capabilitySize({ title: 'Invoicing', fontSize: 22 });
-  return size.iconSize === 0 && size.iconY === 0 && size.textY === 0;
+  return size.iconSize === 0 && size.iconY === 0 && size.textY === 0 && size.textX === 0;
 })());
+
+// --- which side of the title the icon sits on ---
+const iconAt = (iconPlacement, fields = {}) =>
+  geo.capabilitySize({ title: 'Consumer lending', icon: 'gear.svg', ...fields, iconPlacement });
+check('an icon sits over the title until it is told otherwise', (() => {
+  const unset = geo.capabilitySize({ title: 'Consumer lending', icon: 'gear.svg' });
+  return unset.iconY === iconAt('top').iconY && unset.iconY < unset.textY && unset.iconX === 0;
+})());
+check('a placement nobody has heard of is over the title too',
+  iconAt('middle').iconY === iconAt('top').iconY);
+check('under the title is over it, seen in a mirror', (() => {
+  const under = iconAt('bottom', { title: 'Invoicing' });
+  const over = iconAt('top', { title: 'Invoicing' });
+  return under.iconY > under.textY && under.iconX === 0
+    && Math.abs(under.iconY + over.iconY) < 4 && under.iconSize === over.iconSize;
+})());
+check('left of the title puts the two side by side, level with each other', (() => {
+  const size = iconAt('left');
+  return size.iconX < size.textX && size.iconY === 0 && size.textY === 0;
+})());
+check('right of the title is left of it, seen in a mirror', (() => {
+  const left = iconAt('left');
+  const right = iconAt('right');
+  return right.iconX === -left.iconX && right.textX === -left.textX
+    && right.lines.join('|') === left.lines.join('|');
+})());
+check('beside the title, the icon and the words do not overlap', (() => {
+  const size = iconAt('left');
+  return size.iconX + size.iconWidth / 2 < size.textX - size.width / 2;
+})());
+check('  ...and the pair is centred on the shape', (() => {
+  const size = iconAt('left', { title: 'Pay' });
+  const left = size.iconX - size.iconWidth / 2;
+  const right = size.textX + size.width / 2;
+  return Math.abs(left + right) < 1e-9;
+})());
+check('an icon beside the title costs it width, not rows of height', (() => {
+  const over = iconAt('top', { title: 'Consumer lending platform for everyone', sizeScale: 2 });
+  const beside = iconAt('left', { title: 'Consumer lending platform for everyone', sizeScale: 2 });
+  return beside.lines.length >= over.lines.length && beside.width <= over.width + 1e-9;
+})());
+check('the corners of an icon beside the title stay inside the oval', (() => {
+  const size = iconAt('left', { title: 'Consumer lending platform' });
+  const x = size.iconX - size.iconWidth / 2;
+  const y = size.iconHeight / 2;
+  return (x / size.rx) ** 2 + (y / size.ry) ** 2 < 1;
+})());
+check('a touchpoint places its icon the same four ways', (() => {
+  const at = (iconPlacement) => geo.touchpointSize({ title: 'Checkout widget', icon: 'gear.svg', iconPlacement });
+  return at('top').iconY < 0 && at('bottom').iconY > 0 && at('left').iconX < 0 && at('right').iconX > 0
+    && at('left').iconX - at('left').iconWidth / 2 > -at('left').rx;
+})());
+check('and an actor its figure', (() => {
+  const at = (iconPlacement) => geo.actorSize({ title: 'Shopper', sizeScale: 1.4, iconPlacement });
+  return at('top').figureY < 0 && at('bottom').figureY > 0
+    && at('left').figureX < 0 && at('right').figureX > 0 && at('top').figureX === 0;
+})());
+
+// --- an icon is laid out by what is drawn in it, not by its file ---
+// A wide drawing in a square file has a great deal of nothing over and under it.
+// Laid out by the file, that turns up on the map as a gap between icon and title.
+const wideInk = { x: 0.1, y: 0.35, width: 0.8, height: 0.3, aspect: 1 };
+geo.setIconInk('wide.svg', wideInk);
+check('an icon nobody has measured is taken for its whole file, square', (() => {
+  const size = geo.capabilitySize({ title: 'Invoicing', icon: 'gear.svg' });
+  return size.iconWidth === size.iconSize && size.iconHeight === size.iconSize;
+})());
+check('a wide drawing gets a wide box, and a short one', (() => {
+  const size = geo.capabilitySize({ title: 'Invoicing', icon: 'wide.svg' });
+  return size.iconWidth > size.iconSize && size.iconHeight < size.iconSize
+    && Math.abs(size.iconWidth / size.iconHeight - 0.8 / 0.3) < 1e-9;
+})());
+check('  ...so the air over and under it is not counted as icon', (() => {
+  const square = geo.capabilitySize({ title: 'Invoicing', icon: 'gear.svg' });
+  const wide = geo.capabilitySize({ title: 'Invoicing', icon: 'wide.svg' });
+  const gapOf = (size) => (size.textY - size.height / 2) - (size.iconY + size.iconHeight / 2);
+  return Math.abs(gapOf(square) - gapOf(wide)) < 1e-9;
+})());
+check('the gap is between ink and letters, so it is smaller than a row\'s own leading', (() => {
+  const size = geo.capabilitySize({ title: 'Invoicing', icon: 'gear.svg' });
+  const gap = (size.textY - size.height / 2) - (size.iconY + size.iconHeight / 2);
+  return Math.abs(gap) < size.fontSize * 0.1;
+})());
+check('the picture is placed so that its ink lands on the box it was given', (() => {
+  const size = geo.capabilitySize({ title: 'Invoicing', icon: 'wide.svg' });
+  const box = geo.iconImageBox(size, wideInk);
+  const inkLeft = box.x + wideInk.x * box.width;
+  const inkTop = box.y + wideInk.y * box.height;
+  return Math.abs(inkLeft - (size.iconX - size.iconWidth / 2)) < 1e-9
+    && Math.abs(inkTop - (size.iconY - size.iconHeight / 2)) < 1e-9
+    && Math.abs(wideInk.width * box.width - size.iconWidth) < 1e-9
+    && Math.abs(wideInk.height * box.height - size.iconHeight) < 1e-9;
+})());
+check('a heavier drawing of the same file is measured as its own', (() => {
+  const plain = { icon: 'wide.svg' };
+  const heavy = { icon: 'wide.svg', iconWeight: 2 };
+  return geo.iconKeyOf(plain) === 'wide.svg' && geo.iconKeyOf(heavy) !== geo.iconKeyOf(plain)
+    && geo.iconInkOf(geo.iconKeyOf(heavy)) === geo.WHOLE_ICON;
+})());
+check('only an SVG has lines to weigh',
+  geo.iconWeightOf({ icon: 'photo.png', iconWeight: 3 }) === 1
+  && geo.iconWeightOf({ icon: 'gear.svg', iconWeight: 3 }) === 3
+  && geo.iconWeightOf({ icon: 'gear.svg' }) === 1);
 check('the icon grows with the font', (() => {
   const small = geo.capabilitySize({ title: 'X', fontSize: 16, icon: 'gear.svg' });
   const large = geo.capabilitySize({ title: 'X', fontSize: 46, icon: 'gear.svg' });
@@ -617,6 +764,23 @@ check('the words of an actor stay inside its circle',
   actor.width <= actor.rx * 2 + 1e-6);
 check('an actor keeps room for its figure above the words',
   actor.figureSize > 0 && actor.figureY < actor.textY);
+check('the figure gives way before the name loses a row', (() => {
+  const roomy = geo.actorSize({ title: 'Shopper', fontSize: 64, sizeScale: 2.2 });
+  const named = geo.actorSize({ title: 'Shopper Shopper Shopper', fontSize: 64, sizeScale: 2.2 });
+  return named.lines.length > roomy.lines.length
+    && named.figureSize < roomy.figureSize && named.figureSize > 0;
+})());
+check('the figure stays inside the circle', (() => {
+  const named = geo.actorSize({ title: 'Shopper Shopper Shopper', fontSize: 64, sizeScale: 2.2 });
+  return Math.hypot(named.figureSize / 2, named.figureY - named.figureSize / 2) < named.rx;
+})());
+check('an icon in a touchpoint sits over the words, and inside the box', (() => {
+  const size = geo.touchpointSize({ title: 'Checkout widget', fontSize: 32, icon: 'gear.svg' });
+  return size.iconSize > size.fontSize
+    && size.iconY < size.textY
+    && size.iconY - size.iconSize / 2 > -size.ry
+    && size.textY + size.height / 2 < size.ry;
+})());
 
 check('a colour in the palette is found as its own swatch',
   geo.swatchFor('#d4d1cf') === 12 && geo.swatchFor('#86a27b') === 2,

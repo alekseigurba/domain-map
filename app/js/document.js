@@ -48,6 +48,21 @@ function unique(seen, wanted) {
 
 const blank = (value) => (value == null || value === '' ? null : value);
 
+/**
+ * Which side of the title the icon sits on, written only when it is not over
+ * it. Over it is where an icon was before there was a choice, so a map that
+ * never chose writes the file it always wrote — and one that did still opens in
+ * an app from before the choice, which reads past the field and draws it on top.
+ */
+const placementOf = (record) =>
+  (record.iconPlacement && record.iconPlacement !== rules.DEFAULT_ICON_PLACEMENT
+    ? record.iconPlacement
+    : null);
+
+/** How heavy the icon's lines are drawn, written only when it is not as the file has them. */
+const weightOf = (record) =>
+  (record.iconWeight && record.iconWeight !== rules.DEFAULT_ICON_WEIGHT ? record.iconWeight : null);
+
 /** Drop the fields that were never set, so the file carries only what it means. */
 const compact = (record) =>
   Object.fromEntries(Object.entries(record).filter(([, value]) => value != null));
@@ -97,6 +112,8 @@ const commonFields = (node) => ({
   sizeScale: node.shape?.scale,
   opacity: node.shape?.opacity,
   sortIndex: node.shape?.order,
+  iconPlacement: node.shape?.iconPlacement,
+  iconWeight: node.shape?.iconWeight,
 });
 
 /**
@@ -345,6 +362,8 @@ export function toDocument(state) {
         stretch: capability.stretch,
         opacity: capability.opacity,
         order: capability.sortIndex,
+        iconPlacement: placementOf(capability),
+        iconWeight: weightOf(capability),
       }),
     });
   });
@@ -371,6 +390,8 @@ export function toDocument(state) {
         stretch: touchpoint.stretch,
         opacity: touchpoint.opacity,
         order: touchpoint.sortIndex,
+        iconPlacement: placementOf(touchpoint),
+        iconWeight: weightOf(touchpoint),
       }),
     });
   });
@@ -395,6 +416,7 @@ export function toDocument(state) {
         scale: actor.sizeScale,
         opacity: actor.opacity,
         order: actor.sortIndex,
+        iconPlacement: placementOf(actor),
       }),
     });
   });
@@ -597,6 +619,8 @@ export function validate(document_) {
       stretch: shape?.stretch,
       opacity: shape?.opacity,
       icon: capability.icon,
+      iconPlacement: shape?.iconPlacement,
+      iconWeight: shape?.iconWeight,
     });
     if (error) return `Capability '${capability.key}': ${error}`;
   }
@@ -629,6 +653,8 @@ export function validate(document_) {
         stretch: node.shape?.stretch,
         opacity: node.shape?.opacity,
         icon: node.icon,
+        iconPlacement: node.shape?.iconPlacement,
+        iconWeight: node.shape?.iconWeight,
       });
       if (error) return `${label} '${node.key}': ${error}`;
     }

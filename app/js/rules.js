@@ -161,6 +161,17 @@ export const MIN_TITLE_WIDTH = 40;
 export const MAX_TITLE_WIDTH = 2000;
 
 export const ICON_EXTENSIONS = ['.svg', '.png', '.jpg', '.jpeg', '.webp'];
+/** Which side of its title a shape's icon sits on. Over it is where it has always been. */
+export const ICON_PLACEMENTS = ['top', 'left', 'bottom', 'right'];
+export const DEFAULT_ICON_PLACEMENT = 'top';
+/**
+ * How heavy an SVG icon's lines are drawn, as a multiple of what its file says.
+ * A multiple rather than a width, because a width means nothing without the
+ * grid it is on: 2 is a bold line on a 24-unit icon and a hairline on a 64.
+ */
+export const MIN_ICON_WEIGHT = 0.5;
+export const MAX_ICON_WEIGHT = 4;
+export const DEFAULT_ICON_WEIGHT = 1;
 export const MAX_ICON_BYTES = 512 * 1024;
 
 // --- defaults ----------------------------------------------------------------
@@ -219,6 +230,8 @@ export const CAPABILITY_DEFAULTS = {
   lobeY: 0,
   sortIndex: 0,
   icon: null,
+  iconPlacement: DEFAULT_ICON_PLACEMENT,
+  iconWeight: DEFAULT_ICON_WEIGHT,
 };
 
 /**
@@ -241,9 +254,14 @@ export const TOUCHPOINT_DEFAULTS = {
   y: 0,
   sortIndex: 0,
   icon: null,
+  iconPlacement: DEFAULT_ICON_PLACEMENT,
+  iconWeight: DEFAULT_ICON_WEIGHT,
 };
 
-/** An actor is a circle, so it takes no stretch, and it wears no icon but its own. */
+/**
+ * An actor is a circle, so it takes no stretch, and it wears no icon but its
+ * own — though which side of the name the figure stands on is its to choose.
+ */
 export const ACTOR_DEFAULTS = {
   title: ACTOR_SHAPE.title,
   description: '',
@@ -257,6 +275,7 @@ export const ACTOR_DEFAULTS = {
   x: 0,
   y: 0,
   sortIndex: 0,
+  iconPlacement: DEFAULT_ICON_PLACEMENT,
 };
 
 // fromPoint/toPoint start on opposite sides of the oval, which is what a line
@@ -377,6 +396,12 @@ const faded = (opacity) =>
     ? 'opacity must be between 10 and 100.'
     : null);
 
+/** Which side of the title an icon sits on. */
+const placed = (placement) =>
+  (given(placement) && !ICON_PLACEMENTS.includes(placement)
+    ? `iconPlacement must be one of ${ICON_PLACEMENTS.join(', ')}.`
+    : null);
+
 export function validateCapability(fields) {
   return text(fields.title, fields.description, fields.owner)
     ?? typed(fields.type)
@@ -387,7 +412,12 @@ export function validateCapability(fields) {
       ? `stretch must be one of ${STRETCHES.join(', ')}.`
       : null)
     ?? faded(fields.opacity)
-    ?? validateIcon(fields.icon);
+    ?? validateIcon(fields.icon)
+    ?? placed(fields.iconPlacement)
+    ?? (given(fields.iconWeight)
+      && !(fields.iconWeight >= MIN_ICON_WEIGHT && fields.iconWeight <= MAX_ICON_WEIGHT)
+      ? `iconWeight must be between ${MIN_ICON_WEIGHT} and ${MAX_ICON_WEIGHT}.`
+      : null);
 }
 
 /** A touchpoint is checked as a capability is — the two differ only in geometry. */
@@ -401,7 +431,8 @@ export function validateActor(fields) {
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)
     ?? scale(fields.sizeScale, 'sizeScale', MAX_SIZE_SCALE)
-    ?? faded(fields.opacity);
+    ?? faded(fields.opacity)
+    ?? placed(fields.iconPlacement);
 }
 
 export const validatorFor = {

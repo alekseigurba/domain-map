@@ -6,6 +6,7 @@ import {
   connectorEnds, oneLine, layerStack, layerOf, connectorLayer, isHidden,
 } from './store.js';
 import * as geo from './geometry.js';
+import { iconArt } from './icon-art.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SNAP_RADIUS = 3.6;
@@ -81,8 +82,15 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const colorOf = (index) => geo.COLORS[(index || 1) - 1] ?? geo.COLORS[0];
-/** The one ink a capability's title and icon are ever drawn in. */
+/** The one ink a capability's title is ever drawn in. Its icon keeps its own colours. */
 const CAPABILITY_INK = '#000';
+/**
+ * The silhouette an actor wears is drawn on a 24-unit grid and fills only the
+ * middle of it. This is the square its ink covers, stroke included: the figure
+ * is drawn cropped to it, so the size the geometry hands over is the size of
+ * what is seen, and the air round the figure is air the layout chose.
+ */
+const FIGURE_INK = { x: 3.5, y: 4.75, size: 17 };
 const paper = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fffdfa';
 /** How solid a shape is drawn, as a share. Every kind carries one now. */
 const opacityOf = (record, fallback = geo.DEFAULT_OPACITY) =>
@@ -628,6 +636,25 @@ function textNode(className, block, x, y, ink) {
   return label;
 }
 
+/**
+ * A shape's icon, or nothing: none chosen, or one still being got ready, which
+ * draws the map again once it is. An <image> is its own little document, so the
+ * icon is drawn as its file has it — the colours are the ones whoever drew it
+ * chose — and is placed by its ink rather than by its file, whose margin hangs
+ * outside the box the layout gave it and shows as nothing.
+ */
+function iconNode(record, size) {
+  if (!record.icon || !(size.iconSize > 0)) return null;
+  const art = iconArt(record, actions.iconUrl, () => render());
+  if (!art) return null;
+  return el('image', {
+    class: 'cap__icon',
+    href: art.href,
+    ...geo.iconImageBox(size, art.ink),
+    preserveAspectRatio: 'xMidYMid meet',
+  });
+}
+
 function renderCapability(capability) {
   const position = positions.get(capability.id);
   const size = geo.capabilitySize(capability);
@@ -656,22 +683,10 @@ function renderCapability(capability) {
     'fill-opacity': opacityOf(capability, 100),
   }));
 
-  if (capability.icon && size.iconSize > 0) {
-    // An <image> is its own little document, so the icon cannot inherit the ink
-    // the way the text does. It is flattened to that ink instead, which here is
-    // the same black the title is drawn in.
-    group.appendChild(el('image', {
-      class: 'cap__icon',
-      href: actions.iconUrl(capability.icon),
-      x: -size.iconSize / 2,
-      y: size.iconY - size.iconSize / 2,
-      width: size.iconSize,
-      height: size.iconSize,
-      preserveAspectRatio: 'xMidYMid meet',
-    }));
-  }
+  const icon = iconNode(capability, size);
+  if (icon) group.appendChild(icon);
 
-  group.appendChild(textNode('cap__text', size, 0, size.textY, ink));
+  group.appendChild(textNode('cap__text', size, size.textX, size.textY, ink));
   const snaps = renderSnaps(capability.id, 'capability', size);
   if (snaps) group.appendChild(snaps);
 
@@ -708,7 +723,7 @@ function renderSnaps(id, kind, size) {
   return snaps;
 }
 
-/** A touchpoint: a rounded rectangle with its label inside, and an icon above it. */
+/** A touchpoint: a rounded rectangle with its label inside, and an icon on whichever side of it was chosen. */
 function renderTouchpoint(touchpoint) {
   const position = positions.get(touchpoint.id);
   const size = geo.touchpointSize(touchpoint);
@@ -735,19 +750,10 @@ function renderTouchpoint(touchpoint) {
     'fill-opacity': opacityOf(touchpoint, 100),
   }));
 
-  if (touchpoint.icon && size.iconSize > 0) {
-    group.appendChild(el('image', {
-      class: 'cap__icon',
-      href: actions.iconUrl(touchpoint.icon),
-      x: -size.iconSize / 2,
-      y: size.iconY - size.iconSize / 2,
-      width: size.iconSize,
-      height: size.iconSize,
-      preserveAspectRatio: 'xMidYMid meet',
-    }));
-  }
+  const icon = iconNode(touchpoint, size);
+  if (icon) group.appendChild(icon);
 
-  group.appendChild(textNode('cap__text', size, 0, size.textY, CAPABILITY_INK));
+  group.appendChild(textNode('cap__text', size, size.textX, size.textY, CAPABILITY_INK));
   const snaps = renderSnaps(touchpoint.id, 'touchpoint', size);
   if (snaps) group.appendChild(snaps);
 
@@ -755,9 +761,10 @@ function renderTouchpoint(touchpoint) {
 }
 
 /**
- * An actor: a figure in a see-through circle with a rim, its name under the
- * figure. The circle is the shape a line attaches to, which is why the rim is
- * drawn rather than implied — it is the edge the snap points sit on.
+ * An actor: a figure in a see-through circle with a rim, its name beside the
+ * figure — under it, until told otherwise. The circle is the shape a line
+ * attaches to, which is why the rim is drawn rather than implied — it is the
+ * edge the snap points sit on.
  */
 function renderActor(actor) {
   const position = positions.get(actor.id);
@@ -781,17 +788,17 @@ function renderActor(actor) {
 
   // The same silhouette the profile avatar wears, drawn at the size this actor
   // is: a head and the shoulders under it, on a 24-unit grid.
-  const scale = size.figureSize / 24;
+  const scale = size.figureSize / FIGURE_INK.size;
   const figure = el('g', {
     class: 'actor__figure',
-    transform: `translate(${-size.figureSize / 2} ${size.figureY - size.figureSize / 2})`
-      + ` scale(${scale})`,
+    transform: `translate(${size.figureX - size.figureSize / 2} ${size.figureY - size.figureSize / 2})`
+      + ` scale(${scale}) translate(${-FIGURE_INK.x} ${-FIGURE_INK.y})`,
   });
   figure.appendChild(el('circle', { cx: 12, cy: 9, r: 4 }));
   figure.appendChild(el('path', { d: 'M4.5 20.5c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5' }));
   group.appendChild(figure);
 
-  group.appendChild(textNode('cap__text', size, 0, size.textY, CAPABILITY_INK));
+  group.appendChild(textNode('cap__text', size, size.textX, size.textY, CAPABILITY_INK));
   const snaps = renderSnaps(actor.id, 'actor', size);
   if (snaps) group.appendChild(snaps);
 

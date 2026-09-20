@@ -51,6 +51,7 @@ node tests/geometry.test.mjs
 | `app/js/store.js` | The single source of truth. Menu, details and diagram all read from it, and every change to the map is a change here. |
 | `app/js/diagram.js` | The SVG: rendering, hit-testing, dragging, connectors. |
 | `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points. |
+| `app/js/icon-art.js` | An icon as the map draws it: the file with its lines weighed, and where in it the drawing is. It needs a fetch and a canvas, so it is here and not in `geometry.js`, which only keeps what was measured. |
 | `app/js/defaults.js` | How a new domain or capability looks, and what *Reset shapes* puts back. `tests/defaults.test.mjs` checks the values. |
 | `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`. |
 | `scripts/serve.mjs` | The CLI over it, for running the stock app from this checkout. |

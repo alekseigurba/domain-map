@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" data-iconbench="1">
+  <g data-layer="Layer 1">
+    <path d="M 11.87 2.72 C 10.12 2.8 7.56 4.62 6 5.5 C 4.44 6.38 2.33 7.33 2.5 8 C 2.67 8.67 5.42 8.92 7 9.5 C 8.58 10.08 10.33 11.42 12 11.5 C 13.67 11.58 15.33 10.58 17 10 C 18.67 9.42 22.08 8.83 22 8 C 21.92 7.17 18.19 5.88 16.5 5 C 14.81 4.12 13.62 2.64 11.87 2.72 Z" stroke="#b3362d" stroke-width="0.75" fill="none" data-kind="catmull" data-points="11.87,2.72 6,5.5 2.5,8 7,9.5 12,11.5 17,10 22,8 16.5,5" data-closed="true" data-stroke-swatch="7"/>
+    <path d="M 2.41 10.89 C 3.26 11.24 5.9 12.32 7.5 13 C 9.1 13.69 10.42 15 12 15 C 13.58 15 15.4 13.61 17 13 C 18.61 12.39 20.86 11.61 21.63 11.33" stroke="#b3362d" stroke-width="0.75" fill="none" data-kind="catmull" data-points="2.41,10.89 7.5,13 12,15 17,13 21.63,11.33" data-stroke-swatch="7"/>
+    <path d="M 2.62 13.69 C 3.35 14.08 5.44 15.28 7 16 C 8.56 16.72 10.25 18.08 12 18 C 13.75 17.92 15.89 16.19 17.5 15.5 C 19.12 14.81 20.99 14.14 21.69 13.87" stroke="#b3362d" stroke-width="0.75" fill="none" data-kind="catmull" data-points="2.62,13.69 7,16 12,18 17.5,15.5 21.69,13.87" data-stroke-swatch="7"/>
+    <path d="M 2.5 16.52 C 3.18 16.88 4.91 17.95 6.57 18.68 C 8.24 19.41 10.75 20.87 12.49 20.92 C 14.23 20.97 15.47 19.65 17 19 C 18.53 18.35 20.91 17.33 21.69 17" stroke="#b3362d" stroke-width="0.75" fill="none" data-kind="catmull" data-points="2.5,16.52 6.57,18.68 12.49,20.92 17,19 21.69,17" data-stroke-swatch="7"/>
+  </g>
+</svg>

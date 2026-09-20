@@ -9,6 +9,8 @@ import {
   COLORS, FONT_SIZES, CAPABILITY_FONT_SIZES, FONT_WEIGHTS, SIZE_SCALES, TITLE_SCALES,
   LINE_STYLES, DEFAULT_FONT_WEIGHT,
   DEFAULT_CAPABILITY_FONT_WEIGHT, DEFAULT_OPACITY, DEFAULT_FONT_SIZE,
+  ICON_PLACEMENTS, DEFAULT_ICON_PLACEMENT,
+  MIN_ICON_WEIGHT, MAX_ICON_WEIGHT, DEFAULT_ICON_WEIGHT,
 } from './geometry.js';
 
 const container = document.getElementById('details');
@@ -345,6 +347,36 @@ function iconField(type, record) {
   return wrapper;
 }
 
+/**
+ * How heavy an SVG icon's lines are drawn, as a multiple of what the file says.
+ * Here, under the picker, rather than among the shape's controls: for now it is
+ * a way to make a fine-lined icon read on the map without redrawing the file,
+ * and it belongs beside the file it is making up for.
+ */
+function iconWeightField(type, record) {
+  return field('Icon weight', slider(
+    {
+      min: MIN_ICON_WEIGHT,
+      max: MAX_ICON_WEIGHT,
+      step: 0.25,
+      value: record.iconWeight ?? DEFAULT_ICON_WEIGHT,
+      format: (v) => `${v}×`,
+    },
+    (value) => patch(type, record, { iconWeight: value }),
+  ));
+}
+
+const PLACEMENT_LABELS = { top: 'Top', left: 'Left', bottom: 'Bottom', right: 'Right' };
+
+/** Which side of the title the icon sits on — or, for an actor, the figure. */
+function iconPlacementField(type, record) {
+  return field('Icon placement', select(
+    ICON_PLACEMENTS.map((value) => ({ value, label: PLACEMENT_LABELS[value] })),
+    record.iconPlacement ?? DEFAULT_ICON_PLACEMENT,
+    (value) => patch(type, record, { iconPlacement: value }),
+  ));
+}
+
 /** A slider that shows its current value and writes on release. */
 function slider({ min, max, step, value, format }, onChange) {
   const wrapper = document.createElement('div');
@@ -547,7 +579,11 @@ function metadataSection(type, record, { lead = [], trail = [] }) {
     // than among the controls for how it is drawn. Browsing has nothing to
     // choose with, so the picker is not shown at all.
     ...(editMode && (type === 'capability' || type === 'touchpoint')
-      ? [field('Icon', iconField(type, record))]
+      ? [
+        field('Icon', iconField(type, record)),
+        // Only an SVG has lines to weigh; a photograph is what it is.
+        ...(/\.svg$/i.test(record.icon ?? '') ? [iconWeightField(type, record)] : []),
+      ]
       : []),
     ...(trail.length ? [meta(trail)] : []),
   ], 'Metadata');
@@ -587,6 +623,8 @@ export function renderDetails() {
       ), { inline: true }),
       field('Color', swatches(type, record)),
       opacityField(type, record, 100),
+      // Nothing to place until there is an icon.
+      ...(record.icon ? [iconPlacementField(type, record)] : []),
     ]));
   } else if (type === 'touchpoint' || type === 'actor') {
     // Neither belongs to a domain, so what frames it is the layer it is on.
@@ -604,6 +642,8 @@ export function renderDetails() {
       field('Color', swatches(type, record)),
       // An actor starts half see-through, so the terrain under it still reads.
       opacityField(type, record, type === 'actor' ? 50 : 100),
+      // An actor always has its figure to place; a touchpoint needs an icon first.
+      ...(type === 'actor' || record.icon ? [iconPlacementField(type, record)] : []),
     ]));
   } else if (type === 'domain') {
     const count = store.capabilities.filter((c) => c.domainId === record.id).length;

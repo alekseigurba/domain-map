@@ -185,12 +185,67 @@ const roundTrip = stringify(toDocument({ ...full, palette: [] }));
 check('the new shape survives the round trip unchanged',
   roundTrip === stringify(toDocument({ ...fromDocument(JSON.parse(roundTrip)), palette: [] })));
 
+// --- where an icon sits, and how heavy it is drawn ---------------------------
+
+// Both are fields a file may leave out, and does whenever they say nothing new:
+// a map that never chose writes the file it always wrote, and one that did
+// still opens in an app from before the choice, which reads past them.
+check('a file that says nothing puts the icon over the title, as its file drew it',
+  full.capabilities[0].iconPlacement === 'top' && full.capabilities[0].iconWeight === 1
+  && full.touchpoints[0].iconPlacement === 'top' && full.actors[0].iconPlacement === 'top');
+check('and nothing is written for it',
+  !roundTrip.includes('iconPlacement') && !roundTrip.includes('iconWeight'));
+
+const dressed = structuredClone(v2);
+dressed.capabilities[0].icon = 'gear.svg';
+dressed.capabilities[0].shape.iconPlacement = 'left';
+dressed.capabilities[0].shape.iconWeight = 2.5;
+dressed.touchpoints[0].icon = 'gear.svg';
+dressed.touchpoints[0].shape.iconPlacement = 'bottom';
+dressed.actors[0].shape.iconPlacement = 'right';
+check('a file that places its icons is valid', validate(dressed) === null, validate(dressed) ?? '');
+
+const dressedMap = fromDocument(dressed);
+check('the placement is read off every kind that has one',
+  dressedMap.capabilities[0].iconPlacement === 'left'
+  && dressedMap.touchpoints[0].iconPlacement === 'bottom'
+  && dressedMap.actors[0].iconPlacement === 'right');
+check('and the weight off a shape that wears an icon', dressedMap.capabilities[0].iconWeight === 2.5);
+check('an actor has a figure to place but no file to weigh', !('iconWeight' in dressedMap.actors[0]));
+
+const dressedOut = toDocument({ ...dressedMap, palette: [] });
+check('both are written back where they were read',
+  dressedOut.capabilities[0].shape.iconPlacement === 'left'
+  && dressedOut.capabilities[0].shape.iconWeight === 2.5
+  && dressedOut.touchpoints[0].shape.iconPlacement === 'bottom'
+  && dressedOut.actors[0].shape.iconPlacement === 'right');
+check('and only what was chosen: the touchpoint wrote no weight',
+  !('iconWeight' in dressedOut.touchpoints[0].shape));
+check('the file is still version 2: an older app reads past what it does not know',
+  dressedOut.version === 2 && CURRENT_VERSION === 2);
+
 // --- what a file may not say -------------------------------------------------
 
 const refuses = (label, document_, wanted) => {
   const said = validate(document_);
   check(label, said !== null && said.includes(wanted), said ?? 'it was accepted');
 };
+
+refuses('an icon placed nowhere we know is refused', (() => {
+  const bad = structuredClone(dressed);
+  bad.capabilities[0].shape.iconPlacement = 'middle';
+  return bad;
+})(), 'iconPlacement must be one of');
+refuses('and so is a placement on an actor that is not one', (() => {
+  const bad = structuredClone(dressed);
+  bad.actors[0].shape.iconPlacement = 'over';
+  return bad;
+})(), 'iconPlacement must be one of');
+refuses('an icon weight off the scale is refused', (() => {
+  const bad = structuredClone(dressed);
+  bad.touchpoints[0].shape.iconWeight = 40;
+  return bad;
+})(), 'iconWeight must be between');
 
 refuses('a later version is refused',
   { ...v1, version: CURRENT_VERSION + 1 }, `reads up to ${CURRENT_VERSION}`);

@@ -118,6 +118,19 @@ Capability icons are a different thing: files a user uploads, kept under
 `data/icons/` and referenced by name, so an exported map names its icons rather
 than carrying them. `.svg`, `.png`, `.jpg`, `.jpeg` or `.webp`, under 512 KB,
 and an SVG carrying script is refused rather than served back from this origin.
+On the map an icon is drawn as its file has it, in its own colours, and nothing
+in the stylesheet restyles it: an `<image>` is a document of its own. The one
+thing a map may change is how heavy an SVG's lines are, which
+[`app/js/icon-art.js`](../app/js/icon-art.js) does by making another drawing
+from the file. An icon is laid out by its ink rather than its file, so the
+margin an icon is drawn with costs nothing; which side of the title it sits on,
+and how the two share a shape, is `iconStack` in
+[`app/js/geometry.js`](../app/js/geometry.js).
+
+Icons meant for the map read best drawn with a line of 1.5 to 2 on a 24-unit
+grid, round caps, in colours that hold against the palette. Button icons are
+another convention — a 16-unit grid and no stroke or colour of their own, as
+above — and a file drawn for one is the wrong weight as the other.
 
 ## The page
 

@@ -46,8 +46,6 @@ const INITIAL = {
   'dominant-baseline': 'auto',
 };
 
-const INK_FILTER = 'ink';
-
 /**
  * The diagram as a standalone SVG document, cropped to MARGIN around what is
  * drawn. Throws when there is nothing drawn to crop to.
@@ -100,7 +98,6 @@ export async function diagramSvg(diagram, { title = '' } = {}) {
 
   const defs = el('defs');
   if (fonts) defs.appendChild(el('style', {}, fonts));
-  if (content.querySelector('image[filter]')) defs.appendChild(inkFilter());
   if (defs.hasChildNodes()) picture.appendChild(defs);
 
   // The domains are see-through, and their titles were inked for the paper
@@ -134,7 +131,6 @@ function inlineStyle(node) {
   const style = getComputedStyle(node);
   const names = node.localName === 'text' ? [...PAINT, ...TYPE] : PAINT;
   const values = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)]));
-  const flattened = node.localName === 'image' && style.getPropertyValue('filter') !== 'none';
 
   for (const channel of ['fill', 'stroke']) {
     const { color, alpha } = splitAlpha(values[channel]);
@@ -152,7 +148,6 @@ function inlineStyle(node) {
     const plain = value.replace(/px\b/g, '');
     if (plain !== INITIAL[name]) node.setAttribute(name, plain);
   }
-  if (flattened) node.setAttribute('filter', `url(#${INK_FILTER})`);
 }
 
 /**
@@ -250,14 +245,4 @@ async function embedFonts(content) {
     }
   }
   return (await Promise.all(faces)).filter(Boolean).join('\n');
-}
-
-/** The stage flattens icons to ink with CSS brightness(0); this is the same in terms any SVG reader follows. */
-function inkFilter() {
-  const filter = el('filter', { id: INK_FILTER, 'color-interpolation-filters': 'sRGB' });
-  filter.appendChild(el('feColorMatrix', {
-    type: 'matrix',
-    values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0',
-  }));
-  return filter;
 }

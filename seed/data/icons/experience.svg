@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" data-iconbench="1">
+  <g data-layer="Layer 1">
+    <path d="M 9.52 10.39 C 9.71 10.23 10.26 9.65 10.67 9.42 C 11.08 9.19 11.59 9.02 12 9 C 12.41 8.98 12.75 9.07 13.14 9.3 C 13.53 9.53 14.15 10.18 14.35 10.36" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="9.52,10.39 10.67,9.42 12,9 13.14,9.3 14.35,10.36" data-stroke-swatch="4"/>
+    <path d="M 13.44 10.66 C 13.62 10.64 14.35 10.78 14.53 10.54 C 14.71 10.3 14.53 9.43 14.53 9.21" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="13.44,10.66 14.53,10.54 14.53,9.21" data-stroke-swatch="4"/>
+    <path d="M 15 14.5 C 14.75 14.67 14 15.33 13.5 15.5 C 13 15.67 12.5 15.58 12 15.5 C 11.5 15.42 10.94 15.18 10.5 15 C 10.06 14.82 9.56 14.53 9.37 14.43" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="15,14.5 13.5,15.5 12,15.5 10.5,15 9.37,14.43" data-stroke-swatch="4"/>
+    <path d="M 9.25 14.4 C 9.32 14.57 9.62 15.23 9.69 15.4" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="9.25,14.4 9.69,15.4" data-stroke-swatch="4"/>
+    <path d="M 9.22 14.17 C 9.46 14.16 10.43 14.12 10.67 14.11" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="9.22,14.17 10.67,14.11" data-stroke-swatch="4"/>
+    <path d="M 16.5 9.5 C 15.67 10 16 11.5 16 12.5 C 16 13.5 15.67 15 16.5 15.5 C 17.33 16 20.17 16 21 15.5 C 21.83 15 21.5 13.5 21.5 12.5 C 21.5 11.5 21.83 10 21 9.5 C 20.17 9 17.33 9 16.5 9.5 Z" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="16.5,9.5 16,12.5 16.5,15.5 21,15.5 21.5,12.5 21,9.5" data-closed="true" data-stroke-swatch="4"/>
+    <path d="M 7.5 9.5 C 8.23 10.03 7.5 12 7.5 13 C 7.5 14 8.19 15.04 7.5 15.5 C 6.81 15.96 4.21 16.21 3.38 15.76 C 2.55 15.31 2.55 13.8 2.51 12.81 C 2.47 11.82 2.32 10.35 3.15 9.8 C 3.98 9.25 6.78 8.97 7.5 9.5 Z" stroke="#2a7f78" stroke-width="0.75" fill="none" data-kind="catmull" data-points="7.5,9.5 7.5,13 7.5,15.5 3.38,15.76 2.51,12.81 3.15,9.8" data-closed="true" data-stroke-swatch="4"/>
+  </g>
+</svg>

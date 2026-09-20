@@ -7,6 +7,61 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.1.1 — 2026-09-20
+
+Icons on the map grow up: larger, in their own colours, laid out by what is
+drawn in them, and placed on whichever side of the title suits the shape. No
+breaking changes — map files stay version 2, and a 2.1.0 deployment still opens
+one written here. Full notes: [docs/releases/2.1.1.md](docs/releases/2.1.1.md).
+
+### Added
+
+- **Icon placement**: over the title, left of it, under it or right of it. It is
+  in the Shape section of a capability and a touchpoint once they wear an icon,
+  and of an actor always, where it moves the figure. Beside the title, the icon
+  goes out into the end of the oval — room the words could not use — so the
+  title gives up a little width and none of its rows. Over the title is where
+  an icon has always been, and a map that never chooses is drawn and written
+  exactly as before. The choice is a field the file may leave out, so map files
+  stay version 2 and a 2.1.0 deployment still opens one: it reads past the
+  field and draws the icon on top.
+- **Icon weight**, a slider under the icon picker, from 0.5× to 4×: how heavy an
+  SVG icon's lines are drawn, as a multiple of what its file says. An icon drawn
+  with a fine line for the screen it was made on can be a hairline on the map;
+  this makes it read without redrawing the file. It is a multiple rather than a
+  width because a width means nothing without its grid — 2 is a bold line on a
+  24-unit icon and a fine one on a 64. A picture that is not an SVG has no lines
+  to weigh, and is not offered the slider. Export SVG carries the icon at the
+  weight it is drawn.
+
+### Changed
+
+- **The gap between an icon and its title is the one the map chose**, and a
+  small one. It is measured from what is drawn to what is drawn — the ink of the
+  icon to the letters — where it used to be measured box to box, so the margin
+  inside an icon's file and the leading over a row of type were both added to
+  it, and a wide drawing in a square file floated well clear of its title. An
+  icon is laid out by its ink altogether now: a wide one gets a wide, short box
+  rather than a sliver in a square one.
+- **An icon is larger, and no longer costs a title its rows.** It is drawn half
+  as large again as the type under it, where it used to be barely larger, and it
+  rides up into the crown of the oval — room a row of words could never use —
+  so a title that read in two rows without an icon reads in two rows with one.
+  A short last row sits lower than a full one, and what it gives up goes to the
+  icon. Where a shape really is full, the icon gives way before the words do,
+  down to the size of the type and no further. Adding an icon used to mean
+  cutting the title or shrinking the font to get it back, which shrank the icon
+  with it; a map drawn that way can have its type set back up.
+- **An icon keeps its own colours** on the map and in Export SVG. It used to be
+  flattened to the title's black, which turned a full-colour drawing into a
+  silhouette, and a set of icons told apart by colour into one icon.
+- **An actor's figure is nearly a third larger**, and is measured by its ink
+  rather than by the grid it was drawn on, so the air round it is the same air
+  an icon gets. It gives way to a long name the way an icon does.
+- **The example map was redrawn**, and the demo in the README recorded again
+  over it. A map already in the database is not touched: the seed fills an empty
+  store once.
+
 ## 2.1.0 — 2026-09-19
 
 The map gains layers, and two new kinds of element to put on them.
