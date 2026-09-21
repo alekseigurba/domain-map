@@ -75,7 +75,9 @@ the top two or three rows, so every family stays in it.
 A new capability is drawn in `--c1`. A new domain's default, `#d4d1cf`, is not
 in the stock palette, so it takes the nearest swatch, `--c3`, at 20% opacity;
 and a capability added into a domain starts in the domain's own color — the
-README's *Shape defaults* chapter says where that is set. A map carries its own
+*Shape defaults* chapter below says where that is set. An area's default,
+`#5985ab`, is `--c14`: it is worn as a line, so it wants a swatch that reads as
+one. A map carries its own
 copy of the palette once one has been edited, and its size can be set to 12, 18
 or 24 in **Edit palette**.
 
@@ -136,8 +138,8 @@ above — and a file drawn for one is the wrong weight as the other.
 
 A three-row grid — header, main, footer — pinned to the viewport; nothing
 scrolls but the panels. `main` is three columns: the hierarchy panel, the stage,
-the details panel, both panels 250px and both collapsible to a `--rail-w` 28px
-rail. The stage is
+the details panel, both panels `--panel-w` — **300px**, and never more than 24%
+of the window — and both collapsible to a `--rail-w` 28px rail. The stage is
 `--paper`; everything else is `--chrome`.
 
 The one column of that outer grid is `minmax(0, 1fr)` rather than the `auto` it
@@ -273,9 +275,9 @@ The details column, holding something else. It is not a third column, which
 would come out of the stage on a laptop, and not a dialog, which would cover the
 map its cards point at. `data-column="assistant"` on `main` is the whole switch:
 the stylesheet hides the fields and the action strip and shows `.assistant`, and
-widens the column from 250px to `--assistant-w`, **420px** and never more than
-40% of the window — a prompt, an answer and a card's reasoning are sentences,
-and 250px sets them four words to the line.
+widens the column from `--panel-w` to `--assistant-w`, **420px** and never more
+than 40% of the window — a prompt, an answer and a card's reasoning are
+sentences, and the panel's own width sets them five words to the line.
 Folded to a rail, the column is the rail it always is, actions and all.
 
 Two sections under the accordion's static headings, **Ask** and **Review**. The
@@ -410,6 +412,29 @@ on a wide screen means nothing here, where the sheet is as wide as the screen.
 `100dvh` rather than `100vh`, because a phone's toolbars slide in and out of the
 way and `vh` does not notice, which would leave the foot of the sheet under them.
 
+## Product areas
+
+An area is a boundary, not terrain, and is drawn to be told from a domain at a
+glance: a **band**, the tightest rounded line round everything it holds, where a
+domain is a blob grown from what is inside it. The band stands `AREA_PAD` (64px)
+off its members' real outlines: room enough to read as a line round a team
+rather than an outline of its shapes. That is most of the 75px the app leaves
+between two domains, so on a tightly packed map the bands of two teams side by
+side overlap in the gap.
+
+| Part | How it is drawn |
+| --- | --- |
+| Border | Solid, `--area-border-width` (**6px**, the weight of a capability's rim), round joins, in the area's swatch. Solid because dashes are chrome here — an empty slot, a lobe handle, a line being drawn. |
+| Wash | The swatch again at the area's own opacity, **10%** by default. An area's opacity runs 0–100, where every other shape stops at 10: 0 is a border and no wash. It is what still reads when the map is zoomed out and the line has gone thin. |
+| Title | One line riding the border like a legend, `--font-heading`, bold 64px by default, with the border broken behind it by 0.4em either side. It wears the border's colour **deepened** until it holds 4.5:1 against `--paper` — half the palette is too pale to read as type — so a blue line keeps a blue title and a yellow one gets an olive. |
+| Hover and selection | A halo under the border, 8px wider than it: `--line-strong` at 90% on hover and for an area about to receive a dragged shape, `--selection` when picked. The border keeps its own colour inside the halo. |
+| Handles | The border, caught by an unseen 26px line, and the title's box. The wash takes no pointer at all: the inside of an area is open ground. |
+
+In the hierarchy an area's swatch is a small rounded box drawn as a border in
+its colour, open in the middle, the way the map draws it. Its details carry a
+**Holds** section between Metadata and Shape: what it holds, as chips that show
+the shape on the map.
+
 ## Links
 
 A permalink names what it points at: `#/capability/payment-authorization`, not a
@@ -464,6 +489,15 @@ export const DOMAIN_SHAPE = Object.freeze({
   titleScale: 1,
 });
 
+export const AREA_SHAPE = Object.freeze({
+  title: 'New area',
+  color: '#5985ab',
+  opacity: 10,
+  fontSize: 64,
+  fontWeight: 'bold',
+  titleScale: 1,
+});
+
 export const CAPABILITY_SHAPE = Object.freeze({
   title: 'New capability',
   color: '#86a27b',
@@ -471,6 +505,7 @@ export const CAPABILITY_SHAPE = Object.freeze({
   fontWeight: 'regular',
   sizeScale: 1,
   stretch: 2,
+  opacity: 100,
 });
 
 export const TOUCHPOINT_SHAPE = Object.freeze({
@@ -480,6 +515,7 @@ export const TOUCHPOINT_SHAPE = Object.freeze({
   fontWeight: 'regular',
   sizeScale: 1,
   stretch: 2,
+  opacity: 100,
 });
 
 export const ACTOR_SHAPE = Object.freeze({
@@ -487,9 +523,14 @@ export const ACTOR_SHAPE = Object.freeze({
   color: '#a1a4ec',
   fontSize: 32,
   fontWeight: 'regular',
-  sizeScale: 1,
+  sizeScale: 1.4,
+  opacity: 50,
 });
 ```
+
+A brand's own `defaults.js` written before 2.3 has no `AREA_SHAPE` in it. The
+app reads it off the module rather than asking for it by name, so such a file
+still loads, and a new area falls back on the values above.
 
 The layers are **not** here. They are a fixed conceptual model rather than a
 setting, so they live in [`app/js/rules.js`](app/js/rules.js), which a brand
@@ -497,12 +538,14 @@ directory does not shadow:
 
 ```js
 export const LAYERS = Object.freeze([
+  Object.freeze({ key: 'areas', title: 'Product Areas' }),
   Object.freeze({ key: 'core', title: 'Business Domains' }),
   Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
 ]);
 
 /** Which layer each kind is on. No element carries a layer of its own. */
 export const LAYER_OF = Object.freeze({
+  area: 'areas',
   domain: 'core',
   capability: 'core',
   touchpoint: 'presentation',
@@ -510,7 +553,7 @@ export const LAYER_OF = Object.freeze({
 });
 ```
 
-A deployment may restyle its shapes; it may not redefine what the two layers
+A deployment may restyle its shapes; it may not redefine what the three layers
 mean, or which kind of element is on which.
 
 Change a value, then check the file:
@@ -523,16 +566,16 @@ With `npm start`, reload the page to pick the change up. The Docker image copies
 
 ### Allowed values
 
-| Value | Domain | Capability |
-| --- | --- | --- |
-| `title` | Up to 200 characters. `\n` starts a new line. | Up to 200 characters |
-| `color` | A hex color, `#rgb` or `#rrggbb` | A hex color, `#rgb` or `#rrggbb` |
-| `opacity` | 10 to 100, in steps of 10 | Not a setting: capabilities are always solid |
-| `fontSize` | `32`, `36`, `48`, `64`, `72`, `80`, `100` | `24`, `32`, `36`, `48`, `52`, `56`, `64`, `72`, `80` |
-| `fontWeight` | `regular` or `bold` | `regular` or `bold` |
-| `titleScale` | `0.6`, `0.8`, `1`, `1.25`, `1.5`, `2` (the **Title size** list) | Not used |
-| `sizeScale` | Not used | `1` to `3`, in steps of `0.2` (the **Shape size** list) |
-| `stretch` | Not used | `-2` tall, `-1`, `0` round, `1`, `2` wide (the steps of Ctrl+< and Ctrl+>) |
+| Value | Domain | Capability, touchpoint, actor | Area |
+| --- | --- | --- | --- |
+| `title` | Up to 200 characters. `\n` starts a new line. | Up to 200 characters | Up to 200 characters, on one line |
+| `color` | A hex color, `#rgb` or `#rrggbb` | A hex color, `#rgb` or `#rrggbb` | A hex color, `#rgb` or `#rrggbb` |
+| `opacity` | 10 to 100, in steps of 10 | 10 to 100, in steps of 10 | **0** to 100, in steps of 10: 0 is a border and no wash |
+| `fontSize` | `32`, `36`, `48`, `64`, `72`, `80`, `100` | `24`, `32`, `36`, `48`, `52`, `56`, `64`, `72`, `80` | The domain's list |
+| `fontWeight` | `regular` or `bold` | `regular` or `bold` | `regular` or `bold` |
+| `titleScale` | `0.6`, `0.8`, `1`, `1.25`, `1.5`, `2` (the **Title size** list): the room round the title | Not used | The same list, and it sizes the words themselves — there is no lobe round a title that rides a border |
+| `sizeScale` | Not used | `1` to `3`, in steps of `0.2` (the **Shape size** list) | Not used: an area is as large as what it holds |
+| `stretch` | Not used | `-2` tall, `-1`, `0` round, `1`, `2` wide (the steps of Ctrl+< and Ctrl+>). Not an actor, which is a circle. | Not used |
 
 Use only these values. A font size or stretch that isn't in its list still draws, but a map saved with it fails validation the next time it's opened. The test catches that. A scale that isn't in its list draws and saves, but the details panel can't show it as selected.
 
@@ -553,6 +596,7 @@ A shape stores a palette swatch, not a color. When a shape is created, its defau
   A capability that lands inside a domain, including one added with **Add lobe** from the domain's ⋮ menu, takes the domain's color instead of the default. This happens only when it is added, so you can change the color afterwards.
 - **Reset shapes** appears at the bottom of the details panel when a domain is selected. It sets the domain's color, opacity, font size, weight and title size back to `DOMAIN_SHAPE`. It sets the color, font size, weight, shape size and stretch of every capability in the domain back to `CAPABILITY_SHAPE`. Titles, icons, positions and a dragged title width don't change.
 - **Add a touchpoint** uses `TOUCHPOINT_SHAPE` and **Add an actor** uses `ACTOR_SHAPE`. Neither belongs to a domain, so both land on open ground beside the map. The Add buttons sit at the bottom of the diagram and offer only the kinds the selected layer takes, so a touchpoint can only ever be added to the Presentation layer.
+- **Add an area** uses `AREA_SHAPE`, and appears when Product Areas is the layer picked. The area lands empty on open ground beside the map, as a band just long enough for its title. The first wears the default color; each one after it takes the next swatch no other area wears, since two teams side by side in one color read as one.
 - **Reset colors**, below it, gives every capability in the domain the domain's color.
 - **Map files**: if a file leaves out a field, the field gets its default. The exception is color, which falls back to swatch 1.
 

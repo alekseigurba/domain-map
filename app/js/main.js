@@ -8,6 +8,7 @@ import {
   createCapability, updateCapability, deleteCapability,
   createTouchpoint, updateTouchpoint, deleteTouchpoint,
   createActor, updateActor, deleteActor,
+  createArea, updateArea, deleteArea, mayJoinArea,
   createConnector as addConnector, updateConnector, deleteConnector,
   restore, updateMap,
   layerStack, layerState, setLayerState, resetLayerState, isVisible, layerOf, layerForKind,
@@ -37,10 +38,10 @@ import { loadIcons } from './icons.js';
 import {
   CAPABILITY_FONT_SIZES, SIZE_SCALES, OVAL_STRETCHES, DEFAULT_FONT_SIZE, DEFAULT_FONT_WEIGHT,
   DEFAULT_CAPABILITY_FONT_WEIGHT, DEFAULT_STRETCH, DOMAIN_GAP,
-  capabilitySize, sizeOf, layoutDomain, newLobeSpot, setPalette, swatchFor,
+  capabilitySize, sizeOf, layoutDomain, layoutArea, newLobeSpot, setPalette, swatchFor,
 } from './geometry.js';
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
-import { BASE_LAYER } from './rules.js';
+import { BASE_LAYER, AREA_SHAPE } from './rules.js';
 import * as undoStack from './history.js';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
@@ -768,6 +769,7 @@ async function applySettings() {
 }
 
 const writerFor = {
+  area: updateArea,
   capability: updateCapability,
   domain: updateDomain,
   touchpoint: updateTouchpoint,
@@ -776,6 +778,7 @@ const writerFor = {
 };
 
 const removerFor = {
+  area: deleteArea,
   capability: deleteCapability,
   domain: deleteDomain,
   touchpoint: deleteTouchpoint,
@@ -818,6 +821,19 @@ function patch(type, id, body, label = 'Saving') {
   return run(label, () => write(id, body));
 }
 
+/**
+ * Slide an area's title round its border. One that has never been moved has no
+ * angle to go back to — it rides the top because nothing says otherwise — so
+ * undo takes the angle away again rather than writing a null the store ignores.
+ */
+function patchTitleAngle(id, titleAngle) {
+  const area = find('area', id);
+  if (!area) return null;
+  undoStack.record('Moving the title', [undoUpdate('area', id,
+    area.titleAngle == null ? { clearTitleAngle: true } : { titleAngle: area.titleAngle })]);
+  return run('Moving the title', () => updateArea(id, { titleAngle }));
+}
+
 /** The same for what the map says about itself, which is no record in any list. */
 function patchMap(changes, label = 'Saving') {
   undoStack.record(label, [{ op: 'map', fields: valuesOf(store, changes) }]);
@@ -837,6 +853,7 @@ function patchMap(changes, label = 'Saving') {
 
 /** "capability" does not take an -s, so the plurals are written down. */
 const PLURALS = {
+  area: 'areas',
   domain: 'domains',
   capability: 'capabilities',
   touchpoint: 'touchpoints',
@@ -954,6 +971,7 @@ function renderLayerControl() {
  * add, so the row is simply not there.
  */
 const ADD_LABELS = {
+  area: 'Add an area',
   domain: 'Add a domain',
   capability: 'Add a capability',
   touchpoint: 'Add a touchpoint',
@@ -961,6 +979,7 @@ const ADD_LABELS = {
 };
 
 const ADD_ICONS = {
+  area: 'icons/add-area.svg',
   domain: 'icons/add-domain.svg',
   capability: 'icons/add-capability.svg',
   touchpoint: 'icons/add-touchpoint.svg',
@@ -994,9 +1013,9 @@ function renderAddButtons() {
     return button;
   });
 
-  // Every button is as wide as the longest of all four labels, not of the two
-  // on offer — so the box is the same size on either layer and switching layers
-  // changes what the buttons say and nothing else. The four are laid out at
+  // Every button is as wide as the longest of all the labels, not of the ones
+  // on offer — so the box is the same size on every layer and switching layers
+  // changes what the buttons say and nothing else. They are all laid out at
   // zero height to find that width, rather than a number kept in the
   // stylesheet that the labels could drift away from.
   const sizer = document.createElement('div');
@@ -1018,6 +1037,7 @@ function renderAddButtons() {
 
 /** Add follows the button pressed, and the button follows the selected layer. */
 function addOfKind(kind) {
+  if (kind === 'area') return addArea();
   if (kind === 'domain') return addDomain();
   if (kind === 'capability') return addCapabilityHere();
   return addElement(kind);
@@ -1038,7 +1058,7 @@ function addOfKind(kind) {
  */
 function freeSpot(halfWidth = 0, gap = DOMAIN_GAP) {
   const empty = store.domains.length === 0 && store.capabilities.length === 0
-    && store.touchpoints.length === 0 && store.actors.length === 0;
+    && store.touchpoints.length === 0 && store.actors.length === 0 && store.areas.length === 0;
   if (empty) return viewportCenter();
 
   const bounds = contentBounds();
@@ -1085,6 +1105,97 @@ const actorLook = () => ({
   fontWeight: ACTOR_SHAPE.fontWeight,
   sizeScale: ACTOR_SHAPE.sizeScale,
 });
+
+/**
+ * A swatch no area wears yet, the default first. Two teams side by side in one
+ * colour are one team to the eye, so each new area takes a line of its own
+ * until the palette runs out.
+ */
+function freshAreaColor() {
+  const worn = new Set(store.areas.map((area) => area.colorIndex));
+  const first = swatchFor(AREA_SHAPE.color);
+  const size = store.palette.length || 24;
+  for (let step = 0; step < size; step += 1) {
+    const index = ((first - 1 + step) % size) + 1;
+    if (!worn.has(index)) return index;
+  }
+  return first;
+}
+
+/**
+ * An area arrives empty, as a small band beside the map with its title on it,
+ * and is filled by dragging shapes into it or naming it in their details.
+ */
+async function addArea() {
+  const { bounds } = layoutArea({ ...AREA_SHAPE, x: 0, y: 0 }, []);
+  const spot = freeSpot((bounds.maxX - bounds.minX) / 2);
+  const created = await run('Adding an area', () => createArea({
+    title: AREA_SHAPE.title,
+    colorIndex: freshAreaColor(),
+    opacity: AREA_SHAPE.opacity,
+    fontSize: AREA_SHAPE.fontSize,
+    fontWeight: AREA_SHAPE.fontWeight,
+    titleScale: AREA_SHAPE.titleScale,
+    x: spot.x,
+    y: spot.y,
+  }));
+  if (created) {
+    undoStack.record('Adding an area', [undoDelete('area', created.id)]);
+    select('area', created.id);
+    centerOn('area', created.id);
+  }
+}
+
+// --- who owns what -----------------------------------------------------------
+
+/** An area as a change to a record: null cannot say "none", so leaving takes a flag. */
+const areaChange = (areaId) => (areaId ? { areaId } : { clearArea: true });
+
+/**
+ * Put a shape in an area, or with null take it out of the one it is in. This
+ * is what the Area field in the details does, and what a drop inside another
+ * area's line comes down to.
+ */
+function placeInArea(kind, id, areaId) {
+  const record = find(kind, id);
+  if (!mayJoinArea(kind, record) || (record.areaId ?? null) === (areaId ?? null)) return null;
+  const label = areaId ? 'Joining an area' : 'Leaving an area';
+  undoStack.record(label, [undoUpdate(kind, id, areaChange(record.areaId))]);
+  return run(label, () => writerFor[kind](id, areaChange(areaId)));
+}
+
+/**
+ * A shape let go after a drag. The drag has already moved the record, so where
+ * it came from is handed over by the diagram — read off the record now, undo
+ * would put it back exactly where it already is. Dropped inside another area's
+ * line it changes hands in the same step.
+ */
+function moveShape(kind, id, x, y, { from, areaId = null } = {}) {
+  const record = find(kind, id);
+  if (!record) return null;
+  const joins = areaId && mayJoinArea(kind, record) && record.areaId !== areaId;
+
+  undoStack.record('Moving', [undoUpdate(kind, id, {
+    x: from?.x ?? record.x,
+    y: from?.y ?? record.y,
+    ...(joins ? areaChange(record.areaId) : {}),
+  })]);
+  return run('Moving', () => writerFor[kind](id, { x, y, ...(joins ? { areaId } : {}) }));
+}
+
+/** An area moved by its border: everything it holds has moved with it, and goes back with it. */
+function moveArea(id, { x, y, from, carried }) {
+  const dx = x - from.x;
+  const dy = y - from.y;
+  undoStack.record('Moving an area', [
+    undoUpdate('area', id, { x: from.x, y: from.y }),
+    ...carried.map((one) => undoUpdate(one.kind, one.id, { x: one.x, y: one.y })),
+  ]);
+  return run('Moving an area', () => {
+    for (const one of carried) writerFor[one.kind](one.id, { x: one.x + dx, y: one.y + dy });
+    updateArea(id, { x, y });
+  });
+}
 
 async function addDomain() {
   // How wide an empty domain draws, so it sits *beside* the map rather than
@@ -1193,12 +1304,15 @@ function addCapabilityHere() {
 
 async function dropCapability(id, info) {
   const was = find('capability', id);
+  // The area goes with the rest: into a domain it is given up, out of one it is
+  // the domain's, and undo has to put back whichever it was before either.
   const before = {
     domainId: was.domainId,
     lobeX: was.lobeX,
     lobeY: was.lobeY,
     x: was.x,
     y: was.y,
+    ...areaChange(was.areaId),
   };
 
   const swapped = info.swapWith ? find('capability', info.swapWith) : null;
@@ -1237,7 +1351,10 @@ async function dropCapability(id, info) {
     } else if (info.domainId) {
       updateCapability(id, { domainId: info.domainId, lobeX: info.lobeX, lobeY: info.lobeY });
     } else {
-      updateCapability(id, { clearDomain: true, x: info.x, y: info.y });
+      // Let go inside another area's line, a loose capability joins it.
+      updateCapability(id, {
+        clearDomain: true, x: info.x, y: info.y, ...(info.areaId ? { areaId: info.areaId } : {}),
+      });
     }
   });
 }
@@ -1460,9 +1577,11 @@ const KEBAB_MARK = 'edit-session';
 const kebabMenu = document.getElementById('kebab-menu');
 
 /** Open a domain's title for editing, from the kebab or from a double-click. */
-function beginRename(domainId) {
-  startRename(domainId);
-  status('Enter saves, Shift-Enter or Ctrl-Enter breaks the line, Esc cancels');
+function beginRename(id, kind = 'domain') {
+  startRename(id, kind);
+  status(kind === 'area'
+    ? 'Enter saves, Esc cancels'
+    : 'Enter saves, Shift-Enter or Ctrl-Enter breaks the line, Esc cancels');
 }
 
 function closeKebab() {
@@ -1533,7 +1652,7 @@ function openKebab(domainId) {
 
 /** `#/capability/payment-authorization` — the title, normalized, not the id. */
 function parseHash() {
-  const match = /^#\/(domain|capability|touchpoint|actor|connector)\/([a-z0-9-]+)$/
+  const match = /^#\/(area|domain|capability|touchpoint|actor|connector)\/([a-z0-9-]+)$/
     .exec(location.hash);
   return match ? { type: match[1], slug: match[2] } : null;
 }
@@ -1572,6 +1691,7 @@ function writeHash() {
 let lastSelectionId = null;
 
 const DELETE_LABELS = {
+  area: 'Delete area',
   domain: 'Delete domain',
   capability: 'Delete capability',
   touchpoint: 'Delete touchpoint',
@@ -1634,6 +1754,7 @@ function renderAll(reason) {
   renderPalette();
   renderLayerControl();
   statsBar.textContent = [
+    ...(store.areas.length ? [counted('area', store.areas.length)] : []),
     `${store.domains.length} domains`,
     `${store.capabilities.length} capabilities`,
     ...(store.touchpoints.length ? [`${store.touchpoints.length} touchpoints`] : []),
@@ -1737,6 +1858,8 @@ undoStack.init({ apply: applyUndo, onChange: keepSession });
 
 initDetails({
   onPatch: patch,
+  onArea: placeInArea,
+  onShow: showOnMap,
   onMapPatch: (changes) => patchMap(changes, 'Describing the map'),
   onLive: () => { render(); renderMenu(); },
   onStatus: status,
@@ -1812,7 +1935,10 @@ function usePalette(palette) {
 
 initDiagram({
   iconUrl: files.iconUrl,
-  moveDomain: (id, x, y) => patch('domain', id, { x, y }, 'Moving'),
+  moveDomain: (id, x, y, how) => moveShape('domain', id, x, y, how),
+  moveArea,
+  slideAreaTitle: (id, titleAngle) => patchTitleAngle(id, titleAngle),
+  renameArea: (id, title) => patch('area', id, { title }, 'Renaming'),
   dropCapability,
   moveTitle: (id, titleX, titleY) => patch('domain', id, { titleX, titleY }, 'Moving the title'),
   beginRename,
@@ -1842,7 +1968,7 @@ initDiagram({
   shapeConnector: (id, bendPoints) => patch(
     'connector', id, { bendPoints, anchored: true }, 'Bending the line'),
   openKebab,
-  moveElement: (kind, id, x, y) => patch(kind, id, { x, y }, 'Moving'),
+  moveElement: (kind, id, x, y, how) => moveShape(kind, id, x, y, how),
   createConnector: async (from, to) => {
     // A line inside one domain is short and reads better straight; one that
     // crosses a boundary has ground to cover, so it bows out of the way. Only
@@ -2043,8 +2169,10 @@ window.addEventListener('keydown', async (event) => {
   // Cmd/Ctrl-B, the way it works everywhere else.
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
     event.preventDefault();
-    if (type !== 'domain' && !onAShape) return status('Pick a shape first.', true);
-    const fallback = onAShape ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT;
+    if (type !== 'domain' && type !== 'area' && !onAShape) return status('Pick a shape first.', true);
+    const fallback = onAShape
+      ? DEFAULT_CAPABILITY_FONT_WEIGHT
+      : type === 'area' ? AREA_SHAPE.fontWeight : DEFAULT_FONT_WEIGHT;
     const bold = (record.fontWeight ?? fallback) === 'bold';
     patch(type, id, { fontWeight: bold ? 'regular' : 'bold' }, bold ? 'Unbolding' : 'Bolding');
     return;

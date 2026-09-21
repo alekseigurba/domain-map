@@ -40,9 +40,11 @@ function item(type, record, { depth = 0, text: caption, color, lead, hint, line 
 
   const swatch = document.createElement('span');
   swatch.className = `tree__swatch tree__swatch--${type}`;
-  // A line's swatch is drawn as a rule rather than a block, so its colour is
-  // the edge and not the fill.
-  if (color) swatch.style[type === 'connector' ? 'borderTopColor' : 'background'] = color;
+  // A line's swatch is drawn as a rule rather than a block, and an area's as
+  // the border it is on the map, so for those the colour is the edge and not
+  // the fill.
+  const worn = { connector: 'borderTopColor', area: 'borderColor' }[type] ?? 'background';
+  if (color) swatch.style[worn] = color;
   button.appendChild(swatch);
 
   // "to", in the quieter ink: a label on the value beside it, not part of it.
@@ -125,7 +127,7 @@ function revealSelection() {
     if (record) opened.add(record.domainId ?? 'unassigned');
     return;
   }
-  if (type === 'touchpoint' || type === 'actor') {
+  if (type === 'touchpoint' || type === 'actor' || type === 'area') {
     opened.add(`${type}s`);
     return;
   }
@@ -212,9 +214,13 @@ export function renderMenu() {
   }
 
   // Touchpoints and actors belong to no domain, so each kind is one flat list
-  // of its own. The layer each one is on is what its row says instead.
-  for (const [kind, heading] of [['touchpoint', 'Touchpoints'], ['actor', 'Actors']]) {
-    const list = stackedList(kind);
+  // of its own. The layer each one is on is what its row says instead. Areas
+  // come last and flat as well: every shape keeps the one row it has above, and
+  // what an area holds is read in its details rather than listed here twice.
+  for (const [kind, heading] of [
+    ['touchpoint', 'Touchpoints'], ['actor', 'Actors'], ['area', 'Product Areas'],
+  ]) {
+    const list = kind === 'area' ? store.areas : stackedList(kind);
     if (list.length === 0) continue;
 
     nodes.push(caption(`${kind}s`, heading));

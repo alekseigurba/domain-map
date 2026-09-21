@@ -137,7 +137,7 @@ function chip(skill) {
   const subject = subjectFor(skill, store.selection, store);
   button.disabled = subject === null;
   button.title = subject === null
-    ? `Pick ${skill.worksOn.map((kind) => (kind === 'actor' ? 'an actor' : `a ${kind}`)).join(' or ')} first`
+    ? `Pick ${skill.worksOn.map((kind) => `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`).join(' or ')} first`
     : skill.description;
   button.setAttribute('aria-pressed', String(chosen === skill.name));
   button.addEventListener('click', () => {

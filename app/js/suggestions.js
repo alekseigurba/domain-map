@@ -32,12 +32,13 @@ export const OPERATIONS = [
 const TAKES_AWAY = ['remove', 'delete', 'disconnect', 'merge'];
 
 /** What a skill may be pointed at: a kind of selection, or the map as a whole. */
-export const SUBJECTS = ['domain', 'capability', 'touchpoint', 'actor', 'line', 'map'];
+export const SUBJECTS = ['domain', 'capability', 'touchpoint', 'actor', 'area', 'line', 'map'];
 
 /** More than this is not a review anyone reads; the rest is cut, and said to be. */
 export const MAX_SUGGESTIONS = 200;
 
 const LISTS = {
+  area: 'areas',
   domain: 'domains',
   capability: 'capabilities',
   touchpoint: 'touchpoints',
@@ -109,12 +110,16 @@ const filled = (value) => (typeof value === 'string' && value.trim() !== '' ? va
 export function toBrief(state, { owners = false, subject = null } = {}) {
   const { refOf } = keysOf(state);
 
+  // Who owns it, for the three kinds an area may hold. A capability inside a
+  // domain belongs through the domain, which says so for all of them at once.
+  const held = new Set(listOf(state, 'area').map((area) => area.id));
   const shape = (record) => ({
     ref: refOf.get(record.id),
     title: oneLine(record.title),
     description: filled(record.description),
     type: filled(record.type),
     owner: owners ? filled(record.owner) : undefined,
+    area: held.has(record.areaId) && !record.domainId ? refOf.get(record.areaId) : undefined,
   });
 
   // A capability whose domain has gone is loose, as the diagram draws it.
@@ -146,6 +151,9 @@ export function toBrief(state, { owners = false, subject = null } = {}) {
     about: filled(state.description),
     subject: about_,
     types: Object.keys(types).length > 0 ? types : undefined,
+    // Only a map that draws its organisation has any, and one that does not
+    // says nothing about it rather than saying it has none.
+    areas: held.size > 0 ? listOf(state, 'area').map(shape) : undefined,
     domains: listOf(state, 'domain').map((domain) => ({
       ...shape(domain),
       capabilities: inside(domain.id),

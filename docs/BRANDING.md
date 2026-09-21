@@ -56,7 +56,7 @@ sharp tool, so only this list is supported:
 | `favicon.svg` | The tab icon. |
 | `fonts/*` | Your own woff2 files, declared from `css/brand.css`. |
 | `css/fonts.css` | Only if you want to drop the bundled Poppins faces entirely. |
-| `js/defaults.js` | What a new domain, capability, touchpoint or actor looks like. See the caveat below. The two layers are not here: they are a fixed model, in `rules.js`, and not a deployment's to redefine. |
+| `js/defaults.js` | What a new domain, capability, touchpoint, actor or area looks like. See the caveat below. One written before 2.3 has no `AREA_SHAPE` and still loads: a new area falls back on the package's own. The three layers are not here: they are a fixed model, in `rules.js`, and not a deployment's to redefine. |
 
 A server of your own is a parameter rather than a file to shadow:
 `createDomainMapServer` takes `databaseUrl`, `owners`, `storageDir`, `store`,

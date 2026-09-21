@@ -177,7 +177,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 /* The two panels are the same width. */
 .main {
   display: grid;
-  grid-template-columns: var(--menu-w, 250px) 1fr var(--details-w, 250px);
+  grid-template-columns: var(--menu-w, var(--panel-w)) 1fr var(--details-w, var(--panel-w));
   min-height: 0;
 }
 
@@ -485,6 +485,14 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   opacity: 0.75;
 }
 
+/* An area, as the map draws it: a border in its colour round open ground. */
+.tree__swatch--area {
+  height: 9px;
+  border-width: 2px;
+  border-radius: 4px;
+  background: transparent;
+}
+
 /* Pick a Type, add one, or take one off the list — in that order, because
    picking is what happens most. */
 .type-pick {
@@ -746,6 +754,24 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .details__empty { color: var(--ink-soft); }
 .section + .details__empty { margin-top: var(--gap-3); }
 
+/* What an area holds: names to press, wrapping as they come, each cut short
+   rather than let one long title widen the panel. */
+.details__members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-1);
+}
+
+.details__member {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  border-color: var(--line);
+  background: var(--chrome);
+  line-height: calc(var(--chip-h) - 2px);
+  text-overflow: ellipsis;
+}
+
 .details__meta {
   margin-top: var(--gap-4);
   padding-top: var(--gap-3);
@@ -770,7 +796,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .main[data-column="assistant"]:not([data-details="collapsed"]) .panel--details > .panel__actions { display: none; }
 
 /* A prompt, a pasted reply and a card's reasoning are sentences, not field
-   values, and 250px sets them four words to the line. */
+   values, and the panel's own width sets them five words to the line. */
 .main[data-column="assistant"] { --details-w: var(--assistant-w); }
 .main[data-column="assistant"][data-details="collapsed"] { --details-w: var(--rail-w); }
 

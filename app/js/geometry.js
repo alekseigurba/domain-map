@@ -1,7 +1,9 @@
 // Shape maths: text measurement, capability ovals, snap points, lobed domain
-// blobs and the flower layout inside each lobe. Pure functions — no DOM writes.
+// blobs and the flower layout inside each lobe, and the band an area draws
+// round what it holds. Pure functions — no DOM writes.
 
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE } from './defaults.js';
+import { AREA_SHAPE } from './rules.js';
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -234,6 +236,43 @@ export function inkOn(fill, opacity = 1, backdrop = '#fffdfa') {
   const l = luminance(blended);
   // Contrast ratio against black vs white, using the WCAG formula.
   return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? '#000' : '#fff';
+}
+
+/** The WCAG contrast ratio between two colours, 1 to 21. */
+function contrast(a, b) {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+/** What type needs against its ground to be read as type. */
+export const READABLE = 4.5;
+
+/**
+ * A colour as type: itself if it reads on `backdrop`, and otherwise mixed
+ * towards `ink` by just as much as it takes. An area's title wears its border's
+ * colour, and half the palette is too pale to be read as letters — so a blue
+ * line keeps a blue title and a yellow one gets a dark olive, which still
+ * belongs to its line and can still be read.
+ */
+export function deepened(hex, backdrop = '#fffdfa', ink = '#282828') {
+  const from = channels(hex);
+  const to = channels(ink);
+  const back = channels(backdrop);
+  const mixed = (share) => from.map((value, i) => Math.round(value + (to[i] - value) * share));
+  const written = (rgb) => `#${rgb.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+
+  if (contrast(from, back) >= READABLE) return written(from);
+  // An ink that cannot be read on this ground either is as far as mixing goes.
+  if (contrast(to, back) < READABLE) return written(to);
+
+  let pale = 0;
+  let dark = 1;
+  for (let i = 0; i < 12; i++) {
+    const middle = (pale + dark) / 2;
+    if (contrast(mixed(middle), back) >= READABLE) dark = middle;
+    else pale = middle;
+  }
+  return written(mixed(dark));
 }
 
 // --- capabilities ----------------------------------------------------------
@@ -1153,6 +1192,8 @@ export function layoutDomain(domain, children, moving = null, ui = {}) {
     titleLobe,
     kebab,
     editing,
+    /** The outline as the points it was sampled at — what an area's band is drawn round. */
+    outline: points,
     path: closedSpline(points),
     extentWidth,
     extentHeight,
@@ -1231,4 +1272,266 @@ function clampTitle(x, y, titleLobe, body, lobes) {
 function dot(lobe, ux, uy) {
   const length = Math.hypot(lobe.x, lobe.y);
   return length === 0 ? 0 : Math.max(0, (lobe.x * ux + lobe.y * uy) / length);
+}
+
+// --- areas -------------------------------------------------------------------
+
+// An area has no size of its own. It is a band stretched round whatever it
+// holds: the tightest convex line that takes in every member's real outline,
+// stood off from them by a margin and rounded by it. That is the hull of their
+// points grown by a disc, which is a shape with no surprises in it — it never
+// spikes out to a far-off member the way a blob sampled from its middle does,
+// however far apart a team's domains sit.
+
+/**
+ * How far past what it holds an area's band stands. Room enough that the line
+ * reads as going round a team rather than as an outline of its shapes — at half
+ * this it hugged every blob it passed. The price is paid on a tightly packed
+ * map: this is most of DOMAIN_GAP, the room the app itself leaves between two
+ * domains, so the bands of two teams side by side overlap in the gap.
+ */
+export const AREA_PAD = 64;
+/** Half the run of an empty area's band, before its title asks for more. */
+const EMPTY_AREA_HALF = 150;
+/** The finest turn the band's corners are drawn in: fifteen to the right angle. */
+const BAND_ARC_STEP = Math.PI / 30;
+/* The break in the border behind the title, as a share of the type size: room
+   either side of the words, and a little over and under them. */
+const LEGEND_GAP_X = 0.4;
+const LEGEND_GAP_Y = 0.1;
+/** Straight up: where a title rides until it is slid somewhere else. */
+export const DEFAULT_TITLE_ANGLE = 270;
+
+const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+/** The convex hull, by the monotone chain: its corners in order, with none on a straight run. */
+function convexHull(points) {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y)
+    .filter((point, i, all) => i === 0 || point.x !== all[i - 1].x || point.y !== all[i - 1].y);
+  if (sorted.length < 3) return sorted;
+
+  const half = (list) => {
+    const chain = [];
+    for (const point of list) {
+      while (chain.length >= 2 && cross(chain.at(-2), chain.at(-1), point) <= 0) chain.pop();
+      chain.push(point);
+    }
+    chain.pop();
+    return chain;
+  };
+  return [...half(sorted), ...half([...sorted].reverse())];
+}
+
+/**
+ * The band round a set of points: their hull, stood off by `pad` and rounded by
+ * it, as the closed run of points it is drawn through. Each corner of the hull
+ * becomes an arc between the two edges it joins; the edges themselves stay
+ * straight. One point gives a circle and two a pill, by the same rule.
+ */
+export function bandRound(points, pad = AREA_PAD) {
+  const corners = convexHull(points);
+  if (corners.length === 0) return [];
+
+  const arc = (centre, from, sweep) => {
+    const steps = Math.max(1, Math.ceil(sweep / BAND_ARC_STEP));
+    return Array.from({ length: steps + 1 }, (_, i) => {
+      const angle = from + (sweep * i) / steps;
+      return { x: centre.x + pad * Math.cos(angle), y: centre.y + pad * Math.sin(angle) };
+    });
+  };
+  if (corners.length === 1) return arc(corners[0], 0, 2 * Math.PI).slice(0, -1);
+
+  // The way out of an edge, for corners taken in the hull's own order.
+  const outward = (a, b) => Math.atan2(-(b.x - a.x), b.y - a.y);
+  const n = corners.length;
+  return corners.flatMap((corner, i) => {
+    const from = outward(corners[(i + n - 1) % n], corner);
+    const to = outward(corner, corners[(i + 1) % n]);
+    const sweep = (((to - from) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    return arc(corner, from, sweep);
+  });
+}
+
+/** Whether a point is inside a closed run of points. Even-odd, so any outline will do. */
+export function insideOutline(outline, x, y) {
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const a = outline[i];
+    const b = outline[j];
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Where a ray leaving `centre` at `degrees` crosses an outline it is inside of —
+ * clockwise from the right, as the screen has it, so 270 is straight up. The
+ * furthest crossing, which for a band is the only one.
+ */
+export function rimPoint(outline, centre, degrees) {
+  const angle = (degrees * Math.PI) / 180;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+
+  let reach = 0;
+  for (let i = 0; i < outline.length; i++) {
+    const a = outline[i];
+    const b = outline[(i + 1) % outline.length];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const across = dx * ey - dy * ex;
+    if (Math.abs(across) < 1e-9) continue;
+    const t = ((a.x - centre.x) * ey - (a.y - centre.y) * ex) / across;
+    const u = ((a.x - centre.x) * dy - (a.y - centre.y) * dx) / across;
+    if (t > reach && u >= 0 && u <= 1) reach = t;
+  }
+  return { x: centre.x + dx * reach, y: centre.y + dy * reach };
+}
+
+/** The angle a point is seen at from `centre`, in whole tenths of a degree from 0 up to 360. */
+export function angleFrom(centre, x, y) {
+  const degrees = (Math.atan2(y - centre.y, x - centre.x) * 180) / Math.PI;
+  return (Math.round(((degrees % 360) + 360) % 360 * 10) / 10) % 360;
+}
+
+/**
+ * A closed outline with whatever lies inside `box` taken out of it, as the open
+ * runs that are left — the border, broken behind its title. Each stretch is cut
+ * where it meets the box rather than dropped whole, so the break is as wide as
+ * the box and no wider.
+ */
+export function outlineOutside(outline, box) {
+  const within = (p) => p.x > box.minX && p.x < box.maxX && p.y > box.minY && p.y < box.maxY;
+
+  /** The share of a→b that lies inside the box, as [enter, leave], or null. Liang–Barsky. */
+  const clipped = (a, b) => {
+    let enter = 0;
+    let leave = 1;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    for (const [run, gap] of [
+      [-dx, a.x - box.minX], [dx, box.maxX - a.x], [-dy, a.y - box.minY], [dy, box.maxY - a.y],
+    ]) {
+      if (run === 0) { if (gap < 0) return null; continue; }
+      const at = gap / run;
+      if (run < 0) enter = Math.max(enter, at);
+      else leave = Math.min(leave, at);
+      if (enter > leave) return null;
+    }
+    return [enter, leave];
+  };
+  const along = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+  // Start the walk on a point the box leaves alone, so no run is split across
+  // the seam of the list. A box over all of them leaves nothing to draw.
+  const first = outline.findIndex((p) => !within(p));
+  if (first < 0) return [];
+  const n = outline.length;
+  const runs = [];
+  let run = [outline[first]];
+
+  for (let step = 0; step < n; step++) {
+    const a = outline[(first + step) % n];
+    const b = outline[(first + step + 1) % n];
+    const cut = clipped(a, b);
+    if (!cut || cut[0] >= cut[1]) { run.push(b); continue; }
+
+    if (cut[0] > 0) run.push(along(a, b, cut[0]));
+    if (run.length > 1) runs.push(run);
+    run = cut[1] < 1 ? [along(a, b, cut[1]), b] : [];
+  }
+  // The walk ends where it began. Untouched, that run is the whole outline;
+  // broken, its last run and its first are one run met at the seam.
+  if (run.length > 1) runs.push(run);
+  if (runs.length > 1 && runs.at(-1).at(-1) === runs[0][0]) runs[0] = [...runs.pop(), ...runs[0].slice(1)];
+  return runs;
+}
+
+const written = (value) => value.toFixed(2);
+
+/** A run of points as a path: closed for a fill, left open for a stroke with a break in it. */
+export const pathThrough = (points, closed = false) =>
+  (points.length === 0 ? '' : `M ${points.map((p) => `${written(p.x)} ${written(p.y)}`).join(' L ')}${closed ? ' Z' : ''}`);
+
+/** An area's title as it is drawn: one line, whatever breaks were typed into it. */
+const legendOf = (area) => {
+  const fontSize = (area.fontSize || AREA_SHAPE.fontSize) * (area.titleScale || 1);
+  const fontWeight = area.fontWeight || AREA_SHAPE.fontWeight;
+  const line = String(area.title ?? '').replace(/\s*\n\s*/g, ' ').trim();
+  return {
+    lines: [line],
+    lineHeight: fontSize * 1.18,
+    fontSize,
+    fontWeight,
+    width: Math.max(measure(line, fontSize, fontWeight), fontSize),
+    height: fontSize * 1.18,
+  };
+};
+
+/**
+ * Lays an area out: the band round what it holds, and the title riding it.
+ *
+ * @param area      the area record
+ * @param outlines  one run of points per member, in map coordinates — a
+ *                  domain's sampled blob, the corners of a touchpoint, the rim
+ *                  of a loose capability. Empty, the area is a pill at its own
+ *                  position, long enough to carry its title.
+ * @param sliding   optional {titleAngle} while the title is being slid round
+ */
+export function layoutArea(area, outlines, sliding = null) {
+  const title = legendOf(area);
+  const gapX = title.fontSize * LEGEND_GAP_X;
+  const gapY = title.fontSize * LEGEND_GAP_Y;
+
+  const held = outlines.flat();
+  const empty = held.length === 0;
+  const half = Math.max(EMPTY_AREA_HALF, title.width / 2 + gapX * 2);
+  const band = bandRound(empty
+    ? [{ x: (area.x ?? 0) - half, y: area.y ?? 0 }, { x: (area.x ?? 0) + half, y: area.y ?? 0 }]
+    : held);
+
+  const bounds = {
+    minX: Math.min(...band.map((p) => p.x)),
+    maxX: Math.max(...band.map((p) => p.x)),
+    minY: Math.min(...band.map((p) => p.y)),
+    maxY: Math.max(...band.map((p) => p.y)),
+  };
+  // The middle of the box round it: inside a convex band whatever its shape,
+  // and it stays put while a member in the middle of the team is moved about.
+  const centre = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+
+  const angle = sliding?.titleAngle ?? area.titleAngle ?? DEFAULT_TITLE_ANGLE;
+  const at = rimPoint(band, centre, angle);
+  title.x = at.x;
+  title.y = at.y;
+  title.angle = angle;
+
+  const gap = {
+    minX: at.x - title.width / 2 - gapX,
+    maxX: at.x + title.width / 2 + gapX,
+    minY: at.y - title.height / 2 - gapY,
+    maxY: at.y + title.height / 2 + gapY,
+  };
+  // The title hangs over the line, so what is drawn reaches past the band.
+  const drawn = {
+    minX: Math.min(bounds.minX, gap.minX),
+    maxX: Math.max(bounds.maxX, gap.maxX),
+    minY: Math.min(bounds.minY, gap.minY),
+    maxY: Math.max(bounds.maxY, gap.maxY),
+  };
+
+  return {
+    empty,
+    band,
+    centre,
+    bounds: drawn,
+    title,
+    gap,
+    /** The wash: the whole band, closed. */
+    path: pathThrough(band, true),
+    /** The border: the band with the stretch behind the title left out. */
+    rim: outlineOutside(band, gap).map((run) => pathThrough(run)).join(' '),
+    /** Is this point inside the line? What a drop asks. */
+    contains: (x, y) => insideOutline(band, x, y),
+  };
 }

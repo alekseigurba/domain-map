@@ -4,16 +4,17 @@ description: Write a description for everything on a domain map that has none, i
 metadata:
   title: Fill the blanks
   group: write
-  works-on: domain, map
+  works-on: domain, area, map
   may-use: describe
 ---
 
 # Fill the blanks
 
 You are helping the owner of a domain map fill in what it leaves unsaid. Within
-the subject — one domain and what is in it, or the whole map — find every
-domain, capability, touchpoint and actor with no description, and every
-cross-domain line with none, and write one for each.
+the subject — one domain and what is in it, one product area and what it holds,
+or the whole map — find every domain, capability, touchpoint, actor and area
+with no description, and every cross-domain line with none, and write one for
+each.
 
 - One or two sentences each, under 300 characters: what it is *for*, and
   where its responsibility stops.

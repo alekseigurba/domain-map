@@ -1,10 +1,10 @@
 ---
 name: describe
-description: Draft the description of one domain, capability, touchpoint, actor or line on a domain map, from its title, where it sits and what it is joined to. Use when one shape on the map needs a description written or a vague one replaced.
+description: Draft the description of one domain, capability, touchpoint, actor, product area or line on a domain map, from its title, where it sits and what it is joined to. Use when one shape on the map needs a description written or a vague one replaced.
 metadata:
   title: Describe
   group: write
-  works-on: domain, capability, touchpoint, actor, line
+  works-on: domain, capability, touchpoint, actor, area, line
   may-use: describe
 ---
 

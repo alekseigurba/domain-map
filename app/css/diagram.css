@@ -196,6 +196,68 @@
   stroke-linejoin: round;
 }
 
+/* --- areas --------------------------------------------------------------- */
+
+/* A band round what a team holds: a wash, a border with a break in it, and the
+   title riding the break. The border is solid — dashes here are chrome, a seat
+   to drop into or a grip to drag — and the colour is set per area, on the shape.
+
+   Only the line and the title take the pointer. The inside is open ground: it
+   pans the map, and belongs to the shapes standing on it. */
+.area__wash { pointer-events: none; }
+
+.area__border {
+  fill: none;
+  stroke-width: var(--area-border-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* What hover and selection light up: a halo under the border, so the area
+   keeps its own colour inside it. */
+.area__rim {
+  fill: none;
+  stroke: none;
+  stroke-width: calc(var(--area-border-width) + 8px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+  transition: stroke-opacity 110ms linear;
+}
+
+.area--hover .area__rim {
+  stroke: var(--line-strong);
+  stroke-opacity: 0.9;
+}
+
+.area--selected .area__rim {
+  stroke: var(--selection);
+  stroke-opacity: 1;
+}
+
+/* The line is thin and the map is often far away, so it is caught by a wider
+   one nobody sees. */
+.area__hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 26px;
+  pointer-events: stroke;
+  cursor: move;
+}
+
+.area__title-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: move;
+}
+
+.area__title {
+  font-family: var(--font-heading);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
 /* --- domains ------------------------------------------------------------- */
 
 .domain { cursor: move; }

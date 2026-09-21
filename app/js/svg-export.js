@@ -18,7 +18,8 @@ const MARGIN = 10;
 const TERRAIN = ['layer-stacks'];
 
 /** Targets, not ink: invisible on the stage, and no use in a picture. */
-const CHROME = '.title-hit, .snaps, .connector__hit, .connector__rim, .slot';
+const CHROME = '.title-hit, .snaps, .connector__hit, .connector__rim, .slot, '
+  + '.area__hit, .area__title-hit, .area__rim';
 
 /** Picked, hovered or held is the page's state, not the map's, and draws in the selection blue. */
 const STATE = /--(selected|hover|dragging|swap)$/;

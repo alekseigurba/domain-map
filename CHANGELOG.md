@@ -7,6 +7,78 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.3.0 — 2026-09-21
+
+The map gains a third layer, **Product Areas**: who owns what. **Breaking:** map
+files are version 3 now, and a 2.2 deployment refuses one — versions 1 and 2
+still open here, as a map with no areas. Full notes:
+[docs/releases/2.3.0.md](docs/releases/2.3.0.md).
+
+### Added
+
+- **Product Areas**, a layer under the other two. An area is a band drawn round
+  the domains, touchpoints and loose capabilities one team holds, so the map
+  that says what the business does can also say how the organisation that
+  builds it is cut. It has no size of its own: it follows what it holds, the
+  tightest rounded line that takes everything in, however far apart a team's
+  domains sit. A shape is in one area or in none; a capability inside a domain
+  belongs through its domain, and an actor, standing outside the business,
+  belongs to nobody. The layer can be hidden and dimmed like the Presentation
+  Layer. Business Domains is still the base — the one layer that cannot be
+  hidden, and where Edit mode opens.
+- **Add an area**, among the Add buttons once Product Areas is the layer
+  picked. It arrives empty, a small band with its title on it, in a colour no
+  other area wears. **Drag a shape in** from outside the line to put it in the
+  area — the one about to take it lights up — and drop it inside another area's
+  line to hand it over. Dragging a shape clear of its team only stretches the
+  band after it: leaving is said in the shape's details, so that tidying the map
+  never reorganises the company.
+- **An Area field** in the details of a domain, a touchpoint and a loose
+  capability: one of the map's areas, or none. A capability inside a domain
+  shows the area it has through its domain. An area's own details are a
+  domain's — title, description, owner, a Type from a list of its own — with
+  **what it holds** listed as names to press, each showing its shape on the map.
+- **The border is the handle.** Drag it and the whole team's territory moves,
+  every member by the same amount, as one Ctrl+Z. Drag the title and it slides
+  round the border; double-click it to rename it where it sits. The inside of
+  an area is open ground — it pans the map, and belongs to the shapes on it.
+- **How an area looks**: a solid border in its swatch, a wash of the same colour
+  inside it, and its title riding the border like a legend, with the line broken
+  behind it. The title wears the border's colour, deepened until it reads on the
+  paper — a blue line keeps a blue title, a yellow one gets an olive. Opacity
+  runs down to 0 for an area, which is a border and no wash; **Title size** sizes
+  the words themselves. Export SVG draws the areas that are showing.
+- **Product Areas in the menu**, a flat section after Actors, and in the footer's
+  count. Every shape keeps the one row it had.
+- **The Assistant sees the teams.** The brief lists the areas and says which one
+  each domain, touchpoint and loose capability is in, so a review of the
+  boundaries can hold how the business is cut against how the organisation is.
+  *Describe*, *Fill the blanks* and *Tighten the wording* work on an area, and a
+  reply may describe, rename and type one. It may not add an area or hand a
+  shape to one: who owns what is yours to say, as position is.
+- **The example map draws three areas** — Checkout & Risk, Money Movement and
+  Customer & Merchant — holding between them a domain, a touchpoint and a loose
+  capability. It was opened out to give them room, and opens differently: the
+  Presentation Layer shown, where 2.1 hid it, and Product Areas dimmed, so the
+  teams sit behind the business rather than over it. Only a fresh store is
+  seeded from it.
+
+### Changed
+
+- **The menu and the details panel are wider**, 300px where they were 250, so a
+  capability's title and a field's label are read rather than cut short. On a
+  small screen they give way — never more than 24% of the window each — and the
+  width is a token, `--panel-w`, for a brand that wants another.
+- `defaults.js` gains `AREA_SHAPE`. A brand's own copy from before this release
+  has none and still loads: a new area falls back on the package's.
+
+### Fixed
+
+- **Ctrl+Z after dragging a domain, a touchpoint or an actor puts it back.** It
+  said *Undid: moving* and left the shape where it had been dropped: the drag had
+  already moved the record by the time the step was written down, so what undo
+  put back was where it already was.
+
 ## 2.2.0 — 2026-09-21
 
 The map gains an Assistant, with a model behind it or without, and a description

@@ -1,5 +1,5 @@
-// How a new domain or capability looks, and what Reset shapes puts back. This
-// is the one place to change that — the README's "Shape defaults" chapter says
+// How a new shape looks, and what Reset shapes puts back. This is the one
+// place to change that — the "Shape defaults" chapter of design-system.md says
 // what each value may be, and `node tests/defaults.test.mjs` checks them.
 //
 // Plain data with no DOM behind it, so the importer and the tests read it too.
@@ -13,6 +13,26 @@ export const DOMAIN_SHAPE = Object.freeze({
   opacity: 20,
   fontSize: 72,
   fontWeight: 'regular',
+  /** The Title size multiple. */
+  titleScale: 1,
+});
+
+export const AREA_SHAPE = Object.freeze({
+  /** One line: an area's title rides its border, and a legend does not wrap. */
+  title: 'New area',
+  /**
+   * A hex colour, matched to the nearest swatch in the map's palette. It is the
+   * border's colour and the wash's, so it wants to be one that reads as a line.
+   */
+  color: '#5985ab',
+  /**
+   * Percent, 0 to 100 in steps of 10 — the one shape that may go to 0, which is
+   * a border and no fill at all. A tenth, so the area still reads when the map
+   * is zoomed out and the line has gone thin.
+   */
+  opacity: 10,
+  fontSize: 64,
+  fontWeight: 'bold',
   /** The Title size multiple. */
   titleScale: 1,
 });

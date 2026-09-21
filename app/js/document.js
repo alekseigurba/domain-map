@@ -5,12 +5,18 @@
 //
 // Version 2 added the layer stack, touchpoints, actors and Type choices. A
 // version 1 file still reads: everything in it lands on the base layer, which
-// is what it always meant. Writing is always version 2.
+// is what it always meant.
+//
+// Version 3 added Product Areas: a third layer, the areas on it, and the area a
+// domain, a touchpoint or a loose capability names. The number moved because an
+// app from before it would read past all of that and write the map back without
+// it — better that it refuses the file. Versions 1 and 2 still read, as a map
+// with no areas. Writing is always version 3.
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 
 /** A position as the file writes it: two whole numbers, "x,y". */
 export const position = (x, y) => `${Math.round(x)},${Math.round(y)}`;
@@ -123,6 +129,33 @@ const commonFields = (node) => ({
 export function fromDocument(document_) {
   const layers = readLayers(document_.layers);
 
+  const areaIds = new Map();
+  const areas = (document_.areas ?? []).map((node) => {
+    const at = readPosition(node.shape?.position);
+    const id = crypto.randomUUID();
+    areaIds.set(node.key, id);
+
+    return {
+      id,
+      ...rules.withDefaults(rules.AREA_DEFAULTS, {
+        title: node.title?.trim(),
+        description: node.description,
+        owner: node.owner,
+        type: node.type,
+        colorIndex: node.shape?.color,
+        x: at && Math.round(at.x),
+        y: at && Math.round(at.y),
+        titleAngle: node.shape?.titleAngle,
+        fontWeight: node.shape?.weight,
+        fontSize: node.shape?.size,
+        titleScale: node.shape?.titleScale,
+        opacity: node.shape?.opacity,
+      }),
+    };
+  });
+  /** The area a record names, or none — the validator has refused a name that is not there. */
+  const areaNamed = (node) => (node.area == null ? null : areaIds.get(node.area) ?? null);
+
   const domainIds = new Map();
   const domains = (document_.domains ?? []).map((node) => {
     const at = readPosition(node.shape?.position);
@@ -133,6 +166,7 @@ export function fromDocument(document_) {
     return {
       id,
       ...rules.withDefaults(rules.DOMAIN_DEFAULTS, {
+        areaId: areaNamed(node),
         title: node.title?.trim(),
         description: node.description,
         owner: node.owner,
@@ -165,6 +199,9 @@ export function fromDocument(document_) {
       ...rules.withDefaults(rules.CAPABILITY_DEFAULTS, {
         ...commonFields(node),
         domainId: home,
+        // Inside a domain it belongs through the domain, so an area written on
+        // it there means nothing and is not read.
+        areaId: home === null ? areaNamed(node) : null,
         stretch: node.shape?.stretch,
         x: home === null && at ? Math.round(at.x) : undefined,
         y: home === null && at ? Math.round(at.y) : undefined,
@@ -185,6 +222,7 @@ export function fromDocument(document_) {
       id,
       ...rules.withDefaults(rules.TOUCHPOINT_DEFAULTS, {
         ...commonFields(node),
+        areaId: areaNamed(node),
         stretch: node.shape?.stretch,
         x: at && Math.round(at.x),
         y: at && Math.round(at.y),
@@ -287,6 +325,7 @@ export function fromDocument(document_) {
     palette: document_.palette ?? [],
     layers,
     types: readTypes(document_.types),
+    areas,
     domains,
     capabilities,
     touchpoints,
@@ -313,6 +352,32 @@ export function readTypes(types) {
 export function toDocument(state) {
   const layers = readLayers(state.layers);
 
+  const areaSeen = new Map();
+  const areaKeys = new Map();
+  const areas = (state.areas ?? []).map((area) => {
+    const key = unique(areaSeen, slugify(area.title));
+    areaKeys.set(area.id, key);
+    return compact({
+      key,
+      title: area.title,
+      description: blank(area.description),
+      owner: blank(area.owner),
+      type: blank(area.type),
+      shape: compact({
+        // Where it sits while it holds nothing. Round its members, the band is
+        // drawn from them and this is not looked at.
+        position: position(area.x, area.y),
+        titleAngle: area.titleAngle,
+        color: area.colorIndex,
+        size: area.fontSize,
+        weight: area.fontWeight,
+        titleScale: area.titleScale,
+        opacity: area.opacity,
+      }),
+    });
+  });
+  const areaKeyOf = (record) => (record.areaId == null ? null : areaKeys.get(record.areaId) ?? null);
+
   const domainSeen = new Map();
   const domainKeys = new Map();
   const domains = state.domains.map((domain) => {
@@ -320,6 +385,7 @@ export function toDocument(state) {
     domainKeys.set(domain.id, key);
     return compact({
       key,
+      area: areaKeyOf(domain),
       title: domain.title,
       description: blank(domain.description),
       owner: blank(domain.owner),
@@ -347,6 +413,7 @@ export function toDocument(state) {
     return compact({
       key,
       domain: home,
+      area: home === null ? areaKeyOf(capability) : null,
       title: capability.title,
       description: blank(capability.description),
       owner: blank(capability.owner),
@@ -379,6 +446,7 @@ export function toDocument(state) {
 
     return compact({
       key,
+      area: areaKeyOf(touchpoint),
       title: touchpoint.title,
       description: blank(touchpoint.description),
       owner: blank(touchpoint.owner),
@@ -491,6 +559,9 @@ export function toDocument(state) {
       dimmed: layer.dimmed === true ? true : null,
     })),
     types: Object.keys(types).length === 0 ? null : types,
+    // Only when there are any, as touchpoints and actors are: a map that draws
+    // no organisation says nothing about one.
+    areas: areas.length === 0 ? null : areas,
     domains,
     capabilities,
     touchpoints: touchpoints.length === 0 ? null : touchpoints,
@@ -572,11 +643,43 @@ export function validate(document_) {
   const typeError = rules.validateTypes(document_.types);
   if (typeError) return typeError;
 
+  if (document_.areas != null && !Array.isArray(document_.areas)) return 'Areas must be a list.';
+  const areaKeys = new Set();
+  for (const area of document_.areas ?? []) {
+    if (!area?.key || area.key.trim().length === 0) return 'Every area needs a key.';
+    if (areaKeys.has(area.key)) return `Two areas share the key '${area.key}'.`;
+    areaKeys.add(area.key);
+
+    const shape = area.shape;
+    if (unreadable(shape?.position)) return `Area '${area.key}': a position must read as "x,y".`;
+
+    const error = rules.validateArea({
+      title: area.title,
+      description: area.description,
+      owner: area.owner,
+      type: area.type,
+      colorIndex: shape?.color,
+      fontSize: shape?.size,
+      fontWeight: shape?.weight,
+      titleScale: shape?.titleScale,
+      titleAngle: shape?.titleAngle,
+      opacity: shape?.opacity,
+    });
+    if (error) return `Area '${area.key}': ${error}`;
+  }
+  /** An area a record names has to be in the file, as a capability's domain does. */
+  const strayArea = (label, node) =>
+    (node.area != null && !areaKeys.has(node.area)
+      ? `${label} '${node.key}' names area '${node.area}', which is not in the file.`
+      : null);
+
   const domainKeys = new Set();
   for (const domain of document_.domains ?? []) {
     if (!domain.key || domain.key.trim().length === 0) return 'Every domain needs a key.';
     if (domainKeys.has(domain.key)) return `Two domains share the key '${domain.key}'.`;
     domainKeys.add(domain.key);
+    const lostArea = strayArea('Domain', domain);
+    if (lostArea) return lostArea;
 
     const shape = domain.shape;
     if (unreadable(shape?.position) || unreadable(shape?.titlePosition))
@@ -609,6 +712,8 @@ export function validate(document_) {
       return `Capability '${capability.key}' names domain '${capability.domain}', `
         + 'which is not in the file.';
     }
+    const lostArea = strayArea('Capability', capability);
+    if (lostArea) return lostArea;
 
     const shape = capability.shape;
     if (unreadable(shape?.position))
@@ -647,6 +752,10 @@ export function validate(document_) {
 
       if (unreadable(node.shape?.position))
         return `${label} '${node.key}': a position must read as "x,y".`;
+      // An actor stands outside the business, so an area on one is read past
+      // rather than looked up.
+      const lostArea = kind === 'touchpoint' ? strayArea(label, node) : null;
+      if (lostArea) return lostArea;
 
       const error = rules.validatorFor[kind]({
         title: node.title,

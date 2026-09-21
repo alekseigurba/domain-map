@@ -71,7 +71,8 @@ check('the map\'s description is written to the file', written.description === '
 check('and read back from it', fromDocument(written).description === 'A BNPL provider.');
 check('a map that says nothing writes no field, so an older file is unchanged',
   !('description' in toDocument({ ...state, description: '' })));
-check('the file is still version 2: the field is one a reader may not know', written.version === 2);
+check('a description alone would not have moved the file on: it is a field a reader may skip',
+  !('description' in toDocument({ ...state, description: '' })) && written.version === 3);
 check('a description that is not text is refused', (validate({ description: 7 }) ?? '').includes('must be text'));
 check('and one past the limit, in the words every description is held to',
   (validate({ description: 'x'.repeat(rules.MAX_TEXT_LENGTH + 1) }) ?? '').includes(String(rules.MAX_TEXT_LENGTH)));
@@ -337,6 +338,48 @@ const says = (card, at = 0) => describeOperation(card.operations[at], state, car
 check('a describe reads as one', says(described) === 'Describe Fraud Detection');
 check('a new capability names the domain the same card makes', says(split, 1) === 'Add the capability Dunning to Collections');
 check('and a line names both ends', says(split, 2) === 'Connect Dunning and Fraud Detection');
+
+// --- who owns what -------------------------------------------------------------
+
+// The example map draws three product areas, holding between them a domain, a
+// touchpoint and a loose capability — every kind an area may hold.
+const money = titled('areas', 'Money Movement');
+const ledger = titled('domains', 'Core Ledger & Repayment');
+const teamBrief = toBrief(state);
+
+check('an area is named to a model like any other shape',
+  refOf.get(money.id) === 'area:money-movement' && idOf.get('area:money-movement')?.id === money.id);
+check('the brief lists the areas', teamBrief.areas.length === 3
+  && teamBrief.areas.some((one) => one.ref === 'area:money-movement' && one.description));
+check('a domain says which area it is in',
+  teamBrief.domains.find((one) => one.ref === refOf.get(ledger.id)).area === 'area:money-movement');
+check('so do a touchpoint and a loose capability',
+  teamBrief.touchpoints.find((one) => one.title === 'Merchant Portal').area === 'area:customer-merchant'
+  && teamBrief.looseCapabilities.find((one) => one.title === 'Customer Service Portal').area === 'area:money-movement');
+check('a capability inside a domain does not: it belongs through the domain',
+  teamBrief.domains.every((domain) => domain.capabilities.every((one) => !('area' in JSON.parse(JSON.stringify(one))))));
+check('a shape in no area says nothing about one',
+  !('area' in JSON.parse(JSON.stringify(teamBrief.touchpoints.find((one) => one.title === 'Customer App')))));
+check('a map that draws no organisation sends no list of areas',
+  !('areas' in JSON.parse(briefText(toBrief({ ...state, areas: [] })))));
+
+check('an area can be what a skill is about',
+  subjectFor(bySkill('describe'), { type: 'area', id: money.id }, state).id === money.id
+  && subjectFor(bySkill('fill-the-blanks'), { type: 'area', id: money.id }, state).kind === 'area'
+  && toBrief(state, { subject: { kind: 'area', id: money.id } }).subject === 'area:money-movement');
+check('and one a skill has no use for falls back on the whole map',
+  subjectFor(bySkill('grill-the-boundaries'), { type: 'area', id: money.id }, state) === 'map');
+
+const areaCard = only([
+  { op: 'describe', target: 'area:money-movement', description: 'Owns what is owed and what is paid.' },
+  { op: 'rename', target: 'area:money-movement', title: 'Money' },
+]);
+check('a reply may describe and rename an area',
+  areaCard.problem === null && areaCard.operations.every((op) => op.kind === 'area' && op.id === money.id),
+  areaCard.problem ?? '');
+check('but not make one, or hand a shape to one: who owns what is the owner’s',
+  only([{ op: 'add-area', title: 'Platform' }]).problem.includes('not an operation')
+  && !OPERATIONS.some((op) => op.includes('area')));
 
 console.log(failures === 0 ? '\nAll suggestion checks passed.' : `\n${failures} check(s) failed.`);
 process.exitCode = failures === 0 ? 0 : 1;

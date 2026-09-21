@@ -19,17 +19,19 @@ export const store = {
   layers: [],
   /** The Type choices on offer, one list per kind of element. */
   types: {},
+  areas: [],
   domains: [],
   capabilities: [],
   touchpoints: [],
   actors: [],
   connectors: [],
-  /** @type {{type: 'domain'|'capability'|'touchpoint'|'actor'|'connector'|null, id: string|null}} */
+  /** @type {{type: 'area'|'domain'|'capability'|'touchpoint'|'actor'|'connector'|null, id: string|null}} */
   selection: { type: null, id: null },
 };
 
 /** Where each kind of element is kept. The one place that knows. */
 const LISTS = {
+  area: 'areas',
   domain: 'domains',
   capability: 'capabilities',
   touchpoint: 'touchpoints',
@@ -58,6 +60,7 @@ export function setMap(state) {
     ? state.layers
     : rules.LAYERS.map((layer) => ({ key: layer.key, hidden: false, dimmed: false }));
   store.types = state.types ?? {};
+  store.areas = state.areas ?? [];
   store.domains = state.domains;
   store.capabilities = state.capabilities;
   store.touchpoints = state.touchpoints ?? [];
@@ -130,8 +133,8 @@ export const stackedList = (type) => [...listOf(type)].sort(byStack);
  */
 const session = new Map();
 
-/** The layer everything on the base of the stack is on. */
-export const baseLayer = () => store.layers[0] ?? null;
+/** The layer that is never hidden. Named by the model, not read off the bottom. */
+export const baseLayer = () => layerByKey(rules.BASE_LAYER);
 
 export const isBaseLayer = (key) => key === rules.BASE_LAYER;
 
@@ -251,6 +254,7 @@ export const connectorLayer = (connector) => layerForKind(connector.fromKind);
 export function onLayer(key) {
   const mine = (type) => (layerForKind(type) === key ? listOf(type) : []);
   return {
+    areas: mine('area'),
     domains: mine('domain'),
     capabilities: mine('capability'),
     touchpoints: mine('touchpoint'),
@@ -262,6 +266,33 @@ export function onLayer(key) {
 /** Whether what is selected is on a layer that is being shown at all. */
 export const isVisible = (type, record) =>
   !!record && !isHidden(layerOf(type, record));
+
+// --- areas -------------------------------------------------------------------
+
+// Who owns what. An area has no size of its own: a domain, a touchpoint or a
+// loose capability names the one area it is in, and the band is drawn round
+// whatever does. One area at most, and areas are flat, so the map answers "who
+// owns this" with one name or with nobody.
+
+/** Whether a shape may name an area of its own. An actor never; a capability only while it is loose. */
+export const mayJoinArea = (kind, record) =>
+  rules.MEMBER_KINDS.includes(kind) && !!record && !(kind === 'capability' && record.domainId);
+
+/**
+ * The area a shape belongs to. A capability inside a domain belongs through its
+ * domain, whatever it carried before it went in.
+ */
+export function areaOf(kind, record) {
+  if (!record || !rules.MEMBER_KINDS.includes(kind)) return null;
+  const holder = kind === 'capability' && record.domainId ? find('domain', record.domainId) : record;
+  return find('area', holder?.areaId) ?? null;
+}
+
+/** What an area holds, kind by kind in the order the map holds each: `{kind, record}`. */
+export const membersOf = (areaId) =>
+  (areaId ? rules.MEMBER_KINDS.flatMap((kind) => listOf(kind)
+    .filter((record) => record.areaId === areaId && mayJoinArea(kind, record))
+    .map((record) => ({ kind, record }))) : []);
 
 // --- Type choices ------------------------------------------------------------
 
@@ -489,7 +520,21 @@ function roundPositions(record, fields) {
 }
 
 const DOMAIN_POSITIONS = ['x', 'y', 'titleX', 'titleY'];
+const AREA_POSITIONS = ['x', 'y'];
 const CAPABILITY_POSITIONS = ['x', 'y', 'lobeX', 'lobeY'];
+
+/**
+ * An area emptied out stays where it was drawn. It has no outline of its own to
+ * remember, so it takes the place of the last shape to leave it — rather than
+ * jumping back to wherever it was first added, which may be a screen away.
+ */
+function rememberPlace(record, wasIn) {
+  if (!wasIn || record.areaId === wasIn) return;
+  const left = find('area', wasIn);
+  if (!left || membersOf(wasIn).length > 0) return;
+  if (typeof record.x === 'number') left.x = Math.round(record.x);
+  if (typeof record.y === 'number') left.y = Math.round(record.y);
+}
 
 /** Copy over the fields a record may carry, leaving out what was not given. */
 function assign(record, changes, shape) {
@@ -514,10 +559,13 @@ export function createDomain(fields = {}) {
 export function updateDomain(id, changes = {}) {
   const domain = find('domain', id);
   if (!domain) return null;
+  const wasIn = domain.areaId;
 
   assign(domain, changes, rules.DOMAIN_DEFAULTS);
   if (changes.title !== undefined) domain.title = titled(changes.title, domain.title);
+  if (changes.clearArea) domain.areaId = null;
   roundPositions(domain, DOMAIN_POSITIONS);
+  rememberPlace(domain, wasIn);
 
   emit('data');
   return domain;
@@ -539,6 +587,7 @@ export function deleteDomain(id) {
   };
   store.capabilities = store.capabilities.filter((c) => !childIds.has(c.id));
   store.connectors = store.connectors.filter((c) => !lost.includes(c));
+  for (const domain of removed.domains) rememberPlace({ ...domain, areaId: null }, domain.areaId);
 
   dropLostSelection();
   emit('data');
@@ -567,16 +616,28 @@ export function createCapability(fields = {}) {
 /**
  * Null leaves a field alone, which is why orphaning takes a flag of its own and
  * clearing an icon is an empty string: neither can be said with a null.
+ *
+ * A capability belongs to an area through its domain, so going into one gives
+ * up an area of its own. Coming out, it keeps the domain's: leaving a domain is
+ * not leaving the team. Either is only where it starts — an `areaId` or a
+ * `clearArea` in the same change has the last word, which is what undo relies on.
  */
 export function updateCapability(id, changes = {}) {
   const capability = find('capability', id);
   if (!capability) return null;
+  const wasIn = capability.areaId;
+
+  if (changes.domainId) capability.areaId = null;
+  else if (changes.clearDomain && capability.domainId)
+    capability.areaId = find('domain', capability.domainId)?.areaId ?? null;
 
   assign(capability, changes, rules.CAPABILITY_DEFAULTS);
   if (changes.title !== undefined) capability.title = titled(changes.title, capability.title);
   if (changes.clearDomain) capability.domainId = null;
+  if (changes.clearArea) capability.areaId = null;
   if (changes.icon === '') capability.icon = null;
   roundPositions(capability, CAPABILITY_POSITIONS);
+  rememberPlace(capability, wasIn);
 
   emit('data');
   return capability;
@@ -600,6 +661,7 @@ export function deleteCapability(id) {
 // off — which is why everything below is written once and told which kind.
 
 const DEFAULTS_FOR = {
+  area: rules.AREA_DEFAULTS,
   domain: rules.DOMAIN_DEFAULTS,
   capability: rules.CAPABILITY_DEFAULTS,
   touchpoint: rules.TOUCHPOINT_DEFAULTS,
@@ -607,6 +669,7 @@ const DEFAULTS_FOR = {
 };
 
 const POSITIONS_FOR = {
+  area: AREA_POSITIONS,
   domain: DOMAIN_POSITIONS,
   capability: CAPABILITY_POSITIONS,
   touchpoint: ['x', 'y'],
@@ -634,11 +697,19 @@ function createElement(kind, fields = {}) {
 function updateElement(kind, id, changes = {}) {
   const record = find(kind, id);
   if (!record) return null;
+  const wasIn = record.areaId;
 
   assign(record, changes, DEFAULTS_FOR[kind]);
   if (changes.title !== undefined) record.title = titled(changes.title, record.title);
   if (changes.icon === '') record.icon = null;
+  if (changes.clearArea) record.areaId = null;
+  if (changes.clearTitleAngle) record.titleAngle = null;
   roundPositions(record, POSITIONS_FOR[kind]);
+  // To a tenth of a degree: round a long band a whole one is a hand's width of
+  // border. Rounded up to a full turn, an angle is back where it started.
+  if (typeof record.titleAngle === 'number')
+    record.titleAngle = (Math.round((((record.titleAngle % 360) + 360) % 360) * 10) / 10) % 360;
+  rememberPlace(record, wasIn);
 
   emit('data');
   return record;
@@ -652,6 +723,7 @@ function removeElement(kind, id) {
 
   const lost = store.connectors.filter((c) => touches(c, kind, new Set([id])));
   const removed = {
+    areas: [],
     domains: [],
     capabilities: [],
     touchpoints: [],
@@ -660,6 +732,7 @@ function removeElement(kind, id) {
     [LISTS[kind]]: list.splice(index, 1),
   };
   store.connectors = store.connectors.filter((c) => !lost.includes(c));
+  for (const gone of removed[LISTS[kind]]) rememberPlace({ ...gone, areaId: null }, gone.areaId);
 
   dropLostSelection();
   emit('data');
@@ -669,6 +742,32 @@ function removeElement(kind, id) {
 export const createTouchpoint = (fields) => createElement('touchpoint', fields);
 export const updateTouchpoint = (id, changes) => updateElement('touchpoint', id, changes);
 export const deleteTouchpoint = (id) => removeElement('touchpoint', id);
+
+// An area is made and changed as the others are. Deleting one is its own: it
+// frees what it held and deletes none of it, and says who they were so that
+// undo can put every one of them back where it belonged.
+
+export const createArea = (fields) => createElement('area', fields);
+export const updateArea = (id, changes) => updateElement('area', id, changes);
+
+export function deleteArea(id) {
+  const index = store.areas.findIndex((area) => area.id === id);
+  if (index < 0) return null;
+
+  const held = rules.MEMBER_KINDS.flatMap((kind) => listOf(kind)
+    .filter((record) => record.areaId === id)
+    .map((record) => ({ kind, id: record.id })));
+  for (const member of held) find(member.kind, member.id).areaId = null;
+
+  const removed = {
+    areas: store.areas.splice(index, 1),
+    domains: [], capabilities: [], touchpoints: [], actors: [], connectors: [],
+    memberships: held.map((member) => ({ ...member, areaId: id })),
+  };
+  dropLostSelection();
+  emit('data');
+  return removed;
+}
 
 export const createActor = (fields) => createElement('actor', fields);
 export const updateActor = (id, changes) => updateElement('actor', id, changes);
@@ -748,7 +847,7 @@ export function deleteConnector(id) {
   if (index < 0) return null;
 
   const removed = {
-    domains: [], capabilities: [], touchpoints: [], actors: [],
+    areas: [], domains: [], capabilities: [], touchpoints: [], actors: [],
     connectors: store.connectors.splice(index, 1),
   };
   dropLostSelection();
@@ -759,11 +858,18 @@ export function deleteConnector(id) {
 /** Put back exactly what a delete took, ids and all, so undo is a real undo. */
 export function restore(removed) {
   if (!removed) return;
+  store.areas.push(...(removed.areas ?? []));
   store.domains.push(...(removed.domains ?? []));
   store.capabilities.push(...(removed.capabilities ?? []));
   store.touchpoints.push(...(removed.touchpoints ?? []));
   store.actors.push(...(removed.actors ?? []));
   store.connectors.push(...(removed.connectors ?? []));
+  // An area that comes back takes back what it held — those that are still
+  // there, and still free to be taken.
+  for (const member of removed.memberships ?? []) {
+    const record = find(member.kind, member.id);
+    if (record && !record.areaId && mayJoinArea(member.kind, record)) record.areaId = member.areaId;
+  }
   emit('data');
 }
 

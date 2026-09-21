@@ -360,8 +360,9 @@
       <h2 class="dialog__title" id="getting-around-title">Getting around</h2>
       <div class="shortcuts">
         <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right. In <strong>Edit</strong> mode, click a connection point on a shape to start a connector. Press <strong>Edit</strong> in the header to make changes.</p>
-        <p>The <strong>layer control</strong> in the bottom left corner lists the two layers, topmost first. The eye hides the Presentation Layer; the base layer cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
-        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds: domains and capabilities on the base layer, touchpoints and actors on the Presentation Layer. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
+        <p>The <strong>layer control</strong> in the bottom left corner lists the three layers, topmost first: the Presentation Layer, Business Domains, and Product Areas underneath them both. The eye hides the Presentation Layer or Product Areas; Business Domains, the base layer, cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
+        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds: domains and capabilities on the base layer, touchpoints and actors on the Presentation Layer, areas on Product Areas. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
+        <p>A <strong>product area</strong> is who owns what: a band drawn round the domains, touchpoints and loose capabilities one team holds. It has no size of its own — it follows what it holds. Drag a shape in from outside the line to put it in the area; to take it out, set <strong>Area</strong> to — in its details. Dragging a shape clear of its team only stretches the band after it, so tidying the map never reorganises the company. A shape is in one area or in none.</p>
         <p><strong>Assistant</strong>, in the header, takes the place of the details panel: pick what to ask, and either send it to the model this map is connected to or, where there is none, copy the prompt into the AI chat you use and paste its reply back. What comes back is a list of cards. Nothing on one touches the map until you apply it in <strong>Edit</strong> mode, and each card is one Ctrl+Z. <strong>Ask your own</strong> opens a box for your question, and Ctrl+Enter there sends it.</p>
         <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
 
@@ -381,9 +382,13 @@
               <tr><td>Drag the bars at either side of a domain's title, while renaming it or in an <strong>Edit</strong> session</td><td>Change the width the title wraps at</td></tr>
               <tr><td>Double-click a domain's title</td><td>Rename it in place (see below)</td></tr>
               <tr><td>⋮ at the end of a selected domain's title</td><td><strong>Rename</strong>, or <strong>Edit</strong>: a session of changes that <strong>Cancel</strong> undoes all at once</td></tr>
-              <tr><td>Delete or Backspace</td><td>Delete the selection. Deleting a domain asks first.</td></tr>
+              <tr><td>Drag an area's border</td><td>Move the area, with everything it holds. The inside of an area is open ground: it pans the map.</td></tr>
+              <tr><td>Drag an area's title</td><td>Slide the title round the border</td></tr>
+              <tr><td>Double-click an area's title</td><td>Rename it in place. It is one line: Enter saves, Esc cancels.</td></tr>
+              <tr><td>Drag a domain, a touchpoint or a loose capability into an area</td><td>Put it in that area — out of the one it was in, if any. The area about to take it lights up.</td></tr>
+              <tr><td>Delete or Backspace</td><td>Delete the selection. Deleting a domain asks first. Deleting an area frees what it held and deletes none of it.</td></tr>
               <tr><td>Ctrl+Z</td><td>Undo</td></tr>
-              <tr><td>Ctrl+B</td><td>Turn bold on or off for the selected domain or capability</td></tr>
+              <tr><td>Ctrl+B</td><td>Turn bold on or off for the selected shape</td></tr>
               <tr><td>Ctrl and + / Ctrl and &minus;</td><td>Step the selected capability's font size up or down (= works as +)</td></tr>
               <tr><td>Shift and + / Shift and &minus;</td><td>Step the selected capability's shape size up or down</td></tr>
               <tr><td>Ctrl and &lt; / Ctrl and &gt;</td><td>Make the selected capability's oval narrower or wider, in five steps: tall, a little tall, round, a little wide, wide. New capabilities start wide. (Ctrl+, and Ctrl+. work too)</td></tr>
@@ -416,7 +421,7 @@
             </thead>
             <tbody>
               <tr><td>Point at or select a capability, touchpoint or actor</td><td>Show its connection points</td></tr>
-              <tr><td>Drag from a connection point to one on another shape</td><td>Draw a connector. A line runs down the stack: an actor to a touchpoint, a touchpoint to a capability, a capability to another capability. Anything else is refused.</td></tr>
+              <tr><td>Drag from a connection point to one on another shape</td><td>Draw a connector. A line runs down the stack: an actor to a touchpoint, a touchpoint to a capability, a capability to another capability. Anything else is refused, and nothing connects to a domain or an area.</td></tr>
               <tr><td>Click a connection point, then one on another shape</td><td>Draw a connector in two clicks</td></tr>
               <tr><td>Esc, or click anywhere else</td><td>Drop a connector you have started</td></tr>
               <tr><td>Click a connector</td><td>Select it</td></tr>

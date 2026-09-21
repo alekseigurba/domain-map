@@ -56,9 +56,9 @@ node tests/geometry.test.mjs
 | `app/` | The whole client: no build step, no framework, ES modules the browser loads as they are. |
 | `app/js/store.js` | The single source of truth. Menu, details and diagram all read from it, and every change to the map is a change here. |
 | `app/js/diagram.js` | The SVG: rendering, hit-testing, dragging, connectors. |
-| `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points. |
+| `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points, and the band an area draws round what it holds. |
 | `app/js/icon-art.js` | An icon as the map draws it: the file with its lines weighed, and where in it the drawing is. It needs a fetch and a canvas, so it is here and not in `geometry.js`, which only keeps what was measured. |
-| `app/js/defaults.js` | How a new domain or capability looks, and what *Reset shapes* puts back. `tests/defaults.test.mjs` checks the values. |
+| `app/js/defaults.js` | How a new shape of each kind looks, and what *Reset shapes* puts back. `tests/defaults.test.mjs` checks the values. |
 | `app/js/suggestions.js` | What goes out to an AI chat and what is let back in: the brief of the map, the reply parser, and the checks every operation passes before it becomes a card. Pure, like `geometry.js`, so `tests/suggestions.test.mjs` runs it headless against the seed map and the shipped skills. |
 | `app/js/assistant.js` | The Assistant column: skills, the conversation or the prompt to copy, and the cards. It hands a checked card back to `main.js` to be applied, which is where a change is placed and recorded for undo. |
 | `scripts/assistant.mjs` | The model behind the Assistant, when `ASSISTANT_API_URL` and `ASSISTANT_API_KEY` name one: the two request shapes, one retry, and the API's own words when it says no. `tests/assistant.test.mjs` runs it against a stand-in model on a local port. |

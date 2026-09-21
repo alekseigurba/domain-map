@@ -4,7 +4,9 @@
 import {
   store, selected, find, patchLocal, connectorLabel, slugFor, oneLine, withBreaks,
   typesFor, layerOf, layerTitle, connectorScope, CONNECTOR_NAMES,
+  areaOf, membersOf, mayJoinArea,
 } from './store.js';
+import { AREA_SHAPE } from './rules.js';
 import {
   COLORS, FONT_SIZES, CAPABILITY_FONT_SIZES, FONT_WEIGHTS, SIZE_SCALES, TITLE_SCALES,
   LINE_STYLES, DEFAULT_FONT_WEIGHT,
@@ -37,7 +39,7 @@ export function setEditMode(next) {
 
 /** Which accordion panels are open. Sticky across selections, like a preference.
  *  Shape starts shut: what a thing is called matters before how it is drawn. */
-const opened = new Set(['Metadata']);
+const opened = new Set(['Metadata', 'Holds']);
 
 /**
  * `key` names the panel in `opened` wherever its heading changes with the
@@ -532,11 +534,50 @@ function staticText(value) {
   return element;
 }
 
+/**
+ * Which area a shape is in: one of the map's, or none. This is where leaving is
+ * said — dragging a shape clear of its team only stretches the band after it,
+ * so that tidying the map never reorganises the company. A capability inside a
+ * domain belongs through the domain, and says so rather than offering a choice
+ * it does not have.
+ */
+function areaField(kind, record) {
+  const area = areaOf(kind, record);
+  if (!mayJoinArea(kind, record)) {
+    return field('Area', staticText(area ? `${oneLine(area.title)}, through its domain` : '—'));
+  }
+  if (!editMode) return field('Area', staticText(area ? oneLine(area.title) : '—'));
+
+  return field('Area', select(
+    [{ value: '', label: '—' }, ...store.areas.map((one) => ({ value: one.id, label: oneLine(one.title) }))],
+    record.areaId ?? '',
+    (value) => handlers.onArea?.(kind, record.id, value || null),
+  ));
+}
+
+/** What an area holds, as names to press: each one shows its shape on the map. */
+function memberChips(members) {
+  const row = document.createElement('div');
+  row.className = 'details__members';
+  for (const { kind, record } of members) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn--chip details__member';
+    button.textContent = oneLine(record.title);
+    button.title = `Show this ${kind} on the map`;
+    button.addEventListener('click', () => handlers.onShow?.(kind, record.id));
+    row.appendChild(button);
+  }
+  return row;
+}
+
 /** A domain title is bold by default; every label on a shape is not. */
 const onAShape = (type) => type === 'capability' || type === 'touchpoint' || type === 'actor';
 
-const weightDefault = (type) =>
-  (onAShape(type) ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT);
+const weightDefault = (type) => {
+  if (type === 'area') return AREA_SHAPE.fontWeight;
+  return onAShape(type) ? DEFAULT_CAPABILITY_FONT_WEIGHT : DEFAULT_FONT_WEIGHT;
+};
 
 function weightField(type, record) {
   return field('Weight', select(
@@ -551,7 +592,7 @@ function fontSizeField(type, record) {
 
   return field('Font size', select(
     sizes.map((size) => ({ value: size, label: `${size} px` })),
-    record.fontSize ?? (onAShape(type) ? DEFAULT_FONT_SIZE : undefined),
+    record.fontSize ?? (onAShape(type) ? DEFAULT_FONT_SIZE : type === 'area' ? AREA_SHAPE.fontSize : undefined),
     (value) => patch(type, record, { fontSize: Number(value) }),
   ), { inline: true });
 }
@@ -566,10 +607,10 @@ const slugOf = (type, record) => slugFor(type, record.id) ?? '—';
 const layerNameOf = (type, record) => layerTitle(layerOf(type, record));
 
 /** How solid a shape is drawn. Every kind carries one; a domain always did. */
-function opacityField(type, record, fallback) {
+function opacityField(type, record, fallback, least = 10) {
   return field('Opacity', slider(
     {
-      min: 10,
+      min: least,
       max: 100,
       step: 10,
       value: record.opacity ?? fallback,
@@ -598,6 +639,7 @@ function meta(lines) {
  * Headed by what the selection is, but opened and shut as one panel for both.
  */
 const HEADINGS = {
+  area: 'Product area',
   domain: 'Domain',
   capability: 'Capability',
   touchpoint: 'Touchpoint',
@@ -665,7 +707,7 @@ export function renderDetails() {
     const domain = record.domainId ? find('domain', record.domainId) : null;
     // Where it belongs comes straight after what it is called: it frames everything below.
     nodes.push(metadataSection(type, record, {
-      lead: [field('Domain', staticText(domain ? domain.title : '—'))],
+      lead: [field('Domain', staticText(domain ? domain.title : '—')), areaField(type, record)],
     }));
     nodes.push(section('Shape', [
       fontSizeField(type, record),
@@ -684,7 +726,11 @@ export function renderDetails() {
   } else if (type === 'touchpoint' || type === 'actor') {
     // Neither belongs to a domain, so what frames it is the layer it is on.
     nodes.push(metadataSection(type, record, {
-      lead: [field('Layer', staticText(layerNameOf(type, record)))],
+      lead: [
+        field('Layer', staticText(layerNameOf(type, record))),
+        // An actor stands outside the business, so no team owns one.
+        ...(type === 'touchpoint' ? [areaField(type, record)] : []),
+      ],
     }));
     nodes.push(section('Shape', [
       fontSizeField(type, record),
@@ -703,7 +749,7 @@ export function renderDetails() {
   } else if (type === 'domain') {
     const count = store.capabilities.filter((c) => c.domainId === record.id).length;
     nodes.push(metadataSection(type, record, {
-      lead: [field('Layer', staticText(layerNameOf(type, record)))],
+      lead: [field('Layer', staticText(layerNameOf(type, record))), areaField(type, record)],
       trail: [`Capabilities: ${count}`],
     }));
     nodes.push(section('Shape', [
@@ -718,6 +764,34 @@ export function renderDetails() {
       field('Color', swatches(type, record)),
       // How much of the color shows, so it follows the color.
       opacityField(type, record, DEFAULT_OPACITY),
+    ]));
+  } else if (type === 'area') {
+    const members = membersOf(record.id);
+    const counts = [['domain', 'Domains'], ['touchpoint', 'Touchpoints'], ['capability', 'Loose capabilities']]
+      .map(([kind, label]) => [label, members.filter((one) => one.kind === kind).length])
+      .filter(([, count]) => count > 0)
+      .map(([label, count]) => `${label}: ${count}`);
+
+    nodes.push(metadataSection(type, record, {
+      lead: [field('Layer', staticText(layerNameOf(type, record)))],
+      trail: counts.length ? counts : ['Holds nothing yet'],
+    }));
+    // What it holds is what it is, so it comes before how it is drawn. Every
+    // shape keeps its one row in the menu; this is where a team is read off.
+    if (members.length) nodes.push(section('Holds', [memberChips(members)]));
+    nodes.push(section('Shape', [
+      fontSizeField(type, record),
+      weightField(type, record),
+      // On an area this sizes the words themselves: there is no lobe round a
+      // title that rides a border.
+      field('Title size', select(
+        TITLE_SCALES.map((value) => ({ value, label: `${Math.round(value * 100)}%` })),
+        record.titleScale ?? 1,
+        (value) => patch(type, record, { titleScale: Number(value) }),
+      ), { inline: true }),
+      field('Color', swatches(type, record)),
+      // Down to nothing: at 0 an area is a border and no wash.
+      opacityField(type, record, AREA_SHAPE.opacity, 0),
     ]));
   } else if (type === 'connector') {
     // Named for the kind of line it is, the way the menu files it — the panel
@@ -771,7 +845,10 @@ export function renderDetails() {
       node?.querySelectorAll('.section__body input, .section__body select, '
         + '.section__body textarea, .section__body button')
         .forEach((control) => {
-          if (!control.classList.contains('field__input')) control.disabled = true;
+          // A member's name is a way to look, not a way to change anything.
+          const reads = control.classList.contains('field__input')
+            || control.classList.contains('details__member');
+          if (!reads) control.disabled = true;
         });
     }
   }

@@ -790,5 +790,131 @@ check('a colour the palette lacks gets the nearest swatch',
 check('the short hex form reads as the long one', geo.swatchFor('#e6f') === geo.swatchFor('#ee66ff'));
 geo.setPalette([]);
 
+// --- areas: the band round what a team holds ---
+// Three shapes well apart, as a team's domains are: two level, one far below.
+const spread = [
+  rimOf({ x: 0, y: 0, rx: 300, ry: 200 }),
+  rimOf({ x: 1400, y: 0, rx: 300, ry: 200 }),
+  rimOf({ x: 700, y: 1800, rx: 250, ry: 160 }),
+];
+const heldPoints = spread.flat();
+const band = geo.bandRound(heldPoints, geo.AREA_PAD);
+const distanceTo = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+
+check('the band takes in every point it is drawn round',
+  heldPoints.every((p) => geo.insideOutline(band, p.x, p.y)));
+check('and stands off from all of them by its margin',
+  band.every((b) => heldPoints.every((p) => distanceTo(b, p) >= geo.AREA_PAD - 0.01)),
+  String(Math.min(...band.flatMap((b) => heldPoints.map((p) => distanceTo(b, p))))));
+check('it is convex: it never turns back on itself, however far apart its members are', (() => {
+  const turn = (a, b, c) => (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+  return band.every((b, i) => turn(band.at(i - 1), b, band[(i + 1) % band.length]) > -1e-6);
+})());
+check('its corners are rounded: no two neighbouring stretches meet at a sharp angle', (() => {
+  const heading = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  return band.every((b, i) => {
+    const bend = Math.abs(heading(band.at(i - 1), b) - heading(b, band[(i + 1) % band.length]));
+    return Math.min(bend, 2 * Math.PI - bend) < 0.2;
+  });
+})());
+check('open ground well outside it is outside', !geo.insideOutline(band, -900, 1800));
+check('a stranger parked between two members is inside the line, as the release page owns up to',
+  geo.insideOutline(band, 700, 0));
+
+const lone = geo.bandRound([{ x: 50, y: 50 }], 40);
+check('one point gives a circle', lone.every((p) => Math.abs(distanceTo(p, { x: 50, y: 50 }) - 40) < 1e-6));
+const pill = geo.bandRound([{ x: 0, y: 0 }, { x: 200, y: 0 }], 40);
+check('and two a pill, by the same rule',
+  Math.min(...pill.map((p) => p.x)) === -40 && Math.max(...pill.map((p) => p.x)) === 240
+  && Math.abs(Math.max(...pill.map((p) => p.y)) - 40) < 1e-6);
+check('points piled on one spot are one point', geo.bandRound([{ x: 1, y: 1 }, { x: 1, y: 1 }], 10).length > 8);
+
+// The title rides the border, at an angle seen from the middle of the band.
+const team = geo.layoutArea({ title: 'Payments', fontSize: 64, fontWeight: 'bold' }, spread);
+/** How far a point is from the line itself — its straight stretches run long between corners. */
+const onTheBand = (point) => Math.min(...team.band.map((a, i) => {
+  const b = team.band[(i + 1) % team.band.length];
+  const run = { x: b.x - a.x, y: b.y - a.y };
+  const t = Math.max(0, Math.min(1,
+    ((point.x - a.x) * run.x + (point.y - a.y) * run.y) / (run.x ** 2 + run.y ** 2 || 1)));
+  return distanceTo(point, { x: a.x + run.x * t, y: a.y + run.y * t });
+}));
+check('a title nobody has moved rides the top of the band',
+  team.title.angle === geo.DEFAULT_TITLE_ANGLE && onTheBand(team.title) < 0.01
+  && Math.abs(team.title.y - Math.min(...team.band.map((p) => p.y))) < 0.01,
+  `${team.title.x},${team.title.y}`);
+check('an area’s title is one line, whatever breaks were typed into it',
+  geo.layoutArea({ title: 'Money\nMovement' }, spread).title.lines.join('|') === 'Money Movement');
+check('Title size sizes the words themselves, there being no lobe round them',
+  geo.layoutArea({ title: 'Payments', fontSize: 64, titleScale: 0.5 }, spread).title.fontSize === 32);
+
+for (const angle of [0, 45, 90, 180, 212.5, 300]) {
+  const slid = geo.layoutArea({ title: 'Payments', titleAngle: angle }, spread);
+  check(`slid to ${angle}°, the title is still on the border`, onTheBand(slid.title) < 0.01,
+    String(onTheBand(slid.title)));
+  check(`and sits where that angle looks from the middle`,
+    Math.abs(geo.angleFrom(slid.centre, slid.title.x, slid.title.y) - angle) < 0.11);
+}
+check('an angle is kept to a tenth of a degree, and a full turn is none',
+  geo.angleFrom({ x: 0, y: 0 }, 100, -0.01) === 0 && geo.angleFrom({ x: 0, y: 0 }, 0, -10) === 270);
+
+// The border is broken behind the title, and nowhere else.
+const runs = geo.outlineOutside(team.band, team.gap);
+const inTheGap = (p) => p.x > team.gap.minX + 0.01 && p.x < team.gap.maxX - 0.01
+  && p.y > team.gap.minY + 0.01 && p.y < team.gap.maxY - 0.01;
+check('the border is one open run with the title’s room taken out of it', runs.length === 1
+  && team.rim.startsWith('M') && !team.rim.endsWith('Z'));
+check('none of it passes behind the title', runs.flat().every((p) => !inTheGap(p)));
+check('and it is cut at the edge of that room, not at the nearest corner of the band',
+  Math.abs(runs[0][0].x - team.gap.maxX) < 0.01 && Math.abs(runs[0].at(-1).x - team.gap.minX) < 0.01,
+  `${runs[0][0].x} ${runs[0].at(-1).x} against ${team.gap.minX}..${team.gap.maxX}`);
+check('the wash is the whole band, closed', team.path.endsWith('Z'));
+check('a box nowhere near leaves the outline whole',
+  geo.outlineOutside(team.band, { minX: 9000, maxX: 9100, minY: 0, maxY: 10 })[0].length === team.band.length + 1);
+check('what is drawn reaches past the band by the title hanging over it',
+  team.bounds.minY < Math.min(...team.band.map((p) => p.y)));
+check('the inside of the line is what a drop asks about',
+  team.contains(700, 600) && !team.contains(-900, 1800));
+
+// An area with nothing in it is a pill at its own position, long enough for its title.
+const bare = geo.layoutArea({ title: 'New area', x: 500, y: -200 }, []);
+const titledAtLength = geo.layoutArea({ title: 'Customer and Merchant Experience Platform', x: 500, y: -200 }, []);
+check('an empty area sits where it says it does', bare.empty
+  && Math.abs(bare.centre.x - 500) < 1e-6 && Math.abs(bare.centre.y + 200) < 1e-6);
+check('and is long enough to carry its title, however long',
+  titledAtLength.gap.minX > Math.min(...titledAtLength.band.map((p) => p.x)) && titledAtLength.gap.maxX < Math.max(...titledAtLength.band.map((p) => p.x))
+  && titledAtLength.bounds.maxX - titledAtLength.bounds.minX > bare.bounds.maxX - bare.bounds.minX);
+check('with its border still in one piece round the title', bare.rim.split('M').length - 1 === 1);
+
+// A domain hands over its real outline, which is what the band goes round.
+const blob = geo.layoutDomain({ title: 'Billing', x: 0, y: 0 }, [
+  { id: 'a', title: 'Invoicing', lobeX: -200, lobeY: 0 },
+  { id: 'b', title: 'Dunning', lobeX: 260, lobeY: 120 },
+]);
+check('a domain’s outline is the points its blob was drawn through',
+  blob.outline.length > 60 && blob.outline.every((p) =>
+    p.x >= blob.bounds.minX - 1e-6 && p.x <= blob.bounds.maxX + 1e-6));
+
+// --- the ink a title wears on the paper ---
+const ratio = (hex, back = '#fffdfa') => {
+  const lum = (h) => {
+    const n = parseInt(h.slice(1), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+      .map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const [light, dark] = [lum(hex), lum(back)].sort((a, b) => b - a);
+  return (light + 0.05) / (dark + 0.05);
+};
+check('a colour that already reads is left as it is', geo.deepened('#9f4e4e') === '#9f4e4e');
+for (const pale of ['#fede49', '#aedbe6', '#fee986', '#e8bbd5', '#5985ab']) {
+  check(`${pale} is deepened until it reads as type`, ratio(geo.deepened(pale)) >= geo.READABLE,
+    `${geo.deepened(pale)} at ${ratio(geo.deepened(pale)).toFixed(2)}`);
+}
+check('and by no more than it takes: a yellow line gets an olive title, not a black one',
+  ratio(geo.deepened('#fede49')) < geo.READABLE + 0.4 && geo.deepened('#fede49') !== '#282828',
+  geo.deepened('#fede49'));
+check('the short hex form deepens as the long one does', geo.deepened('#fd4') === geo.deepened('#ffdd44'));
+
 console.log(failures === 0 ? '\nAll geometry checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

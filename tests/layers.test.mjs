@@ -26,9 +26,16 @@ const titled = (list, title) => list.find((one) => one.title === title);
 
 // --- the model ---------------------------------------------------------------
 
-check('there are two layers, bottom first',
-  rules.LAYERS.map((one) => one.key).join(',') === 'core,presentation');
-check('the base layer is the bottom one', rules.BASE_LAYER === 'core');
+check('there are three layers, bottom first',
+  rules.LAYERS.map((one) => one.key).join(',') === 'areas,core,presentation');
+// Who owns the business can be put away; what it does cannot. So the base is
+// named, and is not simply whichever layer is at the bottom.
+check('the base layer is Business Domains, though areas are painted under it',
+  rules.BASE_LAYER === 'core' && rules.LAYERS[0].key === 'areas');
+check('an area is on a layer of its own', rules.LAYER_OF.area === 'areas'
+  && rules.KINDS_ON.areas.join(',') === 'area');
+check('nothing connects to an area',
+  (rules.connectorRule('capability', 'area') ?? '').includes('cannot end on an area'));
 check('a domain and a capability are on the base layer',
   rules.LAYER_OF.domain === 'core' && rules.LAYER_OF.capability === 'core');
 check('a touchpoint and an actor are on the presentation layer',
@@ -73,7 +80,9 @@ const v1 = {
 check('a version 1 file is still valid', validate(v1) === null, validate(v1) ?? '');
 
 const read = fromDocument(v1);
-check('it gets the model’s own stack', read.layers.length === 2);
+check('it gets the model’s own stack', read.layers.length === 3);
+check('with the layer it never knew shown, and nothing on it',
+  read.layers[0].key === 'areas' && read.layers[0].hidden === false && read.areas.length === 0);
 check('no element carries a layer of its own',
   [...read.domains, ...read.capabilities].every((one) => one.layer === undefined));
 check('its connector ends read as capabilities',
@@ -177,7 +186,7 @@ check('the actor’s line knows both its ends',
   interaction.fromId === full.actors[0].id && interaction.toId === full.touchpoints[0].id);
 check('and the kind of each, from where it was written',
   interaction.toKind === 'touchpoint' && reach.toKind === 'capability');
-check('a dimmed layer opens dimmed', full.layers[1].dimmed === true);
+check('a dimmed layer opens dimmed', full.layers.find((one) => one.key === 'presentation').dimmed === true);
 check('opacity is read off every shape',
   full.actors[0].opacity === 50 && full.capabilities[0].opacity === 100);
 
@@ -221,8 +230,10 @@ check('both are written back where they were read',
   && dressedOut.actors[0].shape.iconPlacement === 'right');
 check('and only what was chosen: the touchpoint wrote no weight',
   !('iconWeight' in dressedOut.touchpoints[0].shape));
-check('the file is still version 2: an older app reads past what it does not know',
-  dressedOut.version === 2 && CURRENT_VERSION === 2);
+// Placement and weight were fields an older app could read past. Areas are
+// not: read past, they would be lost on the next save, so the number moved.
+check('every save writes version 3', dressedOut.version === 3 && CURRENT_VERSION === 3);
+check('a map with no areas writes no list of them', !('areas' in dressedOut));
 
 // --- what a file may not say -------------------------------------------------
 
@@ -407,6 +418,142 @@ check('and refused', refused.removed === false && refused.used === 1);
 check('so the shape keeps its Type', invoicing.type === 'Engine');
 check('a choice nothing uses can be removed',
   store_.removeTypeChoice('capability', 'Process').removed === true);
+
+// --- areas -------------------------------------------------------------------
+
+const v3 = {
+  version: 3,
+  title: 'A map with teams on it',
+  layers: [{ key: 'areas', dimmed: true }, { key: 'core' }, { key: 'presentation' }],
+  types: { area: ['Stream-aligned'] },
+  areas: [
+    {
+      key: 'payments',
+      title: 'Payments',
+      type: 'Stream-aligned',
+      shape: { position: '40,60', titleAngle: 212.5, color: 14, size: 64, weight: 'bold', titleScale: 1, opacity: 0 },
+    },
+    { key: 'growth', title: 'Growth' },
+  ],
+  domains: [
+    { key: 'billing', area: 'payments', title: 'Billing', shape: { position: '0,0' } },
+    { key: 'ledger', title: 'Ledger', shape: { position: '900,0' } },
+  ],
+  capabilities: [
+    // Inside a domain it belongs through the domain, whatever the file says.
+    { key: 'invoicing', domain: 'billing', area: 'growth', title: 'Invoicing' },
+    { key: 'refunds', area: 'payments', title: 'Refunds', shape: { position: '300,400' } },
+  ],
+  touchpoints: [{ key: 'portal', area: 'growth', title: 'Portal', shape: { position: '0,-500' } }],
+  actors: [{ key: 'payer', title: 'Payer', shape: { position: '0,-900' } }],
+  connectors: [],
+};
+
+check('a map with areas is valid', validate(v3) === null, validate(v3) ?? '');
+
+const teams = fromDocument(v3);
+const teamOf = (list, title) => teams.areas.find((one) => one.id === titled(list, title).areaId)?.title ?? null;
+check('its areas are read', teams.areas.length === 2 && teams.areas[0].titleAngle === 212.5);
+check('an area may have no fill at all', teams.areas[0].opacity === 0);
+check('one the file says little about gets the defaults',
+  teams.areas[1].opacity === rules.AREA_DEFAULTS.opacity && teams.areas[1].titleAngle === null);
+check('a domain, a touchpoint and a loose capability each name their area',
+  teamOf(teams.domains, 'Billing') === 'Payments'
+  && teamOf(teams.touchpoints, 'Portal') === 'Growth'
+  && teamOf(teams.capabilities, 'Refunds') === 'Payments');
+check('a shape that names none is in none', titled(teams.domains, 'Ledger').areaId === null);
+check('an area written on a capability inside a domain is not read',
+  titled(teams.capabilities, 'Invoicing').areaId === null);
+
+const teamsOut = toDocument({ ...teams, palette: [] });
+check('areas are written before the domains they hold',
+  Object.keys(teamsOut).indexOf('areas') < Object.keys(teamsOut).indexOf('domains'));
+check('membership is written as the area’s key',
+  keyed(teamsOut.domains, 'billing').area === 'payments'
+  && keyed(teamsOut.touchpoints, 'portal').area === 'growth'
+  && keyed(teamsOut.capabilities, 'refunds').area === 'payments');
+check('and not at all on a shape in none, or inside a domain',
+  !('area' in keyed(teamsOut.domains, 'ledger')) && !('area' in keyed(teamsOut.capabilities, 'invoicing')));
+check('no fill is written as 0, not left out', keyed(teamsOut.areas, 'payments').shape.opacity === 0);
+check('the title’s place round the border is written only once it has one',
+  keyed(teamsOut.areas, 'payments').shape.titleAngle === 212.5
+  && !('titleAngle' in keyed(teamsOut.areas, 'growth').shape));
+check('the layer’s own state is written', keyed(teamsOut.layers, 'areas').dimmed === true);
+check('an area may carry a Type from a list of its own', teamsOut.types.area[0] === 'Stream-aligned');
+check('what it wrote is valid, and reads back the same',
+  validate(teamsOut) === null
+  && stringify(toDocument({ ...fromDocument(teamsOut), palette: [] })) === stringify(teamsOut),
+  validate(teamsOut) ?? '');
+
+refuses('an area that is not in the file is refused',
+  { ...v3, domains: [{ ...v3.domains[0], area: 'platform' }] }, "names area 'platform'");
+refuses('two areas with one key are refused',
+  { ...v3, areas: [v3.areas[0], v3.areas[0]] }, 'Two areas share the key');
+refuses('a title angle past a full turn is refused',
+  { ...v3, areas: [{ ...v3.areas[0], shape: { titleAngle: 360 } }] }, 'titleAngle must be');
+refuses('an area more than solid is refused',
+  { ...v3, areas: [{ ...v3.areas[0], shape: { opacity: 110 } }] }, 'opacity must be between 0 and 100');
+
+// --- who owns what, in the store ---------------------------------------------
+
+store_.setMap(teams);
+const payments = titled(store.areas, 'Payments');
+const growth = titled(store.areas, 'Growth');
+const billingDomain = titled(store.domains, 'Billing');
+const invoice = titled(store.capabilities, 'Invoicing');
+const refunds = titled(store.capabilities, 'Refunds');
+
+check('an area is on the areas layer', store_.layerOf('area', payments) === 'areas'
+  && store_.onLayer('areas').areas.length === 2);
+check('the base layer is still the one that cannot be hidden',
+  store_.baseLayer().key === 'core' && !store_.layerStack()[0].base && store_.layerStack()[1].base);
+store_.setLayerState('areas', { hidden: true });
+check('the areas layer can be put away, though it is the bottom one', store_.isHidden('areas'));
+store_.resetLayerState();
+
+check('an area holds what names it, kind by kind',
+  store_.membersOf(payments.id).map((one) => one.record.title).join(',') === 'Billing,Refunds');
+check('a capability inside a domain belongs through its domain',
+  store_.areaOf('capability', invoice)?.id === payments.id && !store_.mayJoinArea('capability', invoice));
+check('an actor belongs to nobody', !store_.mayJoinArea('actor', store.actors[0])
+  && store_.areaOf('actor', store.actors[0]) === null);
+
+// Leaving a domain is not leaving the team; joining one is giving up your own.
+store_.updateCapability(invoice.id, { clearDomain: true, x: 50, y: 50 });
+check('a capability pulled out of a domain keeps the domain’s area', invoice.areaId === payments.id);
+store_.updateCapability(refunds.id, { domainId: billingDomain.id });
+check('one dropped into a domain gives up an area of its own', refunds.areaId === null
+  && store_.areaOf('capability', refunds)?.id === payments.id);
+store_.updateCapability(refunds.id, { clearDomain: true, areaId: growth.id });
+check('and what a change says outright has the last word, which undo relies on',
+  refunds.areaId === growth.id);
+
+store_.updateDomain(billingDomain.id, { clearArea: true });
+check('leaving takes a flag, since a null changes nothing', billingDomain.areaId === null);
+store_.updateDomain(billingDomain.id, { areaId: payments.id });
+
+// An area emptied out stays where it was drawn.
+store_.updateCapability(invoice.id, { clearArea: true });
+store_.updateDomain(billingDomain.id, { x: 640, y: -220 });
+store_.updateDomain(billingDomain.id, { clearArea: true });
+check('an area takes the place of the last shape to leave it',
+  payments.x === 640 && payments.y === -220, `${payments.x},${payments.y}`);
+store_.updateDomain(billingDomain.id, { areaId: payments.id });
+
+store_.updateArea(payments.id, { titleAngle: 359.97 });
+check('an angle rounded up to a full turn is back at the start', payments.titleAngle === 0);
+store_.updateArea(payments.id, { clearTitleAngle: true });
+check('and a title can be sent back to where it rides unasked', payments.titleAngle === null);
+
+store_.select('area', growth.id);
+const freed = store_.deleteArea(growth.id);
+check('deleting an area deletes nothing it held',
+  store.touchpoints.length === 1 && store.capabilities.length === 2 && store.areas.length === 1);
+check('it frees them', store.touchpoints[0].areaId === null && refunds.areaId === null);
+check('and drops the selection it was', store.selection.id === null);
+store_.restore(freed);
+check('undoing it puts every one of them back',
+  store.areas.length === 2 && store.touchpoints[0].areaId === growth.id && refunds.areaId === growth.id);
 
 console.log(failures === 0 ? '\nAll layer checks passed.' : `\n${failures} check(s) failed.`);
 process.exitCode = failures === 0 ? 0 : 1;

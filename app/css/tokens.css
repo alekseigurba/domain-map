@@ -173,9 +173,16 @@
   --chip-h: 24px;
   --chip-radius: var(--radius-m);
   --rail-w: 28px;             /* what is left of a collapsed panel */
+  /* An area's border, the weight a capability's is: a line that holds a team
+     together has to read from further out than the shapes inside it. */
+  --area-border-width: 6px;
+  /* The menu and the details panel, which are the same width. Wide enough that
+     a capability's title and a field's label are read rather than cut short;
+     capped, so a small laptop keeps a stage between the two. */
+  --panel-w: min(300px, 24vw);
   /* The details column while the Assistant has it: a prompt, an answer and a
-     card's reasoning are sentences, and the 250px the fields live in sets them
-     four words to the line. Capped, so a small laptop keeps a stage. */
+     card's reasoning are sentences, and the width the fields live in sets them
+     five words to the line. Capped, for the same small laptop. */
   --assistant-w: min(420px, 40vw);
 }
 

@@ -58,6 +58,16 @@ onto another capability to swap the two, or onto open ground to leave it loose.
 A domain's title has its own place: drag it around the blob, and while
 renaming it drag the bars at either side to set the width it wraps at.
 
+**Product areas.** The layer under the other two says who owns what. Pick
+*Product Areas* in the layer control and *Add an area*: it arrives as a small
+band with its title on it, and grows round whatever is put in it — drag a
+domain, a touchpoint or a loose capability in from outside the line, or name
+the area in the shape's **Area** field. A shape is in one area or in none.
+Dragging a shape clear of its team only stretches the band after it; leaving is
+said in the Area field, so that tidying the map never reorganises the company.
+Drag the border to move a whole team's territory at once, and the title to
+slide it round the border.
+
 **Connectors.** Point at a capability and its connection points appear. Drag
 from one to a point on another capability — or click one, then the other — and
 a line joins them. Drag an end to move it, Shift-click a curved line to add a

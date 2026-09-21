@@ -12,15 +12,15 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
-  validateDomain, validateCapability, validateTouchpoint, validateActor, validateLayers,
-  LAYERS, LAYER_OF,
+  validateDomain, validateCapability, validateTouchpoint, validateActor, validateArea,
+  validateLayers, LAYERS, LAYER_OF,
 } from '../app/js/rules.js';
 
 const target = process.argv[2]
   ? pathToFileURL(resolve(process.argv[2])).href
   : new URL('../app/js/defaults.js', import.meta.url).href;
 const {
-  DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE,
+  DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE, AREA_SHAPE,
 } = await import(target);
 
 let failures = 0;
@@ -89,12 +89,31 @@ check('every opacity is a step of the slider',
   [DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE]
     .every((shape) => shape.opacity % 10 === 0));
 
+// --- areas ---
+// A brand's defaults.js from before 2.3 has no area in it, and the app falls
+// back on its own rather than refusing to load. What is there has to hold.
+if (AREA_SHAPE === undefined) {
+  console.log('  --  no AREA_SHAPE here: the app falls back on its own');
+} else {
+  const areaGaps = missing(AREA_SHAPE, ['title', 'color', 'opacity', 'fontSize', 'fontWeight', 'titleScale']);
+  check('every area default is set', areaGaps.length === 0, areaGaps.join(', '));
+
+  const areaError = validateArea(AREA_SHAPE);
+  check('the area defaults make a valid area', areaError === null, areaError ?? '');
+  check('the area has a title', String(AREA_SHAPE.title ?? '').trim().length > 0);
+  check('and it is one line, since it rides a border', !String(AREA_SHAPE.title).includes('\n'));
+  check('the area color is hex', isHex(AREA_SHAPE.color), String(AREA_SHAPE.color));
+  check('the area opacity is a step of the slider', AREA_SHAPE.opacity % 10 === 0, String(AREA_SHAPE.opacity));
+}
+check('an area alone may go down to no fill at all',
+  validateArea({ opacity: 0 }) === null && validateDomain({ opacity: 0 }) !== null);
+
 // --- the stack ---
 // The layers are the model's, not a brand's: they live in rules.js, so a
-// consumer's own defaults.js cannot redefine what the two layers mean.
+// consumer's own defaults.js cannot redefine what the layers mean.
 const layerError = validateLayers(LAYERS.map((layer) => ({ key: layer.key })));
 check('the layers make a valid stack', layerError === null, layerError ?? '');
-check('there are two of them', LAYERS.length === 2, String(LAYERS.length));
+check('there are three of them', LAYERS.length === 3, String(LAYERS.length));
 check('every one of them is named', LAYERS.every((layer) => layer.title?.length > 0));
 check('and every kind of element is on one that exists',
   Object.values(LAYER_OF).every((key) => LAYERS.some((layer) => layer.key === key)),

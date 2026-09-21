@@ -3,7 +3,8 @@
 
 import {
   store, select, childrenOf, stackingOrder, stackedList, patchLocal, find, connectorScope,
-  connectorEnds, oneLine, layerStack, layerOf, connectorLayer, isHidden,
+  connectorEnds, oneLine, layerStack, layerOf, layerForKind, connectorLayer, isHidden,
+  membersOf, areaOf, mayJoinArea,
 } from './store.js';
 import * as geo from './geometry.js';
 import { iconArt } from './icon-art.js';
@@ -61,12 +62,15 @@ let draft = null;
 let dropTarget = null;      // {domainId, lobe, index} while a capability hovers a domain
 let hoveredDomainId = null; // purely visual: the domain under the cursor
 let hoveredConnectorId = null; // the line under the cursor, which names itself while it is
+let hoveredAreaId = null;   // the area whose border or title is under the cursor
+let receivingAreaId = null; // the area a shape in hand would join if it were let go here
 /** The kebab's state machine: idle → editing → (save | cancel) → idle. */
 let editing = null;         // {domainId, activeLobe} while a domain is being edited
-let renaming = null;        // {domainId, original, node, input} while a title is edited
+let renaming = null;        // {kind, id, original, node, input} while a domain's or an area's title is edited
 let lastPress = null;       // {type, id, time, x, y} — the other half of a double-click
 let positions = new Map();
 let domainViews = [];
+let areaViews = [];
 const pointers = new Map();
 let pinch = null;
 
@@ -103,9 +107,10 @@ export function initDiagram(handlers) {
   svg.addEventListener('pointerup', onPointerUp);
   svg.addEventListener('pointercancel', onPointerUp);
   svg.addEventListener('pointerleave', () => {
-    if (hoveredDomainId === null && hoveredConnectorId === null) return;
+    if (hoveredDomainId === null && hoveredConnectorId === null && hoveredAreaId === null) return;
     hoveredDomainId = null;
     hoveredConnectorId = null;
+    hoveredAreaId = null;
     render();
   });
   svg.addEventListener('wheel', onWheel, { passive: false });
@@ -146,6 +151,7 @@ export function setEditMode(next) {
     editing = null;
     drag = null;
     dropTarget = null;
+    receivingAreaId = null;
   }
   render();
 }
@@ -200,7 +206,54 @@ function computeLayout() {
     }
   }
 
-  return { views, map };
+  return { views, map, areas: layoutAreas(views, map) };
+}
+
+/** Points round an oval, enough of them for a band to be stretched round it. */
+const ovalRim = ({ x, y, rx, ry }, steps = 16) => Array.from({ length: steps }, (_, i) => {
+  const angle = (i * 2 * Math.PI) / steps;
+  return { x: x + rx * Math.cos(angle), y: y + ry * Math.sin(angle) };
+});
+
+/**
+ * Every area, laid out round what it holds as that stands right now — a shape
+ * in hand included, so the band stretches after a member being dragged rather
+ * than letting go of it. What it is drawn round is each member's real outline:
+ * a domain's blob and not its middle, the corners of a touchpoint, the rim of a
+ * loose capability.
+ */
+function layoutAreas(views, map) {
+  const blobs = new Map(views.map((view) => [view.domain.id, view]));
+  const outlineOf = ({ kind, record }) => {
+    if (kind === 'domain') {
+      const view = blobs.get(record.id);
+      return (view?.layout.outline ?? []).map((p) => ({ x: record.x + p.x, y: record.y + p.y }));
+    }
+    const at = map.get(record.id);
+    if (!at) return [];
+    return kind === 'touchpoint'
+      ? [-1, 1].flatMap((sx) => [-1, 1].map((sy) => ({ x: at.x + sx * at.rx, y: at.y + sy * at.ry })))
+      : ovalRim(at);
+  };
+
+  return store.areas.map((area) => {
+    const members = membersOf(area.id);
+    const sliding = drag?.kind === 'area-title' && drag.id === area.id
+      ? { titleAngle: drag.titleAngle }
+      : null;
+
+    // The band goes round what can be seen. A member on a hidden layer is
+    // still a member, but a line reaching out to a touchpoint nobody can see
+    // points at nothing. With every member hidden the area is drawn as an
+    // empty one, in the middle of where they are rather than wherever it was
+    // last empty.
+    const seen = members.filter(({ kind }) => !isHidden(layerForKind(kind)));
+    if (seen.length === 0 && members.length > 0) {
+      const { centre } = geo.layoutArea(area, members.map(outlineOf));
+      return { area, members, layout: geo.layoutArea({ ...area, ...centre }, [], sliding) };
+    }
+    return { area, members, layout: geo.layoutArea(area, seen.map(outlineOf), sliding) };
+  });
 }
 
 /** Where an element sits and how big it is — the layout, resolved. */
@@ -249,9 +302,10 @@ export function render() {
   // A render asked for now answers any frame already waiting.
   if (pendingFrame) { cancelAnimationFrame(pendingFrame); pendingFrame = 0; }
 
-  const { views, map } = computeLayout();
+  const { views, map, areas } = computeLayout();
   positions = map;
   domainViews = views;
+  areaViews = areas;
 
   renderView();
 
@@ -288,6 +342,7 @@ function renderLayer(layer, views) {
   const has = (kind) => layer.kinds.includes(kind);
 
   group.append(
+    el('g', { class: 'stack stack--areas' }, has('area') ? areaViews.map(renderArea) : []),
     el('g', { class: 'stack stack--domains' }, has('domain') ? views.map(renderDomain) : []),
     // Paint order is the stack, so a shape sent to the back lands at the back.
     el('g', { class: 'stack stack--capabilities' },
@@ -302,6 +357,47 @@ function renderLayer(layer, views) {
         .map(renderConnector)
         .filter(Boolean)),
   );
+  return group;
+}
+
+/**
+ * An area: a wash, a border with a break in it, and the title riding the break.
+ * Only the line and the title take the pointer. The inside is open ground — it
+ * pans the map and belongs to the shapes standing on it — so the wash lets every
+ * press through, and the border is given a wider, unseen line to be caught by.
+ */
+function renderArea({ area, layout }) {
+  const selected = store.selection.type === 'area' && store.selection.id === area.id;
+  const lit = hoveredAreaId === area.id || receivingAreaId === area.id;
+  const group = el('g', {
+    class: `area${selected ? ' area--selected' : ''}${lit ? ' area--hover' : ''}`,
+    'data-type': 'area',
+    'data-id': area.id,
+  });
+
+  const colour = colorOf(area.colorIndex);
+  const { title } = layout;
+  group.append(
+    el('path', { class: 'area__wash', d: layout.path, fill: colour, 'fill-opacity': opacityOf(area, 0) }),
+    // The rim hover and selection light up: under the border, so the area keeps
+    // its own colour inside the halo.
+    el('path', { class: 'area__rim', d: layout.rim }),
+    el('path', { class: 'area__border', d: layout.rim, stroke: colour }),
+    el('path', { class: 'area__hit', d: layout.rim }),
+    el('rect', {
+      class: 'area__title-hit',
+      'data-type': 'area-title',
+      'data-id': area.id,
+      x: layout.gap.minX,
+      y: layout.gap.minY,
+      width: layout.gap.maxX - layout.gap.minX,
+      height: layout.gap.maxY - layout.gap.minY,
+    }),
+  );
+  // While renaming, the editor shows the text — drawing it too would double it.
+  if (!isRenaming(area.id)) {
+    group.appendChild(textNode('area__title', title, title.x, title.y, geo.deepened(colour, paper)));
+  }
   return group;
 }
 
@@ -502,34 +598,34 @@ function renderConnectorEnds() {
 
 // --- renaming, on the shape itself -------------------------------------------
 
-export function isRenaming(domainId) {
-  return renaming?.domainId === domainId;
+export function isRenaming(id) {
+  return renaming?.id === id;
 }
 
 /**
- * Edit a domain's title where it sits. The editor lives in a layer render()
- * never replaces, so the reflow it causes cannot pull it out from under the
- * caret; every render just moves it back over the title.
+ * Edit a title where it sits — a domain's, or an area's. The editor lives in a
+ * layer render() never replaces, so the reflow it causes cannot pull it out
+ * from under the caret; every render just moves it back over the title.
  */
-export function startRename(domainId) {
-  const domain = find('domain', domainId);
-  if (!domain) return;
+export function startRename(id, kind = 'domain') {
+  const record = find(kind, id);
+  if (!record) return;
   cancelRename();
 
   const holder = el('foreignObject', { class: 'title-editor' });
   const input = document.createElement('textarea');
   input.className = 'title-editor__input';
-  input.value = domain.title;
+  input.value = kind === 'area' ? oneLine(record.title) : record.title;
   input.spellcheck = false;
   input.id = 'domain-title-editor';
   input.name = 'domain-title-editor';
-  input.setAttribute('aria-label', 'Domain title');
+  input.setAttribute('aria-label', kind === 'area' ? 'Area title' : 'Domain title');
   holder.appendChild(input);
   zOrder.overlay.appendChild(holder);
-  renaming = { domainId, original: domain.title, node: holder, input };
+  renaming = { kind, id, original: record.title, node: holder, input };
 
   input.addEventListener('input', () => {
-    patchLocal('domain', domainId, { title: input.value });
+    patchLocal(kind, id, { title: input.value });
     render();
   });
 
@@ -540,9 +636,10 @@ export function startRename(domainId) {
       return;
     }
     if (event.key !== 'Enter') return;
-    // Enter is "done"; Shift-Enter and Ctrl/Cmd-Enter break the line instead.
+    // Enter is "done"; Shift-Enter and Ctrl/Cmd-Enter break the line instead —
+    // except on an area, whose title rides a border and is one line for good.
     event.preventDefault();
-    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    if (kind === 'area' || (!event.ctrlKey && !event.metaKey && !event.shiftKey)) {
       commitRename();
       return;
     }
@@ -566,7 +663,7 @@ function closeRename() {
   const closed = renaming;
   renaming = null;              // the blur this triggers must find nothing to do
   closed.node.remove();
-  patchLocal('domain', closed.domainId, { title: closed.original });
+  patchLocal(closed.kind, closed.id, { title: closed.original });
   return closed;
 }
 
@@ -580,21 +677,28 @@ export function cancelRename() {
 function commitRename() {
   if (!renaming) return;
   const typed = renaming.input.value;
-  const { domainId, original } = closeRename();
+  const { kind, id, original } = closeRename();
 
   // Trailing blanks are an accident of pressing Ctrl-Enter one time too many.
-  const title = typed.replace(/[ \t]+$/gm, '').replace(/\n+$/, '').trim();
+  const kept = typed.replace(/[ \t]+$/gm, '').replace(/\n+$/, '').trim();
+  // A break pasted into an area's title is a space: there is one line to put it on.
+  const title = kind === 'area' ? oneLine(kept) : kept;
   if (!title || title === original) {
     render();
     return;
   }
-  actions.renameDomain?.(domainId, title);
+  if (kind === 'area') actions.renameArea?.(id, title);
+  else actions.renameDomain?.(id, title);
 }
 
 /** Keep the editor over the title it is editing, as the shape reflows. */
 function positionRenameEditor() {
   if (!renaming) return;
-  const view = domainViews.find(({ domain }) => domain.id === renaming.domainId);
+  if (renaming.kind === 'area') {
+    positionAreaEditor();
+    return;
+  }
+  const view = domainViews.find(({ domain }) => domain.id === renaming.id);
   if (!view) {
     cancelRename();
     return;
@@ -615,6 +719,27 @@ function positionRenameEditor() {
   style.fontSize = `${layout.title.size}px`;
   style.lineHeight = `${layout.title.lineHeight}px`;
   style.fontWeight = geo.cssWeight(layout.title.weight);
+}
+
+/** The same for an area's title: one line, centred on the point of the border it rides. */
+function positionAreaEditor() {
+  const view = areaViews.find(({ area }) => area.id === renaming.id);
+  if (!view) {
+    cancelRename();
+    return;
+  }
+  const { title } = view.layout;
+  const width = title.width + title.fontSize * 0.6;
+
+  renaming.node.setAttribute('x', title.x - width / 2);
+  renaming.node.setAttribute('y', title.y - title.height / 2);
+  renaming.node.setAttribute('width', width);
+  renaming.node.setAttribute('height', title.height);
+
+  const { style } = renaming.input;
+  style.fontSize = `${title.fontSize}px`;
+  style.lineHeight = `${title.lineHeight}px`;
+  style.fontWeight = geo.cssWeight(title.fontWeight);
 }
 
 /** A centred, wrapped label — the same treatment for domain titles and ovals. */
@@ -1204,6 +1329,51 @@ function onPointerDown(event) {
     return;
   }
 
+  if (target?.type === 'area-title') {
+    // Twice on the title opens it for editing, as it does on a domain's.
+    if (doubled) {
+      event.preventDefault();
+      lastPress = null;
+      select('area', target.id);
+      if (editMode) actions.beginRename?.(target.id, 'area');
+      return;
+    }
+    select('area', target.id);
+    if (!editMode) { render(); return; }
+    const laid = areaViews.find(({ area }) => area.id === target.id);
+    drag = {
+      kind: 'area-title',
+      id: target.id,
+      pointerId: event.pointerId,
+      world,
+      titleAngle: laid?.layout.title.angle ?? geo.DEFAULT_TITLE_ANGLE,
+      moved: false,
+    };
+    render();
+    return;
+  }
+
+  if (target?.type === 'area') {
+    const area = find('area', target.id);
+    select('area', target.id);
+    if (!editMode) { render(); return; }
+    // The border is the handle for the whole team's territory: everything the
+    // area holds is picked up with it, from where each one stands now.
+    drag = {
+      kind: 'area',
+      id: target.id,
+      pointerId: event.pointerId,
+      world,
+      origin: { x: area.x, y: area.y },
+      carried: membersOf(target.id).map(({ kind, record }) => ({
+        kind, id: record.id, x: record.x, y: record.y,
+      })),
+      moved: false,
+    };
+    render();
+    return;
+  }
+
   if (target?.type === 'kebab') {
     select('domain', target.id);
     if (!editMode) { render(); return; }
@@ -1249,6 +1419,7 @@ function onPointerDown(event) {
       origin: { ...positions.get(target.id) },
       originDomainId: capability.domainId,
       size: geo.capabilitySize(capability),
+      startedIn: areasAround(world),
       moved: false,
     };
     render();
@@ -1268,6 +1439,7 @@ function onPointerDown(event) {
       pointerId: event.pointerId,
       world,
       origin: { x: record.x, y: record.y },
+      startedIn: areasAround(world),
       moved: false,
     };
     render();
@@ -1284,6 +1456,7 @@ function onPointerDown(event) {
       pointerId: event.pointerId,
       world,
       origin: { x: domain.x, y: domain.y },
+      startedIn: areasAround(world),
       moved: false,
     };
     render();
@@ -1327,9 +1500,11 @@ function onPointerMove(event) {
     const id = domainAt(toWorld(event));
     const target = targetOf(event);
     const lineId = target?.type === 'connector' ? target.id : null;
-    if (id !== hoveredDomainId || lineId !== hoveredConnectorId) {
+    const areaId = target?.type === 'area' || target?.type === 'area-title' ? target.id : null;
+    if (id !== hoveredDomainId || lineId !== hoveredConnectorId || areaId !== hoveredAreaId) {
       hoveredDomainId = id;
       hoveredConnectorId = lineId;
+      hoveredAreaId = areaId;
       scheduleRender();
     }
     return;
@@ -1352,12 +1527,30 @@ function onPointerMove(event) {
 
   if (drag.kind === 'domain') {
     patchLocal('domain', drag.id, { x: drag.origin.x + dx, y: drag.origin.y + dy });
+    receivingAreaId = receivingArea('domain', find('domain', drag.id), world);
     scheduleRender();
     return;
   }
 
   if (drag.kind === 'element') {
     patchLocal(drag.elementKind, drag.id, { x: drag.origin.x + dx, y: drag.origin.y + dy });
+    receivingAreaId = receivingArea(drag.elementKind, find(drag.elementKind, drag.id), world);
+    scheduleRender();
+    return;
+  }
+
+  if (drag.kind === 'area') {
+    patchLocal('area', drag.id, { x: drag.origin.x + dx, y: drag.origin.y + dy });
+    for (const one of drag.carried) patchLocal(one.kind, one.id, { x: one.x + dx, y: one.y + dy });
+    scheduleRender();
+    return;
+  }
+
+  if (drag.kind === 'area-title') {
+    // The title goes wherever on the border faces the pointer, seen from the
+    // middle of the band — so it slides round the rim and cannot leave it.
+    const laid = areaViews.find(({ area }) => area.id === drag.id);
+    if (laid) drag.titleAngle = geo.angleFrom(laid.layout.centre, world.x, world.y);
     scheduleRender();
     return;
   }
@@ -1417,6 +1610,8 @@ function onPointerMove(event) {
   const y = drag.origin.y + dy;
   patchLocal('capability', drag.id, { x, y });
   dropTarget = findDropTarget(x, y);
+  // A domain about to take it in beats an area: it would belong through the domain.
+  receivingAreaId = dropTarget ? null : receivingArea('capability', find('capability', drag.id), world);
   scheduleRender();
 }
 
@@ -1453,20 +1648,33 @@ function onPointerUp(event) {
   if (!drag || drag.pointerId !== event.pointerId) return;
   const finished = drag;
   const target = dropTarget;
+  const joining = receivingAreaId;
   drag = null;
   dropTarget = null;
+  receivingAreaId = null;
 
   if (!finished.moved) {
     render();
     return;
   }
 
+  // A drag has already moved the record it was dragging, so that the map could
+  // follow the pointer. Where it set off from is handed over with where it
+  // ended, or there would be nothing left for undo to put back.
   if (finished.kind === 'domain') {
     const domain = find('domain', finished.id);
-    actions.moveDomain?.(finished.id, domain.x, domain.y);
+    actions.moveDomain?.(finished.id, domain.x, domain.y, { from: finished.origin, areaId: joining });
   } else if (finished.kind === 'element') {
     const record = find(finished.elementKind, finished.id);
-    actions.moveElement?.(finished.elementKind, finished.id, record.x, record.y);
+    actions.moveElement?.(finished.elementKind, finished.id, record.x, record.y,
+      { from: finished.origin, areaId: joining });
+  } else if (finished.kind === 'area') {
+    const area = find('area', finished.id);
+    actions.moveArea?.(finished.id, {
+      x: area.x, y: area.y, from: finished.origin, carried: finished.carried,
+    });
+  } else if (finished.kind === 'area-title') {
+    actions.slideAreaTitle?.(finished.id, finished.titleAngle);
   } else if (finished.kind === 'title') {
     actions.moveTitle?.(finished.id, Math.round(finished.titleX), Math.round(finished.titleY));
   } else if (finished.kind === 'connector-end') {
@@ -1492,6 +1700,7 @@ function onPointerUp(event) {
       x: capability.x,
       y: capability.y,
       cameFromDomainId: finished.originDomainId ?? null,
+      areaId: target?.domainId ? null : joining,
     });
   }
 
@@ -1504,6 +1713,38 @@ function finishDraft(target) {
   actions.createConnector?.(
     { id: finished.fromId, kind: finished.fromKind, point: finished.fromPoint },
     { id: target.id, kind: target.kind ?? 'capability', point: Number(target.index) });
+}
+
+/** The areas whose line a point is inside, as ids — what a drag remembers of where it began. */
+function areasAround(world) {
+  return new Set(areaViews
+    .filter(({ layout }) => layout.contains(world.x, world.y))
+    .map(({ area }) => area.id));
+}
+
+/**
+ * The area a shape in hand would join if it were let go at `world`, or null.
+ *
+ * A shape joins by being brought in: the drag has to start outside the line and
+ * end inside it. So a shape that already sits inside a line it does not belong
+ * to — caught between two members of a team — is not taken by that team for
+ * being nudged, and one dropped on open ground stays what it was while its own
+ * band stretches after it. The last area drawn is the one on top, as with blobs.
+ */
+function receivingArea(kind, record, world) {
+  if (!record || isHidden(layerForKind('area'))) return null;
+  // Still inside a domain as far as the record knows, a capability in hand is
+  // on its way out of it, and lands loose.
+  const free = kind === 'capability' ? !dropTarget : mayJoinArea(kind, record);
+  if (!free) return null;
+
+  const own = areaOf(kind, record)?.id ?? null;
+  for (let i = areaViews.length - 1; i >= 0; i--) {
+    const { area, layout } = areaViews[i];
+    if (area.id === own || drag?.startedIn?.has(area.id)) continue;
+    if (layout.contains(world.x, world.y)) return area.id;
+  }
+  return null;
 }
 
 /**
@@ -1609,7 +1850,7 @@ function updatePinch() {
 
 /** World-space bounds of everything on the map. */
 export function contentBounds() {
-  const { views, map } = computeLayout();
+  const { views, map, areas } = computeLayout();
   const boxes = [];
 
   // What is hidden is not on the map to be fitted to: Fit to screen fills the
@@ -1624,6 +1865,10 @@ export function contentBounds() {
       maxX: domain.x + layout.bounds.maxX,
       maxY: domain.y + layout.bounds.maxY,
     });
+  }
+  // An empty area is on the map too, and a full one reaches past what it holds.
+  for (const { area, layout } of areas) {
+    if (shown('area', area)) boxes.push(layout.bounds);
   }
   for (const type of ['capability', 'touchpoint', 'actor']) {
     for (const record of (type === 'capability' ? store.capabilities : stackedList(type))) {
@@ -1673,6 +1918,8 @@ export function centerOn(type, id) {
   } else if (type === 'domain') {
     const domain = find('domain', id);
     if (domain) point = { x: domain.x, y: domain.y };
+  } else if (type === 'area') {
+    point = areaViews.find(({ area }) => area.id === id)?.layout.centre ?? null;
   } else if (type === 'connector') {
     const connector = find('connector', id);
     const points = connector && (resolvedPoints(connector) ?? connector);

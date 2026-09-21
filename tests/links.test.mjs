@@ -26,6 +26,7 @@ const cap = (id, title, extra = {}) => ({
 
 setMap({
   title: 'Organization map',
+  areas: [{ id: 'a1', title: 'Money Movement', colorIndex: 14, x: 0, y: 0 }],
   domains: [{ id: 'd1', title: 'Invoicing', colorIndex: 1, x: 0, y: 0, titlePosition: 'top', fontWeight: 'bold' }],
   capabilities: [
     cap('c1', 'Payment authorization'),
@@ -45,6 +46,7 @@ setMap({
 
 check('a capability resolves to its title', slugFor('capability', 'c1') === 'payment-authorization');
 check('a domain resolves to its title', slugFor('domain', 'd1') === 'invoicing');
+check('and so does an area', slugFor('area', 'a1') === 'money-movement');
 check('a connector names both ends', slugFor('connector', 'x1') === 'payment-authorization-dunning',
   slugFor('connector', 'x1'));
 
@@ -52,7 +54,9 @@ check('the first of two duplicates keeps the plain slug', slugFor('capability', 
 check('the second duplicate is suffixed', slugFor('capability', 'c3') === 'dunning-2', slugFor('capability', 'c3'));
 
 // --- round trip ---
-for (const [type, id] of [['capability', 'c1'], ['capability', 'c3'], ['domain', 'd1'], ['connector', 'x1']]) {
+for (const [type, id] of [
+  ['capability', 'c1'], ['capability', 'c3'], ['domain', 'd1'], ['area', 'a1'], ['connector', 'x1'],
+]) {
   check(`${type}/${id} survives the round trip`, findBySlug(type, slugFor(type, id))?.id === id);
 }
 

@@ -3,6 +3,22 @@
 // place that knows, so both the editor and the importer read it from here.
 
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
+import * as shapes from './defaults.js';
+
+/**
+ * How a new area looks. A brand may shadow defaults.js, and one written before
+ * there were areas has none in it: asked for by name, that missing export would
+ * stop the page loading at all. Read off the module instead, it is merely
+ * absent, and the area falls back on what the package itself would have said.
+ */
+export const AREA_SHAPE = shapes.AREA_SHAPE ?? Object.freeze({
+  title: 'New area',
+  color: '#5985ab',
+  opacity: 10,
+  fontSize: 64,
+  fontWeight: 'bold',
+  titleScale: 1,
+});
 
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_TEXT_LENGTH = 2000;
@@ -10,9 +26,16 @@ export const MAX_TEXT_LENGTH = 2000;
 /**
  * The kinds of element a map is drawn from, and the order they are listed in.
  * Anything that walks every kind — the document, the menu, the layer stacks —
- * reads this rather than naming the four itself.
+ * reads this rather than naming them itself.
  */
-export const ELEMENT_KINDS = ['domain', 'capability', 'touchpoint', 'actor'];
+export const ELEMENT_KINDS = ['domain', 'capability', 'touchpoint', 'actor', 'area'];
+
+/**
+ * The kinds an area may hold. A capability is here for the loose ones only: one
+ * inside a domain belongs through its domain, so a domain is never split
+ * between two areas. An actor stands outside the business, and no team owns one.
+ */
+export const MEMBER_KINDS = ['domain', 'touchpoint', 'capability'];
 
 /** The kinds a connector may be drawn between: the ones that carry snap points. */
 export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
@@ -21,17 +44,26 @@ export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
 
 // The stack is a fixed conceptual model, not a list a map may edit. It lives
 // here rather than in defaults.js because a brand may shadow that file, and
-// what the two layers *mean* is not a thing a deployment gets to redefine —
-// only how its shapes look. A map file carries each layer's key and whether it
-// is hidden or dimmed; the titles come from here.
+// what the layers *mean* is not a thing a deployment gets to redefine — only
+// how its shapes look. A map file carries each layer's key and whether it is
+// hidden or dimmed; the titles come from here.
+//
+// Bottom first, and the order is the paint order. Product Areas is under the
+// other two because an area is the ground the domains stand on: its wash tints
+// the paper, where painted over them it would tint every shape and title.
 
 export const LAYERS = Object.freeze([
+  Object.freeze({ key: 'areas', title: 'Product Areas' }),
   Object.freeze({ key: 'core', title: 'Business Domains' }),
   Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
 ]);
 
-/** The base layer: the bottom of the stack, which is never hidden. */
-export const BASE_LAYER = LAYERS[0].key;
+/**
+ * The base layer: the one that is never hidden, and where Edit mode opens. It
+ * is named rather than read off the bottom of the stack — who owns the business
+ * can be put away, and what the business does cannot.
+ */
+export const BASE_LAYER = 'core';
 
 /**
  * Which layer each kind of element lives on. A domain is always core and an
@@ -39,6 +71,7 @@ export const BASE_LAYER = LAYERS[0].key;
  * there is nothing for a file to say that could contradict this.
  */
 export const LAYER_OF = Object.freeze({
+  area: 'areas',
   domain: 'core',
   capability: 'core',
   touchpoint: 'presentation',
@@ -47,6 +80,7 @@ export const LAYER_OF = Object.freeze({
 
 /** The kinds that may be added to a layer, in the order their buttons sit in. */
 export const KINDS_ON = Object.freeze({
+  areas: ['area'],
   core: ['domain', 'capability'],
   presentation: ['touchpoint', 'actor'],
 });
@@ -195,7 +229,28 @@ export const LAYER_DEFAULTS = {
   dimmed: false,
 };
 
+/**
+ * An area has no size of its own: it is a band drawn round whatever names it.
+ * Its position is where it sits while it holds nothing, and its title rides
+ * the border at an angle round it — null is the top, where a legend belongs.
+ */
+export const AREA_DEFAULTS = {
+  title: AREA_SHAPE.title,
+  description: '',
+  owner: '',
+  type: '',
+  colorIndex: 1,
+  x: 0,
+  y: 0,
+  titleAngle: null,
+  fontWeight: AREA_SHAPE.fontWeight,
+  fontSize: AREA_SHAPE.fontSize,
+  titleScale: AREA_SHAPE.titleScale,
+  opacity: AREA_SHAPE.opacity,
+};
+
 export const DOMAIN_DEFAULTS = {
+  areaId: null,
   title: DOMAIN_SHAPE.title,
   description: '',
   owner: '',
@@ -214,6 +269,8 @@ export const DOMAIN_DEFAULTS = {
 
 export const CAPABILITY_DEFAULTS = {
   domainId: null,
+  /** A loose capability's own. One inside a domain belongs through the domain. */
+  areaId: null,
   title: CAPABILITY_SHAPE.title,
   description: '',
   owner: '',
@@ -240,6 +297,7 @@ export const CAPABILITY_DEFAULTS = {
  * it does not have is a domain — nothing lobes a touchpoint into a blob.
  */
 export const TOUCHPOINT_DEFAULTS = {
+  areaId: null,
   title: TOUCHPOINT_SHAPE.title,
   description: '',
   owner: '',
@@ -400,11 +458,31 @@ export function validateDomain(fields) {
     ?? faded(fields.opacity);
 }
 
-/** How solid a shape is drawn, on one scale for every kind that has one. */
-const faded = (opacity) =>
-  (given(opacity) && (opacity < 10 || opacity > 100)
-    ? 'opacity must be between 10 and 100.'
+/**
+ * How solid a shape is drawn, on one scale for every kind that has one. It
+ * stops at 10 because a shape at nothing is a shape nobody can find again; an
+ * area is the exception, since its border is still there at 0.
+ */
+const faded = (opacity, least = 10) =>
+  (given(opacity) && (opacity < least || opacity > 100)
+    ? `opacity must be between ${least} and 100.`
     : null);
+
+/** Where round the border an area's title rides: degrees, clockwise from the right. */
+export const MAX_TITLE_ANGLE = 360;
+
+export function validateArea(fields) {
+  return text(fields.title, fields.description, fields.owner)
+    ?? typed(fields.type)
+    ?? color(fields.colorIndex)
+    ?? font(fields.fontSize, fields.fontWeight, FONT_SIZES)
+    ?? scale(fields.titleScale, 'titleScale')
+    ?? (given(fields.titleAngle)
+      && !(fields.titleAngle >= 0 && fields.titleAngle < MAX_TITLE_ANGLE)
+      ? `titleAngle must be from 0 up to ${MAX_TITLE_ANGLE}.`
+      : null)
+    ?? faded(fields.opacity, 0);
+}
 
 /** Which side of the title an icon sits on. */
 const placed = (placement) =>
@@ -446,6 +524,7 @@ export function validateActor(fields) {
 }
 
 export const validatorFor = {
+  area: validateArea,
   domain: validateDomain,
   capability: validateCapability,
   touchpoint: validateTouchpoint,
@@ -478,8 +557,9 @@ export function validateLayers(layers) {
   for (const layer of layers) {
     if (!layer || typeof layer !== 'object') return 'Every layer must be a record.';
     if (!LAYERS.some((one) => one.key === layer.key)) {
+      const known = LAYERS.map((one) => one.key);
       return `'${layer.key}' is not a layer of this map. `
-        + `The layers are ${LAYERS.map((one) => one.key).join(' and ')}.`;
+        + `The layers are ${known.slice(0, -1).join(', ')} and ${known.at(-1)}.`;
     }
     if (keys.has(layer.key)) return `Two layers share the key '${layer.key}'.`;
     keys.add(layer.key);
