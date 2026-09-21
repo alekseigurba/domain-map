@@ -316,6 +316,16 @@ const describes = (description) =>
     ? `Description must be at most ${MAX_TEXT_LENGTH} characters.`
     : null;
 
+/**
+ * What a map says about itself: what the business is, in the owner's words. It
+ * is what makes a review of the map specific rather than generic, and it is held
+ * to the length of any other description.
+ */
+export const validateMapDescription = (description) =>
+  (given(description) && typeof description !== 'string'
+    ? "The map's description must be text."
+    : describes(description));
+
 function text(title, description, owner) {
   if (given(title) && (title.trim().length === 0 || title.length > MAX_TITLE_LENGTH))
     return `Title must be 1..${MAX_TITLE_LENGTH} characters.`;

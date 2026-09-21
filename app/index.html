@@ -54,6 +54,12 @@
       <button class="btn btn--chip" id="export-svg" title="Download the diagram as an SVG picture">Export SVG</button>
       <button class="btn btn--chip" id="import-map" title="Replace the map from a JSON file" hidden>Import</button>
       <input type="file" id="import-file" accept="application/json,.json" hidden>
+      <!-- Swaps the details column for the Assistant and back. It is a column
+           rather than a dialog because its cards name shapes, and pressing a
+           name has to be able to show that shape on the map behind it. -->
+      <button class="btn btn--chip" id="assistant-toggle" aria-pressed="false"
+              aria-controls="details-panel"
+              title="Prompts to take to an AI chat, and its replies to review">Assistant</button>
       <button class="btn btn--chip" id="getting-around" title="Keyboard shortcuts and gestures"
               aria-haspopup="dialog" aria-controls="getting-around-dialog">Getting around</button>
       <button class="btn btn--chip" id="about" title="What this map is for"
@@ -147,6 +153,98 @@
         <span class="details-bar__chevron" aria-hidden="true">&#9662;</span>
       </button>
       <div class="details" id="details"></div>
+      <!-- The Assistant, in the details column's place while its chip is pressed.
+           The frame is written here and assistant.js fills what moves: the
+           chips, what the task is about, the exchange and the cards. The text
+           areas are never rebuilt, so the map can change under them without
+           taking the caret out of a sentence. -->
+      <div class="assistant" id="assistant">
+        <section class="section" aria-labelledby="assistant-ask-title">
+          <span class="section__title section__title--static" id="assistant-ask-title">Ask</span>
+          <div class="section__body">
+            <!-- Only while the map does not say what the business is. The field
+                 itself is in the details panel, with nothing selected. -->
+            <p class="assistant__hint" id="assistant-about-note"></p>
+            <div id="assistant-skills"></div>
+            <p class="assistant__hint" id="assistant-skill-says"></p>
+            <div class="field">
+              <span class="field__label">About</span>
+              <span class="field__value" id="assistant-subject"></span>
+            </div>
+            <div class="field" id="assistant-input-field" hidden>
+              <label class="field__label" id="assistant-input-label" for="assistant-input"></label>
+              <textarea class="field__input field__input--area" id="assistant-input" name="assistant-input" rows="2"></textarea>
+            </div>
+            <div class="field field--inline">
+              <label class="field__label" for="assistant-owners">Include owners' names</label>
+              <input class="field__check" type="checkbox" id="assistant-owners" name="assistant-owners">
+            </div>
+
+            <!-- With a model connected, an owner sends the task there rather
+                 than copying it out. What shows is the exchange in hand and
+                 nothing before it: what was asked, and what came back. -->
+            <div id="assistant-chat" hidden>
+              <div class="assistant__row">
+                <button class="btn btn--chip" type="button" id="assistant-send">Send</button>
+              </div>
+              <div class="exchange" id="assistant-exchange" aria-live="polite" hidden>
+                <p class="exchange__asked" id="assistant-asked"></p>
+                <p class="exchange__answer" id="assistant-answer"></p>
+              </div>
+              <!-- Earlier turns go back to the model without being shown, so this
+                   line is the only sign of them, and the way to be rid of them. -->
+              <p class="assistant__memory" id="assistant-memory" hidden>
+                <span id="assistant-memory-count"></span> ·
+                <button class="assistant__link" type="button" id="assistant-forget"
+                        title="Have the model forget what was asked before">Start over</button>
+              </p>
+            </div>
+
+            <!-- Without one, or by choice: the prompt goes out by hand. -->
+            <div class="assistant__row" id="assistant-manual">
+              <button class="btn btn--chip" type="button" id="assistant-copy"
+                      title="Copy the prompt: the task, the map and how to answer">Copy prompt</button>
+            </div>
+
+            <!-- Under the button it explains: by the time it is read, the
+                 question it answers — where does this go? — has been asked.
+                 Talking to a connected model it is not there: Send's own
+                 tooltip says where, for whoever wonders. -->
+            <div class="callout" role="note" id="assistant-callout">
+              <p class="callout__title" id="assistant-callout-title"></p>
+              <p class="callout__text" id="assistant-callout-text"></p>
+            </div>
+            <button class="assistant__link" type="button" id="assistant-other" hidden></button>
+          </div>
+        </section>
+
+        <!-- An owner's: a viewer can ask, but has no map to bring an answer back to. -->
+        <section class="section" id="assistant-review" aria-labelledby="assistant-review-title" hidden>
+          <span class="section__title section__title--static" id="assistant-review-title">Review</span>
+          <div class="section__body">
+            <p class="assistant__hint" id="assistant-review-note" hidden></p>
+            <div id="assistant-paste">
+              <div class="field">
+                <label class="field__label" for="assistant-reply">The reply</label>
+                <textarea class="field__input field__input--area" id="assistant-reply" name="assistant-reply" rows="3"
+                          placeholder="Paste what the chat answered, prose and all"></textarea>
+              </div>
+              <div class="assistant__row">
+                <button class="btn btn--chip" type="button" id="assistant-check"
+                        title="Check the reply against the map and list what it suggests">Review reply</button>
+              </div>
+            </div>
+            <div id="assistant-summary" hidden></div>
+            <div class="assistant__row" id="assistant-bulk" hidden>
+              <button class="btn btn--chip" type="button" id="assistant-apply-all"
+                      title="Apply every card that can be, each as its own undo step">Apply all</button>
+              <button class="btn btn--chip" type="button" id="assistant-clear"
+                      title="Take every card off the list">Clear</button>
+            </div>
+            <div class="cards" id="assistant-cards"></div>
+          </div>
+        </section>
+      </div>
       <!-- Deleting is the last thing you do to a selection, and the most final,
            so it sits at the bottom away from the controls that only adjust.
            Resetting a domain's shapes sits above it. The palette belongs to the
@@ -264,6 +362,7 @@
         <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right. In <strong>Edit</strong> mode, click a connection point on a shape to start a connector. Press <strong>Edit</strong> in the header to make changes.</p>
         <p>The <strong>layer control</strong> in the bottom left corner lists the two layers, topmost first. The eye hides the Presentation Layer; the base layer cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
         <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds: domains and capabilities on the base layer, touchpoints and actors on the Presentation Layer. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
+        <p><strong>Assistant</strong>, in the header, takes the place of the details panel: pick what to ask, and either send it to the model this map is connected to or, where there is none, copy the prompt into the AI chat you use and paste its reply back. What comes back is a list of cards. Nothing on one touches the map until you apply it in <strong>Edit</strong> mode, and each card is one Ctrl+Z. <strong>Ask your own</strong> opens a box for your question, and Ctrl+Enter there sends it.</p>
         <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
 
         <section class="shortcuts__group" aria-labelledby="shortcuts-shapes">

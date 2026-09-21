@@ -27,6 +27,17 @@ does not start without one. The compose file in the scaffolded repo runs one.
 Everything else — the icons, the logo and `data/settings.json` — stays in the
 file store under `STORAGE_DIR`, so a deployment has a volume and a database.
 
+`ASSISTANT_API_URL` and `ASSISTANT_API_KEY` — the model behind the map's
+Assistant, and optional. With both, an owner talks to it in the page; without
+them the Assistant writes prompts to copy into a chat of their own. The URL is
+posted to as it stands, so it is anything that answers chat completions — OpenAI,
+Azure OpenAI, Azure AI Foundry, a gateway, Ollama — or Anthropic's Messages API;
+`ASSISTANT_API_STYLE` (`openai` or `anthropic`) says which where the URL does
+not, and `ASSISTANT_MODEL` names a model where the URL does not — by the API's
+own id for it, `claude-haiku-4-5` rather than `haiku`. The key stays on
+the server. Every message carries the whole map to that URL, drafts included, so
+the people in `OWNER_EMAILS` are also the people who may spend the key.
+
 `OWNER_EMAILS` — a comma-separated list of the people who may open any version,
 edit, save, delete and publish. Everyone else who signs in sees the published
 version and nothing else. Left empty, it names nobody in particular and everyone
@@ -48,10 +59,18 @@ sharp tool, so only this list is supported:
 | `js/defaults.js` | What a new domain, capability, touchpoint or actor looks like. See the caveat below. The two layers are not here: they are a fixed model, in `rules.js`, and not a deployment's to redefine. |
 
 A server of your own is a parameter rather than a file to shadow:
-`createDomainMapServer` takes `databaseUrl`, `owners`, `storageDir`, `store` and
-`auth`. An `auth` of your own answers `{ handle, user, required, warnings }`,
+`createDomainMapServer` takes `databaseUrl`, `owners`, `storageDir`, `store`,
+`auth` and `assistant`. An `assistant` of your own is `{ chat, host, model }`,
+for a model that speaks neither of the two shapes above:
+`chat({ system, messages }, { signal })` answers with the model's text, and
+`host` and `model` are what the page tells an owner their messages go to. An `auth` of your own answers `{ handle, user, required, warnings }`,
 where `user(request)` gives `{ name, username, email }` or null — without it
 nobody can be told apart, and everyone is a viewer.
+
+`skills/*` — what the Assistant can be asked — is **not on this list yet**. The
+skill files are new in 2.2 and their format will move once it has met a
+connected model, so a brand that shadows one today is on its own. Adding and
+rewording skills from a consumer repo is planned for 2.2, and not built yet.
 
 **Everything else under the package's `app/` is internal.** `app/js/main.js`,
 `diagram.js`, `store.js` and the rest change between versions without notice.

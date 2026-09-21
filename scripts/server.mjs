@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { validate } from '../app/js/document.js';
 import { validateVersionName } from '../app/js/rules.js';
+import { createAssistant } from './assistant.mjs';
 import { createAuth } from './auth.mjs';
 import { describeDatabase, migrate, openDatabase, waitForDatabase, withLock } from './database.mjs';
 import { fileStore } from './file-store.mjs';
@@ -108,6 +109,13 @@ function readBody(request) {
  * @param {object}   [options.auth]       A `{ handle, user, required, warnings }` of your own, for
  *                                        a provider that is not Entra ID. `user(request)` answers
  *                                        with `{ name, username, email }` or null.
+ * @param {object}   [options.assistant]  A `{ chat, host, model }` of your own, for a model that
+ *                                        speaks neither chat completions nor Anthropic's Messages
+ *                                        API. `chat({ system, messages }, { signal })` answers with
+ *                                        the model's text. Defaults to what `$ASSISTANT_API_URL`,
+ *                                        `$ASSISTANT_API_KEY`, `$ASSISTANT_MODEL` and
+ *                                        `$ASSISTANT_API_STYLE` describe; without the first two the
+ *                                        Assistant writes prompts to copy and has no model.
  * @param {object}   [options.env]        Read instead of `process.env`.
  * @param {Function} [options.log]        Where the startup lines go. `() => {}` to quieten it.
  */
@@ -142,6 +150,12 @@ export function createDomainMapServer(options = {}) {
   const pool = openDatabase(databaseUrl);
   const versions = versionStore(pool);
 
+  // The model behind the Assistant, if there is one. One of the consumer's own
+  // is connected by being given; the environment's says so itself.
+  const assistant = options.assistant
+    ? { connected: typeof options.assistant.chat === 'function', warnings: [], ...options.assistant }
+    : createAssistant(env);
+
   const owners = readOwners(options.owners ?? env.OWNER_EMAILS);
   // An auth that cannot say who is asking leaves nobody to make an owner of.
   const required = auth.required !== false;
@@ -150,6 +164,12 @@ export function createDomainMapServer(options = {}) {
     warnings.push('The auth given has no user(request), so nobody can be told apart: everyone is a viewer.');
   } else if (required && owners.size === 0) {
     warnings.push('OWNER_EMAILS is empty: everyone who signs in is an owner, and can edit and publish the map.');
+  }
+  warnings.push(...assistant.warnings);
+  // Every message an owner sends is paid for by whoever owns the key.
+  if (assistant.connected && (!required || owners.size === 0)) {
+    warnings.push(`The Assistant is connected to ${assistant.host} and everyone ${required ? 'who signs in' : 'who can reach this server'} `
+      + 'is an owner: any of them can send the map to it, on the key this server holds.');
   }
 
   /** Who is asking, and what they may do. */
@@ -256,6 +276,11 @@ export function createDomainMapServer(options = {}) {
         email: who.user?.email ?? null,
         method: who.user?.method ?? null,
         role: who.role,
+        // Where an owner's messages would go, so the page can say so before one
+        // is sent. A viewer has no chat, and is told nothing about it.
+        assistant: isOwner && assistant.connected
+          ? { host: assistant.host ?? null, model: assistant.model ?? null }
+          : null,
       });
     }
 
@@ -326,6 +351,55 @@ export function createDomainMapServer(options = {}) {
       return;
     }
     return notAllowed('GET, PUT, PATCH, DELETE');
+  }
+
+  /** How much one turn may carry: a prompt is the two formats and the map, a few tens of kilobytes. */
+  const MAX_CHAT_BYTES = 1024 * 1024;
+  const MAX_CHAT_MESSAGES = 40;
+
+  // The Assistant's chat: an owner's messages relayed to the model, and the
+  // model's text relayed back. The page wrote the prompt and will check the
+  // reply; all this adds is a key the browser never holds.
+  async function handleAssistant(request, response, url, who) {
+    if (url.pathname !== '/api/assistant/chat') {
+      return sendJson(response, 404, { error: `Nothing at ${url.pathname}.` });
+    }
+    if (request.method !== 'POST') {
+      response.writeHead(405, { Allow: 'POST' });
+      return response.end();
+    }
+    if (who.role !== OWNER) return sendJson(response, 403, { error: 'Only an owner can talk to the Assistant\'s model.' });
+    if (!assistant.connected) return sendJson(response, 404, { error: 'No model is connected to the Assistant.' });
+
+    const body = await readBody(request);
+    if (body === null || body.length > MAX_CHAT_BYTES) {
+      throw failure(413, `A message to the Assistant must be under ${MAX_CHAT_BYTES / 1024} KB.`);
+    }
+    let turn;
+    try {
+      turn = JSON.parse(body.toString('utf8'));
+    } catch {
+      throw failure(400, 'The request is not valid JSON.');
+    }
+
+    const { system, messages } = turn ?? {};
+    const said = (message) => message && (message.role === 'user' || message.role === 'assistant')
+      && typeof message.content === 'string' && message.content.trim() !== '';
+    if (typeof system !== 'string' || !Array.isArray(messages) || messages.length === 0
+        || messages.length > MAX_CHAT_MESSAGES || !messages.every(said)
+        || messages[0].role !== 'user' || messages.at(-1).role !== 'user') {
+      throw failure(400, 'A turn is a system prompt and a list of user and assistant messages, opening and closing on the user.');
+    }
+
+    // Nobody is left to read the answer once the tab has gone, so stop paying for it.
+    const gone = new AbortController();
+    response.on('close', () => { if (!response.writableEnded) gone.abort(); });
+
+    const text = await assistant.chat(
+      { system, messages: messages.map(({ role, content }) => ({ role, content })) },
+      { signal: gone.signal },
+    );
+    sendJson(response, 200, { text });
   }
 
   /**
@@ -419,6 +493,8 @@ export function createDomainMapServer(options = {}) {
         // answered: a sign-in route, or someone who has to sign in first
       } else if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
         await handleFiles(request, response, url, identify(request));
+      } else if (url.pathname.startsWith('/api/assistant/')) {
+        await handleAssistant(request, response, url, identify(request));
       } else if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         await handleVersions(request, response, url, identify(request));
       } else {
@@ -434,6 +510,9 @@ export function createDomainMapServer(options = {}) {
 
   // What the server settled on, for a CLI that wants to print it or a test that
   // wants to assert on it.
-  server.config = { root, brandDir, seedDir, storageDir, database: describeDatabase(databaseUrl) };
+  server.config = {
+    root, brandDir, seedDir, storageDir, database: describeDatabase(databaseUrl),
+    assistant: assistant.connected ? { host: assistant.host ?? null, model: assistant.model ?? null } : null,
+  };
   return server;
 }

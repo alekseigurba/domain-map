@@ -3,14 +3,14 @@
 
 import {
   store, subscribe, setMap, select, find, childrenOf, slugFor, slugify, findBySlug,
-  connectorLabel, oneLine,
+  connectorLabel, oneLine, withBreaks,
   createDomain, updateDomain, deleteDomain,
   createCapability, updateCapability, deleteCapability,
   createTouchpoint, updateTouchpoint, deleteTouchpoint,
   createActor, updateActor, deleteActor,
   createConnector as addConnector, updateConnector, deleteConnector,
   restore, updateMap,
-  layerStack, layerState, setLayerState, resetLayerState, isVisible,
+  layerStack, layerState, setLayerState, resetLayerState, isVisible, layerOf, layerForKind,
   selectLayer, selectedLayerKey, kindsAddableTo,
   addTypeChoice, removeTypeChoice, setTypeChoices, typesFor,
 } from './store.js';
@@ -29,6 +29,9 @@ import {
   initDetails, renderDetails, fitAreas, setEditMode as setDetailsEditMode,
 } from './details.js';
 import { initPalette, openPalette, renderPalette, paletteOpen } from './palette.js';
+import {
+  initAssistant, showAssistant, assistantShowing, setAssistantMode, renderAssistant, forgetReview,
+} from './assistant.js';
 import { initTextDialog, textDialogOpen } from './text-dialogs.js';
 import { loadIcons } from './icons.js';
 import {
@@ -84,6 +87,9 @@ async function run(label, work) {
 /** What this person may do, 'owner' or 'viewer'. Nothing until the server has said. */
 let role = null;
 const isOwner = () => role === 'owner';
+
+/** The model the Assistant is connected to, as the server tells an owner: `{ host, model }`, or null. */
+let assistantModel = null;
 
 /**
  * The version on screen, as `{ name, updatedAt }` — the second is sent back
@@ -154,6 +160,7 @@ function applyEditMode() {
   renderLayerControl();
   showSaveState();
   showSelectionActions();
+  setAssistantMode({ editMode, owner: isOwner(), model: assistantModel });
 }
 
 function setEditMode(next) {
@@ -276,6 +283,7 @@ function showVersion(version) {
   const document_ = readDocument(version);
   hideNotice();
   undoStack.clear(); // its inverse operations name records that are gone
+  forgetReview(); // and so do the Assistant's cards
   applyMap(fromDocument(document_));
   current = { name: version.name, updatedAt: version.updatedAt };
   if (version.published) publishedName = version.name;
@@ -290,6 +298,7 @@ function showVersion(version) {
 function showBlank() {
   hideNotice();
   undoStack.clear();
+  forgetReview();
   applyMap(fromDocument({ title: 'Domain map' }));
   current = null;
   dirty = false;
@@ -654,6 +663,7 @@ function keepSession() {
         // history names, and a document read back is given new ones.
         map: {
           title: store.title,
+          description: store.description,
           palette: store.palette,
           layers: store.layers,
           types: store.types,
@@ -788,6 +798,7 @@ function applyUndo(calls) {
     else if (call.op === 'delete') removerFor[call.type]?.(call.id);
     else if (call.op === 'restore') restore(call.removed);
     else if (call.op === 'palette') usePalette(call.palette);
+    else if (call.op === 'map') updateMap(call.fields);
     else if (call.op === 'types') setTypeChoices(call.kind, call.choices);
     else if (call.op === 'layer') setLayerState(call.key, call.state, { saved: true });
   }
@@ -805,6 +816,12 @@ function patch(type, id, body, label = 'Saving') {
   const before = find(type, id);
   if (before) undoStack.record(label, [undoUpdate(type, id, valuesOf(before, body))]);
   return run(label, () => write(id, body));
+}
+
+/** The same for what the map says about itself, which is no record in any list. */
+function patchMap(changes, label = 'Saving') {
+  undoStack.record(label, [{ op: 'map', fields: valuesOf(store, changes) }]);
+  return run(label, () => updateMap(changes));
 }
 
 // --- the layer control -------------------------------------------------------
@@ -1262,6 +1279,142 @@ async function deleteSelection() {
   select(null, null);
 }
 
+// --- applying a suggestion ---------------------------------------------------
+
+// A card from the Assistant is a short list of operations that suggestions.js
+// has already checked and resolved to ids. Here they become the same changes
+// the buttons and gestures make — placed by the same rules, in the same looks —
+// and go down as one undo step, however many of them the card holds.
+
+/**
+ * A swatch no domain wears yet, or the default once they are all taken. A map
+ * started from a reply gets six domains at once, and six in one colour is a map
+ * nobody can read; one added by hand is recoloured as it is named.
+ */
+function freshDomainColor() {
+  const worn = new Set(store.domains.map((domain) => domain.colorIndex));
+  const size = store.palette.length || 24;
+  for (let index = 1; index <= size; index += 1) if (!worn.has(index)) return index;
+  return swatchFor(DOMAIN_SHAPE.color);
+}
+
+/**
+ * Carry out one card. Answers whether it did: a card that fails part-way is
+ * unwound, so it is applied whole or not at all.
+ *
+ * @param show select what the card made or changed, and bring it into view —
+ *             for one card, not for a run of them, which would throw the map about
+ */
+async function applySuggestion(card, { show = true } = {}) {
+  if (!editMode) {
+    status('Press Edit to make changes', true);
+    return false;
+  }
+
+  /** Newest first, so that undoing takes a line away before the shape it hangs off. */
+  const undo = [];
+  /** The shapes this card has made, by the `new:` name its later operations use. */
+  const made = new Map();
+  const idOf = (end) => end.id ?? made.get(end.as);
+  let focus = null;
+
+  const update = (kind, id, changes) => {
+    undo.unshift(undoUpdate(kind, id, valuesOf(find(kind, id), changes)));
+    writerFor[kind](id, changes);
+    focus ??= { kind, id };
+  };
+  const create = (kind, as, record) => {
+    undo.unshift(undoDelete(kind, record.id));
+    if (as) made.set(as, record.id);
+    focus ??= { kind, id: record.id };
+  };
+
+  try {
+    // A touchpoint added to a hidden layer would land nowhere anyone could see,
+    // so the layer is shown first, and hidden again if the card is undone.
+    const upper = layerForKind('touchpoint');
+    const reaches = (op) => op.op === 'add-touchpoint' || op.op === 'add-actor'
+      || (op.op === 'connect' && (op.from.kind !== 'capability' || op.to.kind !== 'capability'));
+    const was = layerState(upper);
+    if (was.hidden && card.operations.some(reaches)) {
+      undo.push({ op: 'layer', key: upper, state: { hidden: true, dimmed: was.dimmed } });
+      setLayerState(upper, { hidden: false }, { saved: true });
+    }
+
+    for (const op of card.operations) {
+      if (op.op === 'describe' && op.kind === 'map') {
+        undo.unshift({ op: 'map', fields: { description: store.description } });
+        updateMap({ description: op.description });
+      } else if (op.op === 'describe') update(op.kind, op.id, { description: op.description });
+      else if (op.op === 'set-type') update(op.kind, op.id, { type: op.type });
+      // A title keeps the rows it was laid out in, as one edited in the panel does.
+      else if (op.op === 'rename') update(op.kind, op.id, { title: withBreaks(op.title, find(op.kind, op.id).title) });
+      else if (op.op === 'add-domain') {
+        const spot = freeSpot(layoutDomain(DOMAIN_SHAPE, []).extentWidth);
+        create('domain', op.as, createDomain({
+          ...domainLook(), colorIndex: freshDomainColor(),
+          title: op.title, description: op.description, x: spot.x, y: spot.y,
+        }));
+      } else if (op.op === 'add-capability') {
+        const place = placeCapability(op.domain ? idOf(op.domain) : null, null);
+        const home = place.domainId ? find('domain', place.domainId) : null;
+        create('capability', op.as, createCapability({
+          ...capabilityLook(), ...(home ? { colorIndex: home.colorIndex } : {}),
+          title: op.title, description: op.description, ...place,
+        }));
+      } else if (op.op === 'add-touchpoint' || op.op === 'add-actor') {
+        const kind = op.op.slice('add-'.length);
+        const spot = freeSpot(sizeOf(kind, kind === 'touchpoint' ? TOUCHPOINT_SHAPE : ACTOR_SHAPE).rx);
+        const make = kind === 'touchpoint' ? createTouchpoint : createActor;
+        create(kind, op.as, make({
+          ...(kind === 'touchpoint' ? touchpointLook() : actorLook()),
+          title: op.title, description: op.description, x: spot.x, y: spot.y,
+        }));
+      } else if (op.op === 'move-capability') {
+        const moving = find('capability', op.id);
+        const domainId = idOf(op.domain);
+        const lobe = newLobeSpot(find('domain', domainId), childrenOf(domainId));
+        undo.unshift(undoUpdate('capability', op.id, {
+          domainId: moving.domainId, lobeX: moving.lobeX, lobeY: moving.lobeY, x: moving.x, y: moving.y,
+          clearDomain: moving.domainId === null,
+        }));
+        updateCapability(op.id, { domainId, lobeX: lobe.x, lobeY: lobe.y });
+        focus ??= { kind: 'capability', id: op.id };
+      } else if (op.op === 'connect') {
+        const [from, to] = [op.from, op.to].map((end) => ({ kind: end.kind, record: find(end.kind, idOf(end)) }));
+        // Straight inside a domain and curved across a boundary, as a line drawn by hand is.
+        const internal = from.kind === 'capability' && to.kind === 'capability'
+          && from.record.domainId && from.record.domainId === to.record.domainId;
+        create('connector', null, addConnector({
+          fromId: from.record.id, fromKind: from.kind, toId: to.record.id, toKind: to.kind,
+          description: op.description, lineStyle: internal ? 'straight' : 'curved',
+        }));
+      }
+    }
+  } catch (error) {
+    applyUndo(undo);
+    status(`Could not apply "${card.title}": ${error.message}`, true);
+    return false;
+  }
+
+  undoStack.record('Applying a suggestion', undo);
+  if (show && focus) showOnMap(focus.kind, focus.id);
+  status(`Applied: ${card.title}`);
+  return true;
+}
+
+/**
+ * Select a shape a card names and bring it into view. One on a hidden layer is
+ * shown first — for this tab alone while browsing, as the layer control would.
+ */
+function showOnMap(kind, id) {
+  const record = find(kind, id);
+  if (!record) return status('That is no longer on the map.', true);
+  if (!isVisible(kind, record)) changeLayer(layerOf(kind, record), { hidden: false });
+  select(kind, id);
+  centerOn(kind, id);
+}
+
 // --- restyling a domain all at once -------------------------------------------
 
 /**
@@ -1447,6 +1600,8 @@ function showSelectionActions() {
   detailsBarName.textContent = record
     ? (('title' in record) ? oneLine(record.title) : connectorLabel(record))
     : 'Nothing selected';
+  // While the Assistant has the column, the sheet it opens is the Assistant's.
+  if (assistantShowing()) detailsBarName.textContent = 'Assistant';
 
   resetShapesButton.hidden = type !== 'domain';
   resetColorsButton.hidden = type !== 'domain';
@@ -1475,6 +1630,7 @@ function renderAll(reason) {
   syncConnectors(); // render() resolved the positions this reads
   renderMenu();
   if (reason !== 'live') renderDetails();
+  renderAssistant(reason);
   renderPalette();
   renderLayerControl();
   statsBar.textContent = [
@@ -1551,12 +1707,37 @@ function restorePanels() {
   if (onPhone()) showPanel('details', true);
 }
 
+// --- the details column, or the Assistant in its place --------------------------
+
+const assistantButton = document.getElementById('assistant-toggle');
+const detailsPanel = document.getElementById('details-panel');
+
+/**
+ * Which of the two the right-hand column holds. The stylesheet does the hiding,
+ * off one attribute; this says the word, and opens the column if it was folded
+ * away — pressing Assistant and getting a rail would look like nothing happened.
+ */
+function showColumn(which) {
+  const assistant = which === 'assistant';
+  main.dataset.column = which;
+  assistantButton.setAttribute('aria-pressed', String(assistant));
+  detailsPanel.setAttribute('aria-label', assistant ? 'Assistant' : 'Selection details');
+  if (assistant && main.dataset.details === 'collapsed') showPanel('details', false);
+
+  showAssistant(assistant);
+  showSelectionActions(); // the phone's bar names whichever it is
+  // The fields were display:none while the Assistant had the column.
+  if (!assistant) fitAreas();
+  render(); // the column is wider for the Assistant, so the stage has changed size
+}
+
 // Undo steps are data; this is what carries them out, and what keeps a copy of
 // the stack whenever it moves.
 undoStack.init({ apply: applyUndo, onChange: keepSession });
 
 initDetails({
   onPatch: patch,
+  onMapPatch: (changes) => patchMap(changes, 'Describing the map'),
   onLive: () => { render(); renderMenu(); },
   onStatus: status,
   onIcons: files.listIcons,
@@ -1602,6 +1783,15 @@ initPalette({
 document.getElementById('edit-palette').addEventListener('click', () => {
   const record = find(store.selection.type, store.selection.id);
   openPalette(record?.colorIndex ? record.colorIndex - 1 : null);
+});
+
+// The Assistant asks a model about the map — the one the server is connected
+// to, or one the owner copies a prompt out to — and hands each card it has
+// checked back here, to be applied like any other change.
+const assistantWasOpen = initAssistant({
+  onApply: applySuggestion,
+  onShow: showOnMap,
+  onStatus: status,
 });
 
 initTextDialog('getting-around');
@@ -1716,6 +1906,8 @@ saveAsNewButton.addEventListener('click', () => act(saveAsNew));
 panels.menu.button.addEventListener('click', () => togglePanel('menu'));
 panels.details.button.addEventListener('click', () => togglePanel('details'));
 panels.details.bar.addEventListener('click', () => togglePanel('details'));
+assistantButton.addEventListener('click', () =>
+  showColumn(main.dataset.column === 'assistant' ? 'details' : 'assistant'));
 
 // --- import / export ---------------------------------------------------------
 
@@ -1797,6 +1989,7 @@ importFile.addEventListener('change', async () => {
   }
 
   undoStack.clear(); // its inverse operations name records that are gone
+  forgetReview();
   applyMap(fromDocument(document_));
   select(null, null);
   fitToScreen();
@@ -1973,12 +2166,15 @@ window.addEventListener('hashchange', () => applySelection(parseHash()));
 loadIcons().catch((error) => console.error('Could not load an icon', error));
 
 restorePanels();
+// A reload in the middle of a review comes back to the review.
+if (assistantWasOpen) showColumn('assistant');
 applyEditMode();
 
 // Who is looking decides which map loads, and which controls there are.
 Promise.all([applySettings(), whoAmI()])
   .then(async ([, me]) => {
     role = me.role;
+    assistantModel = me.assistant ?? null;
     showIdentity(me, (message) => status(message, true));
     applyEditMode();
     await loadMap();

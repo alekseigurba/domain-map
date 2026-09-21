@@ -281,6 +281,9 @@ export function fromDocument(document_) {
 
   return {
     title: document_.title?.trim() || 'Domain map',
+    // What the business is. A field the file may leave out, so a map written
+    // here still opens where the field is not known: it is read past.
+    description: document_.description ?? '',
     palette: document_.palette ?? [],
     layers,
     types: readTypes(document_.types),
@@ -478,6 +481,7 @@ export function toDocument(state) {
   return compact({
     version: CURRENT_VERSION,
     title: state.title,
+    description: blank(state.description),
     palette: state.palette.length === 0 ? null : state.palette,
     // Key and state only. What a layer is called belongs to the model, so a
     // file cannot rename one into meaning something it does not.
@@ -555,6 +559,9 @@ export function validate(document_) {
   const version = document_.version ?? 0;
   if (version > CURRENT_VERSION)
     return `This file is version ${version}; this app reads up to ${CURRENT_VERSION}.`;
+
+  const descriptionError = rules.validateMapDescription(document_.description);
+  if (descriptionError) return descriptionError;
 
   const paletteError = rules.validatePalette(document_.palette);
   if (paletteError) return paletteError;

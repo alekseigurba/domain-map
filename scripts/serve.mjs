@@ -19,4 +19,8 @@ server.listen(port, () => {
   console.log(`Serving ${root} at http://localhost:${port}`);
   if (brandDir) console.log(`Branding from ${brandDir}`);
   console.log(`Storing files in ${storageDir}, and versions in Postgres at ${database}`);
+  const { assistant } = server.config;
+  console.log(assistant
+    ? `The Assistant is connected to ${assistant.host}${assistant.model ? `, model ${assistant.model}` : ''}`
+    : 'The Assistant has no model: set ASSISTANT_API_URL and ASSISTANT_API_KEY to connect one');
 });

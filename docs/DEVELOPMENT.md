@@ -23,6 +23,12 @@ offers *Bypass (dev)* — or export `AUTH_TENANT_ID`, `AUTH_CLIENT_ID` and
 `AUTH_CLIENT_SECRET` to try Microsoft sign-in locally. Anything already set in
 the shell wins over the file.
 
+To try the Assistant with a model behind it, export `ASSISTANT_API_URL` and
+`ASSISTANT_API_KEY` before `npm start` — a local Ollama at
+`http://localhost:11434/v1/chat/completions` wants any key at all — and the
+startup lines say what it is connected to. Without them the Assistant writes
+prompts to copy, which is what the tests and the demo run with.
+
 The file store — the icons, the logo and `data/settings.json` — lands in
 `storage/` beside the checkout, seeded from `seed/` the first time. The seed
 fills an empty store **once**; after that the store and the database are the
@@ -36,8 +42,8 @@ npm test
 
 Each test is a plain script that prints its checks and exits non-zero on the
 first failing run — no test runner, no framework. `npm test` runs them in order
-(defaults, geometry, seed, links, auth, versions), and any one of them also
-runs on its own:
+(defaults, geometry, layers, seed, links, suggestions, auth, versions,
+assistant), and any one of them also runs on its own:
 
 ```bash
 node tests/geometry.test.mjs
@@ -53,6 +59,10 @@ node tests/geometry.test.mjs
 | `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points. |
 | `app/js/icon-art.js` | An icon as the map draws it: the file with its lines weighed, and where in it the drawing is. It needs a fetch and a canvas, so it is here and not in `geometry.js`, which only keeps what was measured. |
 | `app/js/defaults.js` | How a new domain or capability looks, and what *Reset shapes* puts back. `tests/defaults.test.mjs` checks the values. |
+| `app/js/suggestions.js` | What goes out to an AI chat and what is let back in: the brief of the map, the reply parser, and the checks every operation passes before it becomes a card. Pure, like `geometry.js`, so `tests/suggestions.test.mjs` runs it headless against the seed map and the shipped skills. |
+| `app/js/assistant.js` | The Assistant column: skills, the conversation or the prompt to copy, and the cards. It hands a checked card back to `main.js` to be applied, which is where a change is placed and recorded for undo. |
+| `scripts/assistant.mjs` | The model behind the Assistant, when `ASSISTANT_API_URL` and `ASSISTANT_API_KEY` name one: the two request shapes, one retry, and the API's own words when it says no. `tests/assistant.test.mjs` runs it against a stand-in model on a local port. |
+| `app/skills/` | One folder per skill, each a `SKILL.md` in the agent-skills form, with the two formats a prompt writes in. [Its README](../app/skills/README.md) says what a skill file holds. |
 | `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`. |
 | `scripts/serve.mjs` | The CLI over it, for running the stock app from this checkout. |
 | `scripts/create-app.mjs` | `create-domain-map-app`: writes a consumer repo from `scaffold/`. |

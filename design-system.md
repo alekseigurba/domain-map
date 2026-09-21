@@ -163,6 +163,10 @@ because the header does not scroll and would otherwise clip a long list. Then
 **Export SVG** between them: the diagram as a picture, without the selection or
 the edit chrome, cropped to 10px around the ink. Unlike an exported map it
 carries its icons and its type inside it, since a picture has no server to ask.
+**Assistant** comes next, and is the one chip in the row that is a switch rather
+than an action: it swaps the details column for the Assistant and back. Unpressed
+it keeps its ink like the chips beside it — it is still a thing to press — and
+pressed it holds `--selected-row`, the fill the tree gives what is selected.
 **Getting around** and **About** close the row, and each opens the same modal as
 the palette editor, placed for what it holds. Getting around is one sentence on
 panning and zooming, then every shortcut: a table for each thing they act on —
@@ -242,6 +246,12 @@ size, weight, the shape or title size and a connector's line are short choices, 
 its label on one row, as does a connector's Anchor checkbox. A domain's opacity follows its color, since it says how
 much of that color shows.
 
+With **nothing selected** the panel is about the map itself. A **Map** section
+holds **What the business is** — the map's own description, a text area like any
+other description — above the sentence that says nothing is selected. It opens
+and shuts with the other first sections. Browsing a map that has no description,
+the section is left out: an empty box that cannot be typed into says nothing.
+
 Color is picked from a grid of six-across swatches. The palette itself is edited
 from **Edit palette** at the head of the panel's action strip, in a modal in the
 bottom right corner, 20px in, over a scrim light enough to watch the map's shapes
@@ -256,6 +266,90 @@ that is always open on that swatch:
 a saturation and brightness area, a hue strip, and the hex field. Dragging and
 typing each keep the other in step as they go, and a drag is written once, when
 it lands, as a single undo step.
+
+### Assistant
+
+The details column, holding something else. It is not a third column, which
+would come out of the stage on a laptop, and not a dialog, which would cover the
+map its cards point at. `data-column="assistant"` on `main` is the whole switch:
+the stylesheet hides the fields and the action strip and shows `.assistant`, and
+widens the column from 250px to `--assistant-w`, **420px** and never more than
+40% of the window — a prompt, an answer and a card's reasoning are sentences,
+and 250px sets them four words to the line.
+Folded to a rail, the column is the rail it always is, actions and all.
+
+Two sections under the accordion's static headings, **Ask** and **Review**. The
+frame is written in `index.html` and only what moves is rebuilt, so the map can
+change under a text area without taking the caret out of a sentence.
+
+**Ask** reads down in the order it is used. While the map does not say what the
+business is, it opens on one `--ink-soft` line saying what that costs and which
+skill drafts it; the field itself is the details panel's, and once it is filled
+in the line goes. Then the **skills**: chips in three groups, each under an 11px
+uppercase caption — Write, Grill, Ask. Every chip takes its share of what its
+row has left, so each row runs the width of the column: left to their own widths
+the rows end raggedly, and a third of the panel is white space shaped like a
+staircase. The chosen chip is filled with `--selection`, as the palette's size
+in force is: among a dozen identical chips a border alone does not say which you
+are on. One that needs a selection it has not got is disabled, and its tooltip
+says what to pick. Below the chips: a line saying what the chosen skill does,
+**About** — what the task is about, which follows the selection — and the one
+thing the skill asks for, if it asks.
+
+What follows depends on whether the server has a model connected.
+
+- **Without one**, a single button, **Copy prompt**, and under it the
+  **callout** — paper on chrome with a 3px `--r-brand-400` edge, a semibold
+  title over `--ink-soft` text — which answers the question the button raises:
+  where does this go? *No model connected yet*, with what to do instead; *Using
+  another chat*; or, for a viewer, *Take it to a chat of your own*. It is under
+  the button rather than at the head of the column because that is when the
+  question is asked.
+- **With one**, for an owner, **Send**, and no callout: where a message goes is
+  Send's tooltip, there for whoever wonders and out of the way for everyone
+  else. Under Send, once something has been asked, the **exchange**: one box,
+  paper with a `--line-strong` border like a field, because it is read rather
+  than pressed. What was asked is semibold; the answer under it keeps the
+  model's own line breaks. There is only ever one — the next Send replaces it —
+  so there is no thread, no bubbles and nothing to scroll back through. Awaited,
+  it reads *Thinking… 12s* in `--ink-soft` on tabular figures, so it does not
+  jitter; failed, it takes a `--r-red-400` border and the error ink, and says
+  what the model's API said. Under it a 12px `--ink-soft` line, *2 earlier turns
+  remembered · Start over*, is the only sign of what the model is reminded of
+  and the page does not show.
+
+Only **Ask your own** puts a box to type in on the column; every other skill is
+its chip and Send.
+
+Below all of it, for an owner with a model connected, **Use another chat** is a
+12px underlined link, not a chip: it changes how the column works, which is not
+something to press by accident. It swaps Send for Copy prompt and the reply box,
+and reads *Back to* the host while it has.
+
+Buttons in this column keep a `--line-strong` border and a paper fill. In the
+chrome a button is borderless until it is pointed at, which suits a strip of
+actions under a panel; here they sit among fields and paragraphs, where a word
+with no edge does not read as a button.
+
+**Review** is an owner's. Copying by hand, it opens on the reply box and
+**Review reply**, which wait for Edit mode with a line saying so; in a
+conversation they are not there, and the section itself stays away until an
+answer has brought a card. Then a count — *3 to apply · 1 note · 1 not
+applicable* — with **Apply all** and **Clear**, and the cards, which stay
+readable in either mode and are applied in Edit.
+
+A **card** is paper with a 3px left edge that says what kind it is before a word
+is read: `--r-brand-400` for one that can be applied, `--r-charcoal-200` for a
+note, `--r-red-400` for one that was refused. It holds a semibold title (a note
+wears a quiet **Note** badge), the reasoning in `--ink-soft`, then each
+operation in plain words — *Move Fraud Detection into Credit & Risk Assessment*
+— with whatever it would write onto the map set off under it behind a `--line`
+rule, as the quotation it is. A citation is 12px italic and ends *worth
+checking*. The shapes the card names are chips on `--chrome`, quieter than the
+actions, cut short rather than let a long title widen the card; pressing one
+selects the shape and brings it into view, showing its layer first if it was
+hidden. A refusal is a sentence in the error ink. **Apply** and **Dismiss** sit
+at the right; a note has **Done** instead, and a refused card only **Dismiss**.
 
 ### Stage chrome
 
@@ -309,6 +403,10 @@ wrapping it and resizing the stage under a map already fitted to it. The sheet's
 fields step up to `--fs-400`: under 16px a phone zooms the whole page in when a
 field is tapped, and leaves it zoomed.
 
+The Assistant is the same sheet: its bar reads *Assistant* rather than the
+selection, its fields step up to `--fs-400` with the rest, and the width it takes
+on a wide screen means nothing here, where the sheet is as wide as the screen.
+
 `100dvh` rather than `100vh`, because a phone's toolbars slide in and out of the
 way and `vh` does not notice, which would leave the foot of the sheet under them.
 
@@ -344,7 +442,8 @@ anything the settings name.
 A map is JSON, and a version is just a file with a name. Edits are held in the
 page until **Save** writes the whole map to the version being edited; the
 triangle saves to another version or opens one, and `Export`/`Import` move the
-same document in and out by hand. Unsaved edits and the undo history are kept in
+same document in and out by hand. Unsaved edits and the undo history — and the
+Assistant's cards, which name the same records — are kept in
 the tab's session storage, so they survive a refresh; closing the tab still
 loses them, which is why the page asks before it goes. Shapes reference each other by `key` — a slug
 of the title — so a document reads like prose and can be edited by hand. An

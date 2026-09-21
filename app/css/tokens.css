@@ -173,6 +173,10 @@
   --chip-h: 24px;
   --chip-radius: var(--radius-m);
   --rail-w: 28px;             /* what is left of a collapsed panel */
+  /* The details column while the Assistant has it: a prompt, an answer and a
+     card's reasoning are sentences, and the 250px the fields live in sets them
+     four words to the line. Capped, so a small laptop keeps a stage. */
+  --assistant-w: min(420px, 40vw);
 }
 
 * { box-sizing: border-box; }

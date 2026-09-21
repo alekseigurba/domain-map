@@ -94,6 +94,37 @@ az containerapp create --name {{slug}} --resource-group $GROUP \
 Then set the app's URL as a redirect URI on the Entra app registration:
 `https://<fqdn>/signin-oidc`.
 
+## 4. The Assistant's model
+
+The map's **Assistant** asks an AI about the map. With nothing set it writes a
+prompt to copy into a chat of your own; with a model connected, an owner talks
+to it in the page. Two variables connect one, and two more are optional:
+
+| Variable | What it holds |
+| --- | --- |
+| `ASSISTANT_API_URL` | Where a message is posted, as it stands: a chat-completions URL (OpenAI, Azure OpenAI, Azure AI Foundry, a gateway, Ollama) or Anthropic's `/v1/messages`. |
+| `ASSISTANT_API_KEY` | The key. It is sent as `Authorization: Bearer` and as `api-key`, or as `x-api-key` for Anthropic, and never reaches the browser. |
+| `ASSISTANT_MODEL` | The model to ask for, by the API's own id for it: `claude-haiku-4-5`, not `haiku`. Leave it out where the URL already names a deployment; for Anthropic it defaults to `claude-opus-5`. |
+| `ASSISTANT_API_STYLE` | `openai` or `anthropic`, for a gateway whose URL does not say which. |
+
+Keep the key as a secret, beside the sign-in ones, and point the variable at it:
+
+```yaml
+    secrets:
+      - { name: assistant-api-key, value: "<from whoever runs the model>" }
+...
+        env:
+          - { name: ASSISTANT_API_URL, value: "https://<resource>.openai.azure.com/openai/v1/chat/completions" }
+          - { name: ASSISTANT_API_KEY, secretRef: assistant-api-key }
+          - { name: ASSISTANT_MODEL, value: "<deployment or model>" }
+```
+
+Every message an owner sends carries the whole map, drafts included, to whatever
+the URL points at, on that key — so who is an owner, `OWNER_EMAILS`, is also who
+may spend it. With Postgres in the app, change these the way the image is
+changed, with the old revision stopped first: two revisions are two Postgres on
+one data directory.
+
 ## Afterwards
 
 - **Upgrades** are `az acr build` again, then `az containerapp update --image`.

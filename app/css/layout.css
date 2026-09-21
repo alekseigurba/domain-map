@@ -744,6 +744,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 
 .details__empty { color: var(--ink-soft); }
+.section + .details__empty { margin-top: var(--gap-3); }
 
 .details__meta {
   margin-top: var(--gap-4);
@@ -752,6 +753,279 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--ink-soft);
   word-break: break-word;
 }
+
+/* --- the assistant ---------------------------------------------------------- */
+
+/* It takes the details column rather than a column of its own: a fourth column
+   would come out of the stage on a laptop, and a dialog would cover the map its
+   cards point at. The column is switched here, off one attribute, so the script
+   sets a word and the stylesheet decides what that hides. */
+.main:not([data-column="assistant"]) .panel--details > .assistant,
+.main[data-column="assistant"] .panel--details > .details,
+.main[data-details="collapsed"] .panel--details > .assistant { display: none; }
+
+/* The actions under the panel are what you do to the selection's fields, so
+   they go with the fields — but folded to a rail they are all that is left of
+   the panel, whichever column it was showing. */
+.main[data-column="assistant"]:not([data-details="collapsed"]) .panel--details > .panel__actions { display: none; }
+
+/* A prompt, a pasted reply and a card's reasoning are sentences, not field
+   values, and 250px sets them four words to the line. */
+.main[data-column="assistant"] { --details-w: var(--assistant-w); }
+.main[data-column="assistant"][data-details="collapsed"] { --details-w: var(--rail-w); }
+
+/* With the actions gone nothing else holds the foot down. */
+.main[data-column="assistant"]:not([data-details="collapsed"]) .panel--details > .panel__foot { margin-top: auto; }
+
+/* The header's chips are actions, and this one is a switch: unpressed it is
+   still a thing to press, so it keeps its ink, and pressed it holds the row
+   colour the tree gives what is selected. */
+.header .btn[aria-pressed="false"] { color: var(--ink); }
+.header .btn[aria-pressed="true"] { background: var(--selected-row); }
+
+.assistant {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-050);
+  font-size: var(--fs-200);
+}
+
+/* Says once what this column cannot do yet, so nobody waits for an answer that
+   is not coming. Paper on chrome, as a field is: it is read, not pressed. */
+.callout {
+  margin-bottom: var(--gap-2);
+  padding: var(--space-050);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--r-brand-400);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+}
+
+.callout__title {
+  margin: 0 0 var(--space-025);
+  font-weight: var(--fw-semibold);
+}
+
+.callout__text {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+/* In the chrome a button is borderless until it is pointed at, which suits a
+   strip of actions under a panel. Here the buttons sit among fields and
+   paragraphs, where a word with no edge does not read as a button at all. */
+.assistant .btn--chip {
+  border-color: var(--line-strong);
+  background: var(--paper);
+}
+
+.assistant .btn--chip:hover { background: var(--chrome-hover); }
+
+.assistant__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-1);
+  margin-bottom: var(--gap-2);
+}
+
+.assistant__hint {
+  margin: 0 0 var(--gap-2);
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+.assistant__hint:empty { display: none; }
+.assistant__hint[data-error="true"] { color: #8c2f18; }
+
+.assistant__summary {
+  margin: 0 0 var(--gap-2);
+  line-height: 1.4;
+}
+
+/* One row of chips to a group, wrapping, under a caption small enough to be a
+   label rather than a heading: the section already has one. */
+.skills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-1);
+  margin-bottom: var(--gap-2);
+}
+
+/* Each chip takes its share of what its row has left, so every row runs the
+   width of the column: left to their own widths the rows end raggedly, and a
+   third of the panel is white space shaped like a staircase. */
+.skills .skill { flex: 1 1 auto; }
+
+.skills__group {
+  flex: 0 0 100%;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* Filled, as the palette's size in force is: among a dozen identical chips a
+   border alone does not say which one you are on. */
+.assistant .skill[aria-pressed="true"] {
+  background: var(--selection);
+  border-color: var(--selection);
+  color: var(--ink-invert);
+  font-weight: var(--fw-semibold);
+}
+
+.assistant .skill[aria-pressed="false"] { color: var(--ink); }
+
+/* The way back to copying prompts out by hand, for an owner with a model
+   connected. A link rather than a chip: it changes how the column works, which
+   is not something to press by accident between two messages. */
+.assistant__link {
+  display: block;
+  margin: 0 0 var(--gap-2);
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.assistant__link:hover { color: var(--ink); }
+
+/* The exchange in hand: what was just asked, and what came back. One box, since
+   there is only ever one — the next Send replaces it — on paper like a field,
+   because it is read rather than pressed. */
+.exchange {
+  margin-bottom: var(--gap-2);
+  padding: var(--space-050);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+}
+
+.exchange__asked {
+  margin: 0 0 var(--space-025);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* A reply keeps the model's own line breaks: a traced flow is a numbered walk. */
+.exchange__answer {
+  margin: 0;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Seconds that tick must not jitter, and a wait is not yet an answer. */
+.exchange[data-state="waiting"] .exchange__answer {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.exchange[data-state="failed"] { border-color: var(--r-red-400); }
+.exchange[data-state="failed"] .exchange__answer { color: #8c2f18; }
+
+/* What the model remembers and the page does not show. Small and soft: it is a
+   fact to be aware of, not a thing to read each time. */
+.assistant__memory {
+  margin: 0 0 var(--gap-2);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.assistant__memory .assistant__link {
+  display: inline;
+  margin: 0;
+}
+
+/* A suggestion: what it is, why, what applying it does, and the shapes it
+   names. The edge says what kind of card it is before a word of it is read. */
+.card {
+  margin-bottom: var(--gap-2);
+  padding: var(--space-050);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--r-brand-400);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+}
+
+.card[data-state="note"] { border-left-color: var(--r-charcoal-200); }
+.card[data-state="refused"] { border-left-color: var(--r-red-400); }
+
+.card__title {
+  margin: 0 0 var(--space-025);
+  font-size: var(--fs-200);
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+}
+
+.card__why,
+.card__source,
+.card__problem {
+  margin: 0 0 var(--gap-2);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.card__why { color: var(--ink-soft); }
+
+.card__ops {
+  margin: 0 0 var(--gap-2);
+  padding: 0;
+  list-style: none;
+}
+
+.card__ops li + li { margin-top: var(--space-025); }
+
+.card__says { display: block; }
+
+/* The words a card would write onto the map, set off as the quotation they are. */
+.card__text {
+  display: block;
+  margin-top: 2px;
+  padding-left: var(--space-050);
+  border-left: 2px solid var(--line);
+  color: var(--ink-soft);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.card__source {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.card__problem { color: #8c2f18; }
+
+.card__about,
+.card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-1);
+}
+
+.card__about { margin-bottom: var(--gap-2); }
+
+/* A name to press, not an action to take: quieter than Apply beside it, and
+   cut short rather than let one long title widen the card. */
+.assistant .card__shape {
+  max-width: 100%;
+  overflow: hidden;
+  border-color: var(--line);
+  background: var(--chrome);
+  text-overflow: ellipsis;
+  display: inline-block;
+  line-height: calc(var(--chip-h) - 2px);
+}
+
+.card__actions { justify-content: flex-end; }
 
 /* --- the kebab menu -------------------------------------------------------- */
 
@@ -1373,9 +1647,13 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
      is tapped, and leaves zoomed. The sheet's controls are the only ones a
      phone types into, so they are the ones that step up. */
   .details .field__input,
-  .details .field__select {
+  .details .field__select,
+  .assistant .field__input {
     font-size: var(--fs-400);
   }
+
+  /* The sheet is as wide as the screen already. */
+  .main[data-column="assistant"] { --details-w: auto; }
 }
 
 /* Four columns do not fit a phone, and a row whose buttons are off the right

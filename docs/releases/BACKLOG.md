@@ -1,5 +1,13 @@
 # Backlog
 
+- Domain to Domain connector; collapsed view:
+  - Add a "Collapse/expand Domains" control to the diagram screen.
+  - Collapsed domain shape should be a smaller blob with the title at the center; the blob shape/proportions should be the same as the expanded ones.
+  - All connectors from capabilities to other domains should start from the domain boundary; Add snap points to domain shapes in collapsed view; when I change the snap point in the collapsed view, do not forget the actual capability (true connector owner).
+  - Remember the position of all domain shapes in both collapsed and expanded views independently.
+- Line width improvements:
+  - The lines are too thin when I zoom out; keep the line width proportional at any zoom level.
+  - It is difficult to select a line on a phone screen with tap -- make the tap aria wider.
 - Slideshow mode - domain/capability postcards with metadata.
 - Teams (owners, maintainers, enablers?).
 - People overlays (by function? e.g. product, engineering).

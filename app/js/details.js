@@ -207,6 +207,54 @@ function liveText(type, record, key, {
   return input;
 }
 
+/** What holds the caret while the map's own description is being typed: no record has this id. */
+const THE_MAP = 'the-map';
+
+/**
+ * What the business is: the map's own description, which belongs to no shape.
+ * It is written on a pause and on leaving the field, and each write is the
+ * whole change since the last one, so Ctrl-Z steps back through the pauses.
+ */
+function mapDescription() {
+  const area = document.createElement('textarea');
+  area.className = 'field__input field__input--area';
+  area.rows = 4;
+  area.maxLength = 2000;
+  area.value = store.description ?? '';
+  area.placeholder = 'The industry, who the customers are, what is in scope and what is not, '
+    + 'the standards the map is weighed against';
+
+  const hold = () => { editingId = THE_MAP; };
+  if (!editMode) {
+    area.classList.add('field__input--quiet');
+    area.title = 'Browsing: what you type here is not saved. Press Edit to change the map.';
+    area.addEventListener('input', () => fitArea(area));
+    area.addEventListener('focus', hold);
+    area.addEventListener('blur', () => {
+      editingId = null;
+      area.value = store.description ?? '';
+      fitArea(area);
+    });
+    return area;
+  }
+
+  const write = () => {
+    clearTimeout(debounce);
+    if (area.value !== (store.description ?? '')) handlers.onMapPatch?.({ description: area.value });
+  };
+  area.addEventListener('input', () => {
+    fitArea(area);
+    clearTimeout(debounce);
+    debounce = setTimeout(write, 400);
+  });
+  area.addEventListener('focus', hold);
+  area.addEventListener('blur', () => {
+    editingId = null;
+    write();
+  });
+  return area;
+}
+
 /**
  * The colours a shape may wear. This grid only ever paints the shape; editing
  * the palette happens in its own modal (palette.js), so that "choose a colour
@@ -594,13 +642,20 @@ export function renderDetails() {
   const { type } = store.selection;
 
   // A save landing mid-sentence must not steal the caret.
-  if (editingId && editingId === store.selection.id && container.contains(document.activeElement)) return;
+  if (editingId && editingId === (store.selection.id ?? THE_MAP) && container.contains(document.activeElement)) return;
 
+  // With nothing selected the panel is about the map itself: what business it
+  // is a map of. Browsing an undescribed map there is nothing to say, so the
+  // section is left out rather than shown holding an empty box.
   if (!record) {
     const empty = document.createElement('p');
     empty.className = 'details__empty';
     empty.textContent = 'Nothing selected. Pick a domain, capability or connector.';
-    container.replaceChildren(empty);
+    const about = editMode || store.description
+      ? section('Map', [field('What the business is', mapDescription())], 'Metadata')
+      : null;
+    container.replaceChildren(...(about ? [about] : []), empty);
+    fitAreas();
     return;
   }
 

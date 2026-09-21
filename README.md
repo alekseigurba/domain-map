@@ -73,6 +73,48 @@ it, so recolouring the palette recolours the map.
 gesture there is: undo, bold, the size and shape steps, restacking, and the
 keys that apply while renaming.
 
+## Asking an AI about the map
+
+**Assistant**, in the header, takes the details panel's place. Pick a skill:
+*Describe* the capability you have selected, *Fill the blanks* across a domain,
+*Grill the boundaries*, *Find missing connections*, *Compare with a standard*,
+*Trace a flow*, or *Ask your own*.
+
+**With a model connected**, an owner presses a skill and **Send**; *Ask your
+own* opens a box for a question of your own. The answer comes back under the
+button, and what it suggests as cards underneath. Only the last exchange is
+shown and nothing of it is kept, though the model is reminded of the last few
+turns until you **Start over** or reload. Connecting one is two environment
+variables —
+
+```bash
+ASSISTANT_API_URL=http://localhost:11434/v1/chat/completions   # a local Ollama, say
+ASSISTANT_API_KEY=ollama
+ASSISTANT_MODEL=llama3.1
+```
+
+— and the URL can be anything that answers chat completions, free or corporate,
+or Anthropic's Messages API. [docs/BRANDING.md](docs/BRANDING.md#what-it-needs-to-run)
+has the rest. The key stays on the server, and the page says which host your
+messages go to.
+
+**Without one**, **Copy prompt** puts the task, the map and the format to answer
+in on the clipboard; take it to the AI chat you use, and in **Edit** mode paste
+the reply back and **Review reply**.
+
+Either way the map goes out without its drawing — no positions, no colours — and
+without owners' names unless you tick them in. It is the whole map, so send it
+only where your organisation allows.
+
+Every suggestion becomes a card that says what it would do and why; pressing a
+name on it shows that shape on the map. **Apply**, in Edit mode, makes the change
+as one Ctrl+Z. A reply can describe, rename, add, move and connect; it cannot
+remove anything, so what it thinks should go arrives as a note for you to act on.
+
+Say **what the business is** first — in the details panel, with nothing selected.
+It is part of the map, it heads every prompt, and it is the difference between a
+review of your business and a review of a map.
+
 ## Versions, and the one everyone sees
 
 Versions are kept in Postgres, and one of them is **published**. That is the

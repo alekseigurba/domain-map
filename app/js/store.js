@@ -11,6 +11,8 @@ const listeners = new Set();
 
 export const store = {
   title: '',
+  /** What the business is, in the owner's words: the map's own description. */
+  description: '',
   /** The map's own colours, or empty for the ones in the stylesheet. */
   palette: [],
   /** The stack, bottom first. The first is the base layer; see rules.LAYER_DEFAULTS. */
@@ -50,6 +52,7 @@ export function emit(reason = 'change') {
 /** Everything at once, as read from a document. */
 export function setMap(state) {
   store.title = state.title;
+  store.description = state.description ?? '';
   store.palette = state.palette ?? [];
   store.layers = state.layers?.length
     ? state.layers
@@ -764,9 +767,10 @@ export function restore(removed) {
   emit('data');
 }
 
-/** The map's own settings: what it is called, the colours it wears, its stack. */
+/** The map's own settings: what it is called and says it is, the colours it wears, its stack. */
 export function updateMap(changes = {}) {
   if (changes.title !== undefined) store.title = titled(changes.title, store.title);
+  if (changes.description !== undefined) store.description = changes.description ?? '';
   if (changes.palette !== undefined) store.palette = changes.palette ?? [];
   if (changes.layers !== undefined) store.layers = changes.layers ?? [];
   if (changes.types !== undefined) store.types = changes.types ?? {};

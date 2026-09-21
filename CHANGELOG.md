@@ -7,6 +7,70 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.2.0 — 2026-09-21
+
+The map gains an Assistant, with a model behind it or without, and a description
+of its own. No breaking changes — map files stay version 2, a 2.1 deployment
+still opens one written here, and the four new environment variables are
+optional. Full notes: [docs/releases/2.2.0.md](docs/releases/2.2.0.md).
+
+### Added
+
+- **Assistant**, in the header: ask an AI about the map, and review what it says
+  as changes. It swaps the details column for a list of skills — write a
+  description, fill in every blank one, grill the boundaries, find the missing
+  connections, compare the map with an industry standard, trace a flow across it,
+  or ask a question of your own. A skill follows the selection: *Describe* is
+  about the capability you have picked, *Grill the boundaries* about the domain,
+  or the whole map with nothing picked.
+- **A model of your choosing behind it.** Set `ASSISTANT_API_URL` and
+  `ASSISTANT_API_KEY` and an owner gets **Send** where Copy prompt was: pick a
+  skill, send it, and the answer's cards are added to the review below. *Ask
+  your own* opens a box for your question. Only the exchange in hand is shown —
+  what was just asked, and the answer's summary — and nothing of a conversation
+  is written down; the model is still reminded of the last few turns, from the
+  page's memory and no further, and a line under the answer says how many and
+  lets you **Start over**. The URL is anything that answers chat completions — a
+  free local Ollama, OpenAI, Azure OpenAI, a corporate gateway — or Anthropic's
+  Messages API; `ASSISTANT_MODEL`, by the API's own id for it, and
+  `ASSISTANT_API_STYLE` are there for the cases the URL does not settle. The key
+  stays on the server, and Send's tooltip says which model and host a message —
+  and with it the whole map — goes to. Viewers never get Send.
+- **And without one, copy and paste.** With neither variable set, **Copy prompt**
+  puts the task, the map and the format to answer in on the clipboard, for
+  whichever chat you use, and **Review reply** brings the answer back. No key is
+  stored and nothing leaves the map unless you copy it out; the label says *No
+  model connected yet*. An owner with a model connected keeps this too, behind
+  **Use another chat**.
+- **Replies come back as cards**, whichever way they came. Every suggestion says
+  what it proposes, why, what applying it would do in plain words, and the shapes
+  it names — press one and the map shows it. **Apply** makes the change as one
+  Ctrl+Z, however much the card holds; **Apply all** works through what is left.
+  A reply is checked against the same rules the editor keeps, and a card with
+  anything wrong in it is refused whole, with the reason on it. A reply can
+  describe, rename, add, move a capability to another domain and connect. It
+  cannot remove anything or move a shape about: what should go comes back as a
+  note, for you to delete by hand.
+- **What the map goes out as.** A prompt carries the whole map with its drawing
+  left out — titles, descriptions, types, what is joined to what — and no
+  positions or colours. Owners' names stay behind unless *Include owners' names*
+  is ticked.
+- **What the business is**: the map has a description of its own. With nothing
+  selected, the details panel is about the map itself, and that is where it is
+  read and written. It heads every prompt, and is what makes a review specific to
+  your business rather than generic; it is saved, versioned, exported and undone
+  with the map. While it is empty the Assistant says so in a line, and offers
+  **Describe the business**, which drafts it from what is on the map.
+- **Skills are files**, `app/skills/<name>/SKILL.md`, in the agent-skills form,
+  so an agent pointed at the folder loads the same prompts the page builds. Each
+  says which operations its reply may use — a reply to *Describe* that renames
+  something is refused. They are internal so far: a consumer repo cannot add or
+  reword one until that part of 2.2 is built.
+- **`options.assistant`** on `createDomainMapServer`: a `{ chat, host, model }`
+  of your own, for a model that speaks neither chat completions nor the Messages
+  API. The server warns at startup when a model is connected and everyone is an
+  owner, since any of them can then send the map out on its key.
+
 ## 2.1.1 — 2026-09-20
 
 Icons on the map grow up: larger, in their own colours, laid out by what is

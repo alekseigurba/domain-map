@@ -12,8 +12,9 @@ COPY scripts ./scripts
 COPY seed ./seed
 
 # Production refuses the sign-in bypass whatever else is set. The rest is
-# configured at run time: DATABASE_URL, OWNER_EMAILS, and for sign-in
-# AUTH_TENANT_ID, AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET.
+# configured at run time: DATABASE_URL, OWNER_EMAILS, for sign-in
+# AUTH_TENANT_ID, AUTH_CLIENT_ID, AUTH_CLIENT_SECRET and AUTH_SESSION_SECRET,
+# and for a model behind the Assistant ASSISTANT_API_URL and ASSISTANT_API_KEY.
 ENV NODE_ENV=production
 ENV STORAGE_DIR=/store
 ENV PORT=8000

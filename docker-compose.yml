@@ -19,6 +19,14 @@ services:
       AUTH_ENABLED: "false"
       NODE_ENV: development
       AUTH_DEV_BYPASS: "true"
+      # The model behind the Assistant, taken from the shell that runs compose so
+      # that no key is written here. Both, or the Assistant writes prompts to
+      # copy into a chat of your own. ASSISTANT_MODEL and ASSISTANT_API_STYLE
+      # (openai | anthropic) are optional.
+      ASSISTANT_API_URL: ${ASSISTANT_API_URL:-}
+      ASSISTANT_API_KEY: ${ASSISTANT_API_KEY:-}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-}
+      ASSISTANT_API_STYLE: ${ASSISTANT_API_STYLE:-}
     # Icons, the logo and the settings are files under one folder, so one
     # volume at one mount point keeps all of them. The versions are in Postgres.
     volumes:
