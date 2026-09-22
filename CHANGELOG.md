@@ -7,6 +7,8 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.5.0 — 2026-09-22
+
 Four roles instead of two, a list of the people the map knows, an owner picked
 from it, and a sandbox for every contributor beside the shared versions — the
 two releases planned as 2.4 and 2.5, shipped as one. Full notes:
