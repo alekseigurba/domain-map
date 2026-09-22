@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Make someone the administrator from outside the app, for the day the
-// administrator has left without handing over and nobody can open Users &
-// access with the right to change it. It runs against DATABASE_URL, the way
-// the server does — on a Container App, through `az containerapp exec` into
-// the running revision — and says who was demoted.
+// Make someone an administrator from outside the app, for the day every
+// administrator has left and nobody can open Users & access with the right to
+// change it. It runs against DATABASE_URL, the way the server does — on a
+// Container App, through `az containerapp exec` into the running revision.
+// Nobody else's role changes: an administrator still there stays one.
 //
 //   npm run make-administrator -- someone@example.com
 import { openDatabase, waitForDatabase } from './database.mjs';
 import { peopleStore } from './people-store.mjs';
-import { CONTRIBUTOR } from './roles.mjs';
+import { ADMINISTRATOR } from './roles.mjs';
 
 const email = process.argv[2]?.trim() ?? '';
 if (!email.includes('@')) {
@@ -26,10 +26,11 @@ try {
   const people = peopleStore(pool);
   // Someone not on the list yet is added by address, as an administrator
   // would add them, and signs in to the role on their first visit.
-  const person = await people.byEmail(email) ?? await people.add({ name: email, email, role: CONTRIBUTOR });
-  const { previous } = await people.makeAdministrator(person.id);
-  console.log(`${person.name} <${person.email}> is the administrator`
-    + `${previous ? `; ${previous.name} is a publisher now` : ''}.`);
+  const found = await people.byEmail(email);
+  const person = found ?? await people.add({ name: email, email, role: ADMINISTRATOR });
+  const already = found?.role === ADMINISTRATOR;
+  if (found && !already) await people.setRole(found.id, ADMINISTRATOR);
+  console.log(`${person.name} <${person.email}> is an administrator${already ? ' already' : ' now'}.`);
 } catch (error) {
   // The tables are the server's to make: a database it has never started
   // against has none, and the message should say so rather than quote SQL.

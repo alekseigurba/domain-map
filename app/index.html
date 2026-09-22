@@ -359,7 +359,7 @@
       <p class="profile__bypass" id="profile-bypass" hidden>Signed in through the development bypass.</p>
       <div class="dialog__foot">
         <!-- Who may do what belongs with who you are. people.js shows it to
-             everyone who works on the map, and lets the administrator change it. -->
+             everyone who works on the map, and lets an administrator change it. -->
         <button class="btn btn--chip" type="button" id="people"
                 title="Who may open the map, and what each may do"
                 aria-haspopup="dialog" aria-controls="people-dialog" hidden>Users &amp; access</button>
@@ -370,12 +370,14 @@
   </dialog>
 
   <!-- Users & access: who may open the map and what each may do. Everyone who
-       works on the map reads it; the administrator gives out roles, adds
-       someone by email and hands their own role over. people.js fills the rows
-       each time it opens. -->
+       works on the map reads it; an administrator gives out roles, adds
+       someone by email and takes someone off the list, on every row but their
+       own. people.js writes the key from the role words in identity.js, and
+       fills the rows each time it opens. -->
   <dialog class="dialog dialog--people" id="people-dialog" aria-labelledby="people-title">
     <div class="dialog__body">
       <h2 class="dialog__title" id="people-title">Users &amp; access</h2>
+      <dl class="roster__key" id="people-key" aria-label="What each role may do"></dl>
       <p class="versions__note" id="people-note" hidden></p>
       <div class="versions__scroll">
         <table class="roster">
@@ -391,15 +393,16 @@
           <tbody id="people-rows"></tbody>
         </table>
       </div>
-      <!-- The administrator's: someone added by email is on the list before
+      <!-- An administrator's: someone added by email is on the list before
            they have signed in, and their first sign-in finds them here. -->
       <form class="roster__add" id="people-add" hidden>
         <input class="field__input" id="people-add-name" name="name" placeholder="Name" maxlength="200" aria-label="Name">
         <input class="field__input" id="people-add-email" name="email" type="email" placeholder="Email" required maxlength="200" aria-label="Email">
         <select class="field__select" id="people-add-role" name="role" aria-label="Role">
+          <option value="viewer">Viewer</option>
           <option value="contributor" selected>Contributor</option>
           <option value="publisher">Publisher</option>
-          <option value="viewer">Viewer</option>
+          <option value="administrator">Administrator</option>
         </select>
         <button class="btn btn--chip" type="submit" title="Add someone by email, ahead of their first sign-in">Add</button>
       </form>

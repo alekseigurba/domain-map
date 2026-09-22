@@ -1191,12 +1191,15 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .dialog--profile .dialog__foot > :last-child { margin-left: auto; }
 
 /* Versions is centred, like Getting around, and wide enough for a row to read
-   as one line: the name, when and by whom, and what can be done with it. Four
-   actions rather than three since Rename came back, and the width follows. */
+   as one line: the name, when and by whom, and what can be done with it. The
+   width has followed the row out twice — for Rename in 2.1, and for the column
+   saying who saved or shared a version, which put a publisher's Publish and
+   Delete behind a scroll bar at 760px. A shared row with all five actions and
+   all three tags is what it is measured against. */
 .dialog--versions {
   inset: 0;
   margin: auto;
-  width: min(760px, calc(100vw - 2 * var(--dialog-inset)));
+  width: min(920px, calc(100vw - 2 * var(--dialog-inset)));
 }
 
 .versions__note {
@@ -1281,12 +1284,13 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 /* The fixed label width lives on the box inside the cell, not on the cell. A
    width on a table cell is only a hint — a column never shrinks below what its
    contents demand, and a name set in one unbroken line demands all of it — so
-   the clipping box is what holds the column to size. */
+   the clipping box is what holds the column to size. Wide enough that a row
+   tagged Published, Open and Yours still shows a word of its name. */
 .versions__name {
   display: flex;
   align-items: center;
   gap: var(--gap-2);
-  width: 12rem;
+  width: 16rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1333,13 +1337,33 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   white-space: nowrap;
 }
 
-/* Users & access is the Versions dialog's twin: the same centred width and
-   the same table, a row a person. The roster shares the table's rules above by
-   name rather than by class, so a row of people is never called a version. */
+/* Users & access is the Versions dialog's twin: centred, and the same table,
+   a row a person. The roster shares the table's rules above by name rather
+   than by class, so a row of people is never called a version. It stays at
+   the width Versions had, since a row here carries one action, not five. */
 .dialog--people {
   inset: 0;
   margin: auto;
   width: min(760px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+/* The key at the head of the roster: each role and what it may do, lowest
+   first, the name set against its sentence the way the Getting around tables
+   set a key against what it does. It is read once and then glanced back at,
+   so the sentences stay in the quiet ink and the names carry the weight. */
+.roster__key {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--gap-1) var(--gap-3);
+  margin: 0;
+  line-height: var(--lh-m);
+}
+
+.roster__key dt { font-weight: var(--fw-semibold); }
+
+.roster__key dd {
+  margin: 0;
+  color: var(--ink-soft);
 }
 
 /* Who they are: the name, You beside it when it is, and the address under it
@@ -1360,7 +1384,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   overflow-wrap: anywhere;
 }
 
-/* A select the height of a chip, so the administrator's rows stand no taller
+/* A select the height of a chip, so an administrator's rows stand no taller
    than everyone else's. */
 .roster__role {
   width: auto;
@@ -1798,31 +1822,46 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   .versions tbody tr:first-child,
   .roster tbody tr:first-child { border-top: none; }
 
+  /* A cell may be narrower than its words: a flex item will not shrink past
+     them otherwise, and a long version name carried the whole card off the
+     right-hand edge with it rather than being cut. */
   .versions td,
   .versions td:first-child,
   .versions td:last-child,
   .roster td,
   .roster td:first-child,
   .roster td:last-child {
+    min-width: 0;
     padding: 0;
     border: none;
   }
 
-  /* The name takes a line of its own; the two smaller facts share the next.
-     Each is as wide as the card, not the width the table gave it. */
+  /* The name takes a line of its own; the smaller facts share the next, and
+     the actions come last. Each is as wide as the card, not the width the
+     table gave it — on the roster the 1% that keeps the action column tight
+     on a wide screen made a box its button spilled out of, over the date. */
   .versions td:first-child,
-  .versions td:last-child { flex: 1 1 100%; width: auto; }
+  .versions td:last-child,
+  .roster td:first-child { flex: 1 1 100%; width: auto; }
+
+  .roster td:last-child { width: auto; }
 
   .versions__when,
   .versions__by { color: var(--ink-soft); }
 
+  /* Five actions on a shared row are wider than a phone, so they wrap. */
   .versions__name { width: auto; }
-  .versions__actions { justify-content: flex-start; }
+  .versions__actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 
   /* The row is the card now, so it carries the mark of the one that is open. */
-  .versions tr[data-open="true"] td { background: none; }
+  .versions tr[data-open="true"] td,
+  .roster tr[data-open="true"] td { background: none; }
 
-  .versions tr[data-open="true"] {
+  .versions tr[data-open="true"],
+  .roster tr[data-open="true"] {
     padding-left: var(--gap-2);
     background: var(--chrome);
     border-radius: var(--radius-s);

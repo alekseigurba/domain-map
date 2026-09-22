@@ -17,17 +17,18 @@ npm start
 ```
 
 `npm start` reads [dev.env](../dev.env), which switches sign-in **off**: every
-page and every API call goes straight through, and whoever is there is the
+page and every API call goes straight through, and whoever is there is an
 administrator. Drop `AUTH_ENABLED` to bring the gate back — the sign-in screen
 then offers *Bypass (dev)*, with a name and a role, so every role can be tried:
-a name makes a person, the first name in is the administrator, and asking for
-the administrator's role afterwards hands it over — or export `AUTH_TENANT_ID`,
+a name makes a person, the first name in is the administrator, and the role
+asked for after that is the role given, but for the last administrator asking
+for less — or export `AUTH_TENANT_ID`,
 `AUTH_CLIENT_ID` and `AUTH_CLIENT_SECRET` to try Microsoft sign-in locally.
 Anything already set in the shell wins over the file.
 
 Roles are rows in Postgres, seeded once from `OWNER_EMAILS` and managed in
-*Users & access* after that. For a database whose administrator has gone,
-`npm run make-administrator -- someone@example.com` makes someone else the
+*Users & access* after that. For a database whose administrators have all
+gone, `npm run make-administrator -- someone@example.com` makes someone an
 administrator; it reads `dev.env` for `DATABASE_URL` when there is one.
 
 To try the Assistant with a model behind it, export `ASSISTANT_API_URL` and
@@ -72,8 +73,8 @@ node tests/geometry.test.mjs
 | `app/skills/` | One folder per skill, each a `SKILL.md` in the agent-skills form, with the two formats a prompt writes in. [Its README](../app/skills/README.md) says what a skill file holds. |
 | `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`. |
 | `scripts/roles.mjs` | The four roles, lowest first, and what each may do. |
-| `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, the administrator's role handed over, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
-| `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made the administrator from outside the app. |
+| `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, someone taken off the list, never the last administrator, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
+| `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made an administrator from outside the app. |
 | `app/js/people.js` | Users & access: the roster, and what the administrator can do on it. |
 | `scripts/serve.mjs` | The CLI over it, for running the stock app from this checkout. |
 | `scripts/create-app.mjs` | `create-domain-map-app`: writes a consumer repo from `scaffold/`. |

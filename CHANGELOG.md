@@ -7,6 +7,47 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+More than one administrator, people taken off the list, and a Versions dialog
+that shows every action without scrolling. One migration, applied at startup;
+map files stay version 4. Full notes:
+[docs/releases/2.5.1.md](docs/releases/2.5.1.md).
+
+### Added
+
+- **More than one administrator.** The role select on a row in Users & access
+  offers Administrator like any other role, and asks first, since the person
+  can then do everything you can. Nobody changes their own row — another
+  administrator does — so the map is never left without one. Handing over is
+  making someone an administrator and letting them take you down.
+- **Remove**, on every row but your own, takes someone off the list. Someone
+  added who never signed in goes at once; someone who has is asked about
+  first, and the question says how many versions their sandbox holds, since
+  those go with them. What they shared stays shared. Someone who can still
+  sign in comes back as a contributor, as anyone new does: to keep a person
+  out, take away their access in Entra; to keep them read-only, make them a
+  viewer.
+- **What each role may do**, at the head of Users & access: the four roles and
+  a sentence each, lowest first. The same sentence is on the pointer over a
+  role, and in the profile popup under your name.
+
+### Changed
+
+- **Versions is wider**, 920px where it was 760, so a publisher's Publish and
+  Delete are no longer behind a scroll bar since the column saying who saved or
+  shared a version arrived. The name column grew with it, so a version tagged
+  Published, Open and Yours still shows its name.
+- **`npm run make-administrator` adds an administrator** and leaves everyone
+  else as they are, where it used to demote the one there was.
+- *Make administrator* and `PUT /api/administrator` are gone: `PATCH
+  /api/people/<id>` with the role `administrator` does it, and `DELETE
+  /api/people/<id>` takes someone off the list.
+
+### Fixed
+
+- **Versions and Users & access fit a phone.** A long version name carried its
+  card off the right-hand edge, a shared version's five actions ran off after
+  it, and on the roster the row's button was drawn over the date.
+
 ## 2.5.0 — 2026-09-22
 
 Four roles instead of two, a list of the people the map knows, an owner picked

@@ -1,9 +1,10 @@
 // People and roles, checked against the real server and a throwaway database:
 // the administrator seeded from OWNER_EMAILS, who a sign-in turns out to be,
 // what each role may do and how soon a change applies, a person added by
-// email ahead of their first sign-in, the one administrator's role handed
-// over, the development bypass being whoever it says, and the script for the
-// day the administrator has gone.
+// email ahead of their first sign-in, more than one administrator and never
+// none, someone taken off the list with their sandbox, the development bypass
+// being whoever it says, and the script for the day every administrator has
+// gone.
 //   docker compose up -d postgres
 //   node tests/people.test.mjs
 
@@ -13,6 +14,8 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import pg from 'pg';
 
 import { seal } from '../scripts/auth.mjs';
 import { atLeast, readOwners, roleOf } from '../scripts/roles.mjs';
@@ -139,6 +142,17 @@ function makeAdministrator(databaseUrl, ...args) {
   });
 }
 
+/** One query straight at the database, for what the API rightly does not say. */
+async function inDatabase(url, text, values) {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    return await client.query(text, values);
+  } finally {
+    await client.end();
+  }
+}
+
 const cleanup = [];
 
 try {
@@ -185,7 +199,7 @@ try {
     JSON.stringify(seen.body));
   check('but cannot change a role', (await as(app, CAROL, 'PATCH', `/api/people/${bob.body.id}`, { role: 'viewer' })).status === 403);
   check('nor add anyone', (await as(app, CAROL, 'POST', '/api/people', { email: 'x@contoso.example' })).status === 403);
-  check('nor hand the administrator\'s role about', (await as(app, CAROL, 'PUT', '/api/administrator', { id: carol.body.id })).status === 403);
+  check('nor take anyone off it', (await as(app, CAROL, 'DELETE', `/api/people/${bob.body.id}`)).status === 403);
 
   // --- what each role may do, and how soon ---
   const toViewer = await as(app, ALICE, 'PATCH', `/api/people/${carol.body.id}`, { role: 'viewer' });
@@ -211,10 +225,9 @@ try {
     erin.body.id === added.body.id && erin.body.role === 'publisher' && erin.body.name === 'Erin Example', JSON.stringify(erin.body));
   check('the same address twice is refused', (await as(app, ALICE, 'POST', '/api/people', { email: 'ERIN@contoso.example' })).status === 409);
   check('and so is one that is no address', (await as(app, ALICE, 'POST', '/api/people', { email: 'erin' })).status === 400);
-  check('nobody is added as the administrator', (await as(app, ALICE, 'POST', '/api/people', { email: 'x@contoso.example', role: 'administrator' })).status === 400);
-  check('nor set to it', (await as(app, ALICE, 'PATCH', `/api/people/${erin.body.id}`, { role: 'administrator' })).status === 400);
-  check('nor to a role that is not one', (await as(app, ALICE, 'PATCH', `/api/people/${erin.body.id}`, { role: 'boss' })).status === 400);
-  check('the administrator cannot step down', (await as(app, ALICE, 'PATCH', `/api/people/${alice.body.id}`, { role: 'viewer' })).status === 409);
+  check('nobody is set to a role that is not one', (await as(app, ALICE, 'PATCH', `/api/people/${erin.body.id}`, { role: 'boss' })).status === 400);
+  const own = await as(app, ALICE, 'PATCH', `/api/people/${alice.body.id}`, { role: 'viewer' });
+  check('nobody changes their own role', own.status === 409 && /another administrator/.test(own.body.error), JSON.stringify(own.body));
   check('someone who is not there is a 404',
     (await as(app, ALICE, 'PATCH', '/api/people/00000000-0000-0000-0000-000000000000', { role: 'viewer' })).status === 404
     && (await as(app, ALICE, 'PATCH', '/api/people/not-an-id', { role: 'viewer' })).status === 404);
@@ -225,27 +238,72 @@ try {
   check('a typo is corrected until they have signed in', corrected.status === 200 && corrected.body.email === 'frank@contoso.example' && corrected.body.name === 'Frank Fox');
   check('after that the name and address are the sign-in\'s', (await as(app, ALICE, 'PATCH', `/api/people/${erin.body.id}`, { name: 'E' })).status === 409);
 
-  // --- handing over ---
-  const handed = await as(app, ALICE, 'PUT', '/api/administrator', { id: bob.body.id });
-  check('the administrator hands the role over, and becomes a publisher',
-    handed.status === 200 && handed.body.administrator.id === bob.body.id && handed.body.administrator.role === 'administrator'
-    && handed.body.previous.id === alice.body.id && handed.body.previous.role === 'publisher', JSON.stringify(handed.body));
-  check('from then on the old administrator cannot change a role', (await as(app, ALICE, 'PATCH', `/api/people/${carol.body.id}`, { role: 'contributor' })).status === 403);
-  check('and the new one can', (await as(app, BOB, 'PATCH', `/api/people/${carol.body.id}`, { role: 'contributor' })).body.role === 'contributor');
-  check('handing it to whoever holds it changes nothing',
-    (await as(app, BOB, 'PUT', '/api/administrator', { id: bob.body.id })).body.previous === null);
-  check('handing it to nobody is a 404', (await as(app, BOB, 'PUT', '/api/administrator', { id: '00000000-0000-0000-0000-000000000000' })).status === 404);
-  await as(app, BOB, 'PUT', '/api/administrator', { id: alice.body.id });
-  check('and it can be handed back', (await as(app, ALICE, 'GET', '/api/me')).body.role === 'administrator'
-    && (await as(app, BOB, 'GET', '/api/me')).body.role === 'publisher');
+  // --- more than one administrator ---
+  const second = await as(app, ALICE, 'PATCH', `/api/people/${bob.body.id}`, { role: 'administrator' });
+  check('the administrator makes someone else an administrator, and stays one',
+    second.status === 200 && second.body.role === 'administrator'
+    && (await as(app, ALICE, 'GET', '/api/me')).body.role === 'administrator', JSON.stringify(second.body));
+  check('and the new one changes a role', (await as(app, BOB, 'PATCH', `/api/people/${carol.body.id}`, { role: 'contributor' })).body.role === 'contributor');
+  const newcomerAdded = await as(app, ALICE, 'POST', '/api/people', { email: 'gail@contoso.example', role: 'administrator' });
+  check('someone can be added as an administrator ahead of their first sign-in',
+    newcomerAdded.status === 201 && newcomerAdded.body.role === 'administrator', JSON.stringify(newcomerAdded.body));
+  const stepped = await as(app, BOB, 'PATCH', `/api/people/${alice.body.id}`, { role: 'publisher' });
+  check('one administrator takes another down', stepped.body.role === 'publisher', JSON.stringify(stepped.body));
+  check('who from then on cannot change a role', (await as(app, ALICE, 'PATCH', `/api/people/${carol.body.id}`, { role: 'viewer' })).status === 403);
+  await as(app, BOB, 'DELETE', `/api/people/${newcomerAdded.body.id}`);
+  const [upOne, upTwo] = await Promise.all([
+    as(app, BOB, 'PATCH', `/api/people/${alice.body.id}`, { role: 'administrator' }),
+    as(app, BOB, 'PATCH', `/api/people/${erin.body.id}`, { role: 'publisher' }),
+  ]);
+  check('two changes at once both go through when neither is about an administrator going', upOne.status === 200 && upTwo.status === 200);
+  const [down, up] = await Promise.all([
+    as(app, ALICE, 'PATCH', `/api/people/${bob.body.id}`, { role: 'publisher' }),
+    as(app, BOB, 'PATCH', `/api/people/${alice.body.id}`, { role: 'publisher' }),
+  ]);
+  const left = (await as(app, down.status === 200 ? ALICE : BOB, 'GET', '/api/people')).body.people
+    .filter((person) => person.role === 'administrator');
+  // The loser is refused by the store, which sees the other gone, or — when
+  // the winner was quicker still — at the door, as no longer an administrator.
+  check('two administrators taking each other down at once leave one of them',
+    [down.status, up.status].filter((status) => status === 200).length === 1
+    && [down.status, up.status].every((status) => [200, 403, 409].includes(status)) && left.length === 1,
+    JSON.stringify([down.body, up.body]));
+  const survivor = down.status === 200 ? ALICE : BOB;
+  const other = down.status === 200 ? bob.body.id : alice.body.id;
+  await as(app, survivor, 'PATCH', `/api/people/${other}`, { role: 'administrator' });
+  check('and the one left makes the other an administrator again',
+    (await as(app, ALICE, 'GET', '/api/me')).body.role === 'administrator' && (await as(app, BOB, 'GET', '/api/me')).body.role === 'administrator');
 
-  // --- the script, for the day the administrator has gone ---
+  // --- taking someone off the list ---
+  const drafted = await as(app, CAROL, 'POST', '/api/drafts', { document: seedText });
+  await as(app, CAROL, 'POST', `/api/drafts/${encodeURIComponent(drafted.body.name)}/share`, { name: 'Carol shares' });
+  const before = (await as(app, ALICE, 'GET', '/api/people')).body.people.find((person) => person.id === carol.body.id);
+  check('a contributor who has signed in has a sandbox with something in it', before?.drafts === 1 && before.sources.length === 1, JSON.stringify(before));
+  const removed = await as(app, ALICE, 'DELETE', `/api/people/${carol.body.id}`);
+  const afterRemoval = (await as(app, ALICE, 'GET', '/api/people')).body.people;
+  check('an administrator takes them off the list', removed.status === 204 && !afterRemoval.some((person) => person.id === carol.body.id));
+  const sandboxLeft = await inDatabase(database.url, 'select count(*)::int as count from versions where sandbox_of = $1', [carol.body.id]);
+  check('and their sandbox with them', sandboxLeft.rows[0].count === 0, JSON.stringify(sandboxLeft.rows));
+  const kept = (await as(app, ALICE, 'GET', '/api/versions')).body.versions?.find((version) => version.name === 'Carol shares');
+  check('what they shared stays shared, with nobody as its sharer', Boolean(kept) && !kept.mine, JSON.stringify(kept));
+  const back = await as(app, CAROL, 'GET', '/api/me');
+  check('a sign-in they can still make comes back as someone new: a contributor, with an empty sandbox',
+    back.status === 200 && back.body.id !== carol.body.id && back.body.role === 'contributor'
+    && (await as(app, CAROL, 'GET', '/api/drafts')).body.versions.length === 0, JSON.stringify(back.body));
+  check('someone added who never signed in is taken off as easily', (await as(app, ALICE, 'DELETE', `/api/people/${frank.body.id}`)).status === 204);
+  const self = await as(app, ALICE, 'DELETE', `/api/people/${alice.body.id}`);
+  check('nobody takes themselves off', self.status === 409 && /another administrator/.test(self.body.error), JSON.stringify(self.body));
+  check('someone who is not there cannot be taken off', (await as(app, ALICE, 'DELETE', `/api/people/${frank.body.id}`)).status === 404);
+
+  // --- the script, for the day every administrator has gone ---
   const rescued = await makeAdministrator(database.url, 'erin@contoso.example');
-  check('the script makes someone the administrator', rescued.code === 0 && /Erin Example <erin@contoso.example> is the administrator; Alice Example is a publisher now/.test(rescued.out), rescued.out);
-  check('and they are, at their next request', (await as(app, ERIN, 'GET', '/api/me')).body.role === 'administrator'
-    && (await as(app, ALICE, 'GET', '/api/me')).body.role === 'publisher');
+  check('the script makes someone an administrator', rescued.code === 0 && /Erin Example <erin@contoso.example> is an administrator now/.test(rescued.out), rescued.out);
+  check('and they are, at their next request, with nobody else\'s role changed', (await as(app, ERIN, 'GET', '/api/me')).body.role === 'administrator'
+    && (await as(app, ALICE, 'GET', '/api/me')).body.role === 'administrator');
+  const again = await makeAdministrator(database.url, 'ERIN@contoso.example');
+  check('running it again says so', again.code === 0 && /is an administrator already/.test(again.out), again.out);
   const newcomer = await makeAdministrator(database.url, 'zoe@contoso.example');
-  check('someone not on the list is added, to sign in to the role', newcomer.code === 0 && /zoe@contoso.example <zoe@contoso.example> is the administrator/.test(newcomer.out), newcomer.out);
+  check('someone not on the list is added, to sign in to the role', newcomer.code === 0 && /zoe@contoso.example <zoe@contoso.example> is an administrator now/.test(newcomer.out), newcomer.out);
   check('the script wants an address', (await makeAdministrator(database.url)).code === 2);
   check('and a database', (await makeAdministrator(null, 'zoe@contoso.example')).code === 2);
 
@@ -254,7 +312,20 @@ try {
   const local = await as(open, null, 'GET', '/api/me');
   check('with sign-in off, whoever is there is the administrator, with nobody to name and one sandbox between them',
     local.body.role === 'administrator' && local.body.name === null && typeof local.body.id === 'string', JSON.stringify(local.body));
-  check('and the list still reads', (await as(open, null, 'GET', '/api/people')).status === 200);
+  const listed = await as(open, null, 'GET', '/api/people');
+  check('and the list still reads', listed.status === 200);
+  // Whoever is there is an administrator by the config, not by a row, so the
+  // rows can be taken down to the last administrator — and no further.
+  const administrators = listed.body.people.filter((person) => person.role === 'administrator');
+  const answers = [];
+  for (const person of administrators) {
+    answers.push(await as(open, null, 'PATCH', `/api/people/${person.id}`, { role: 'publisher' }));
+  }
+  check('the last administrator on the list stays one',
+    administrators.length > 1 && answers.slice(0, -1).every((answer) => answer.status === 200)
+    && answers.at(-1).status === 409 && /only administrator/.test(answers.at(-1).body.error), JSON.stringify(answers.map((answer) => answer.body)));
+  check('and is not taken off the list either',
+    (await as(open, null, 'DELETE', `/api/people/${administrators.at(-1).id}`)).status === 409);
   await open.stop();
 
   // --- the development bypass, on an empty list ---
@@ -273,10 +344,13 @@ try {
   const samMe = await as(dev, null, 'GET', '/api/me', undefined, { cookie: sam.cookie });
   check('the next is whoever they say, with the role they ask for', samMe.body.role === 'publisher' && samMe.body.name === 'Sam', JSON.stringify(samMe.body));
   const samAgain = await as(dev, null, 'POST', '/auth/login/dev', { name: 'Sam', role: 'administrator' });
-  check('the same name signs in as the same person, and asking to administer hands the role over',
+  check('the same name signs in as the same person, and asking to administer makes them an administrator too',
     (await as(dev, null, 'GET', '/api/me', undefined, { cookie: samAgain.cookie })).body.id === samMe.body.id
     && (await as(dev, null, 'GET', '/api/me', undefined, { cookie: samAgain.cookie })).body.role === 'administrator'
-    && (await as(dev, null, 'GET', '/api/me', undefined, { cookie: pat.cookie })).body.role === 'publisher');
+    && (await as(dev, null, 'GET', '/api/me', undefined, { cookie: pat.cookie })).body.role === 'administrator');
+  const patAgain = await as(dev, null, 'POST', '/auth/login/dev', { name: 'Pat', role: 'viewer' });
+  check('with another administrator there, asking for less is having it',
+    (await as(dev, null, 'GET', '/api/me', undefined, { cookie: patAgain.cookie })).body.role === 'viewer');
   const plain = await as(dev, null, 'POST', '/auth/login/dev');
   const plainMe = await as(dev, null, 'GET', '/api/me', undefined, { cookie: plain.cookie });
   check('with nothing said, the bypass is the stock developer, a contributor',

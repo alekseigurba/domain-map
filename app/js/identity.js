@@ -30,18 +30,22 @@ export const ROLE_NAMES = {
   viewer: 'Viewer',
 };
 
-/** What each role may do, in a few words, for the profile and the roster. */
+/**
+ * What each role may do, in a sentence: the profile's line, the key at the
+ * head of Users & access, and the pointer over a role on the roster. Each one
+ * up the ladder says what it adds, since it holds everything below it.
+ */
 export const ROLE_SAYS = {
-  administrator: 'manages people and access, publishes, edits and saves',
-  publisher: 'publishes the map, edits and saves',
-  contributor: 'edits and saves versions',
-  viewer: 'sees the published map',
+  administrator: 'does what a publisher does, and decides who is on the list and what each may do',
+  publisher: 'does what a contributor does, and chooses which shared version everyone sees',
+  contributor: 'edits the map, saves versions to a sandbox, shares them, and talks to the Assistant',
+  viewer: 'sees the published map, and nothing else',
 };
 
 /**
  * `{ required, id, name, username, email, method, role }`, where the role is
  * one of RANK. With sign-in off there is nobody to name, and whoever is there
- * is the administrator.
+ * is an administrator.
  */
 export async function whoAmI() {
   const response = await fetch('api/me', { cache: 'no-store', headers: { accept: 'application/json' } });
@@ -62,7 +66,7 @@ export function initialsOf(name) {
   return `${first}${last ?? ''}`.toUpperCase();
 }
 
-/** "Contributor — edits and saves versions". */
+/** "Viewer — sees the published map, and nothing else". */
 const roleLine = (role) => (ROLE_NAMES[role] ? `${ROLE_NAMES[role]} — ${ROLE_SAYS[role]}` : role);
 
 /**

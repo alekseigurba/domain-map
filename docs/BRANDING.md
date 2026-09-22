@@ -36,7 +36,7 @@ Azure OpenAI, Azure AI Foundry, a gateway, Ollama — or Anthropic's Messages AP
 not, and `ASSISTANT_MODEL` names a model where the URL does not — by the API's
 own id for it, `claude-haiku-4-5` rather than `haiku`. The key stays on
 the server. Every message carries the whole map to that URL, drafts included, and
-every contributor may send one — which is everyone who signs in, until the
+every contributor may send one — which is everyone who signs in, until an
 administrator says otherwise.
 
 `OWNER_EMAILS` — read **once**, into an empty people table the first time the
@@ -44,11 +44,11 @@ server starts: the first address becomes the administrator and the rest
 contributors. After that, who may do what is managed in the app, in *Users &
 access*, and the variable is not looked at again. Left empty, the first person to
 sign in is the administrator, and the server warns about that at startup. With
-sign-in off, whoever is there is the administrator, which is what makes `npm run
-start:dev` work with no configuration at all. For the day the administrator has
-left without handing over, `npm run make-administrator -- someone@example.com`
-against `DATABASE_URL` makes someone else the administrator — from a repo built
-on the package, as
+sign-in off, whoever is there is an administrator, which is what makes `npm run
+start:dev` work with no configuration at all. There may be several
+administrators; for the day they have all left, `npm run make-administrator --
+someone@example.com` against `DATABASE_URL` makes someone an administrator —
+from a repo built on the package, as
 `node node_modules/domain-map/scripts/make-administrator.mjs someone@example.com`,
 and on a Container App through `az containerapp exec` into the running revision.
 

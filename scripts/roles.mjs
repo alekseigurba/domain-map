@@ -1,9 +1,9 @@
 // What a person may do. Four roles, one to a person, each holding everything
 // the one below it does: a viewer sees the published map; a contributor edits
 // and saves versions; a publisher also chooses which version is the map
-// everyone sees; the administrator also manages people and access, and there
-// is exactly one. Roles are rows in Postgres (scripts/people-store.mjs), read
-// on every request, so a change applies at the person's next click.
+// everyone sees; an administrator also manages people and access, and there
+// is always at least one. Roles are rows in Postgres (scripts/people-store.mjs),
+// read on every request, so a change applies at the person's next click.
 //
 // OWNER_EMAILS is read once, into an empty people table at first boot: the
 // first address becomes the administrator and the rest contributors. After

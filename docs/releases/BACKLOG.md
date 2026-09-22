@@ -20,5 +20,4 @@
 - Apply labels (and contents?) from metadata (e.g., title, team, etc.).
 - A viewer who follows a `?version=` link is turned away rather than shown the published map. Worth revisiting.
 - A directory behind the people list, per provider. For Entra, the users and groups assigned to the app over Microsoft Graph (`Application.Read.All`, `GroupMember.ReadBasic.All`, `User.ReadBasic.All`, with a tenant administrator's consent), so the Owner box offers people who have not signed in yet and the list says who has lost access.
-- Hiding or purging a person from Users & access. The floor is viewer today; a person who stopped signing in sits on the list with when they were last here.
 - Versions carry no note or description. A version can be named now, but there is nowhere to say what it was for.

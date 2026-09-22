@@ -175,15 +175,18 @@ export function createDomainMapServer(options = {}) {
   /**
    * A sign-in as it happens: the person is made or found the moment they are
    * in, and the bypass's role — a developer trying out what each role sees —
-   * is theirs from then on. Only the bypass carries one.
+   * is theirs from then on. Only the bypass carries one. The last
+   * administrator asking for less stays an administrator, as the list would
+   * otherwise be left with nobody to run it.
    */
   async function recordSignIn(user, { role } = {}) {
     const login = loginOf(user);
     if (!login) return;
     const person = await people.signIn(login);
     if (role && role !== person.role) {
-      if (role === ADMINISTRATOR) await people.makeAdministrator(person.id);
-      else if (person.role !== ADMINISTRATOR) await people.setRole(person.id, role);
+      await people.setRole(person.id, role).catch((error) => {
+        if (error.status !== 409) throw error;
+      });
     }
   }
 
@@ -204,9 +207,9 @@ export function createDomainMapServer(options = {}) {
   }
   warnings.push(...assistant.warnings);
   // Every message a contributor sends is paid for by whoever owns the key, and
-  // everyone who signs in is a contributor until the administrator says otherwise.
+  // everyone who signs in is a contributor until an administrator says otherwise.
   if (assistant.connected) {
-    warnings.push(`The Assistant is connected to ${assistant.host}: everyone ${required ? 'who signs in is a contributor until the administrator says otherwise, and any contributor' : 'who can reach this server'} `
+    warnings.push(`The Assistant is connected to ${assistant.host}: everyone ${required ? 'who signs in is a contributor until an administrator says otherwise, and any contributor' : 'who can reach this server'} `
       + 'can send the map to it, on the key this server holds.');
   }
 
@@ -316,7 +319,7 @@ export function createDomainMapServer(options = {}) {
   // Versions: a contributor's own sandbox and the shared versions, and a viewer
   // only ever the published one. A sandbox version is saved, renamed, deleted
   // and shared by the one person whose it is; a shared one is renamed or
-  // deleted by whoever shared it, a publisher or the administrator, and never
+  // deleted by whoever shared it, a publisher or an administrator, and never
   // saved over. Publishing is a publisher's, from the shared versions only.
   async function handleVersions(request, response, url, who) {
     const { method } = request;
@@ -456,20 +459,14 @@ export function createDomainMapServer(options = {}) {
   }
 
   // People: everyone who works on the map may see who else does and what each
-  // may do; only the administrator changes it. A viewer is not shown the list.
+  // may do; only an administrator changes it, and never on their own row. A
+  // viewer is not shown the list.
   async function handlePeople(request, response, url, who) {
     const { method } = request;
     const path = url.pathname;
     const administratorOnly = () =>
-      sendJson(response, 403, { error: 'Only the administrator can change who may do what.' });
-
-    if (path === '/api/administrator') {
-      if (method !== 'PUT') return notAllowed(response, 'PUT');
-      if (!may(who, ADMINISTRATOR)) return administratorOnly();
-      const { id } = await readJson(request);
-      if (typeof id !== 'string' || !id) throw failure(400, 'Say who is to be the administrator.');
-      return sendJson(response, 200, await people.makeAdministrator(id));
-    }
+      sendJson(response, 403, { error: 'Only an administrator can change who may do what.' });
+    const by = who.person?.id ?? null;
 
     if (path === '/api/people') {
       if (method === 'GET') {
@@ -488,13 +485,19 @@ export function createDomainMapServer(options = {}) {
     if (!path.startsWith('/api/people/') || id === '' || id.includes('/')) {
       return sendJson(response, 404, { error: `Nothing at ${path}.` });
     }
-    if (method !== 'PATCH') return notAllowed(response, 'PATCH');
+    if (method !== 'PATCH' && method !== 'DELETE') return notAllowed(response, 'PATCH, DELETE');
     if (!may(who, ADMINISTRATOR)) return administratorOnly();
+
+    if (method === 'DELETE') {
+      await people.remove(id, { by });
+      response.writeHead(204).end();
+      return;
+    }
 
     const { role, name, email } = await readJson(request);
     let person = null;
     if (name !== undefined || email !== undefined) person = await people.edit(id, { name, email });
-    if (role !== undefined) person = await people.setRole(id, role);
+    if (role !== undefined) person = await people.setRole(id, role, { by });
     if (!person) throw failure(400, 'Say what to change: a role, or a name and address.');
     return sendJson(response, 200, person);
   }
@@ -654,7 +657,7 @@ export function createDomainMapServer(options = {}) {
         await handleFiles(request, response, url, await identify(request));
       } else if (url.pathname.startsWith('/api/assistant/')) {
         await handleAssistant(request, response, url, await identify(request));
-      } else if (url.pathname === '/api/people' || url.pathname.startsWith('/api/people/') || url.pathname === '/api/administrator') {
+      } else if (url.pathname === '/api/people' || url.pathname.startsWith('/api/people/')) {
         await handlePeople(request, response, url, await identify(request));
       } else if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         await handleVersions(request, response, url, await identify(request));

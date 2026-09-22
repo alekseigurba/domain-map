@@ -143,14 +143,16 @@ pressed, all at once.
 
 Who may do any of this is a role, one to a person. Everyone who signs in is a
 **contributor**: they open any version, edit, save, rename and delete. A
-**publisher** also chooses which version is the map everyone sees. The one
+**publisher** also chooses which version is the map everyone sees. An
 **administrator** also decides who is what, in **Users & access** under the
 avatar: a role on each row, someone added by email ahead of their first
-sign-in, and *Make administrator* to hand the role over. A **viewer** sees the
-published map and nothing else — nobody is one until the administrator says so.
+sign-in, and someone taken off the list — on every row but their own, so there
+is always an administrator left. There can be several. A **viewer** sees the
+published map and nothing else — nobody is one until an administrator says so.
+The dialog opens on a sentence for each role saying what it may do.
 `OWNER_EMAILS` seeds the list the first time the server starts, the first
 address as the administrator; after that the list rules. With sign-in off, as
-in `dev.env`, whoever is there is the administrator, which is what makes `npm
+in `dev.env`, whoever is there is an administrator, which is what makes `npm
 start` work with no configuration at all.
 
 ## Taking it elsewhere

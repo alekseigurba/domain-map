@@ -156,7 +156,7 @@ export function versionStore(pool) {
     const row = scope === 'sandbox' ? await readDraft(from, me) : await readShared(from, me);
     if (!row) throw failure(404, `There is no ${scope === 'sandbox' ? 'version in your sandbox' : 'shared version'} called "${from}".`);
     if (scope === 'shared' && !force && !row.mine) {
-      throw failure(403, `"${from}" is ${sharerOf(row)}'s shared version. Only they, a publisher or the administrator can rename it.`);
+      throw failure(403, `"${from}" is ${sharerOf(row)}'s shared version. Only they, a publisher or an administrator can rename it.`);
     }
     if (from === to) return row;
 
@@ -178,7 +178,7 @@ export function versionStore(pool) {
     const row = scope === 'sandbox' ? await readDraft(name, me) : await readShared(name, me);
     if (!row) throw failure(404, `There is no ${scope === 'sandbox' ? 'version in your sandbox' : 'shared version'} called "${name}".`);
     if (scope === 'shared' && !force && !row.mine) {
-      throw failure(403, `"${name}" is ${sharerOf(row)}'s shared version. Only they, a publisher or the administrator can delete it.`);
+      throw failure(403, `"${name}" is ${sharerOf(row)}'s shared version. Only they, a publisher or an administrator can delete it.`);
     }
     try {
       await pool.query(

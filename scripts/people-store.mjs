@@ -4,9 +4,10 @@
 //
 // A failure a person can do something about carries an HTTP status, and the
 // server passes it on as it is: 404 for a person who is not there, 409 for an
-// address already on the list, 400 for a role that is not one.
+// address already on the list or a change that would leave the map without an
+// administrator, 400 for a role that is not one.
 
-import { ADMINISTRATOR, CONTRIBUTOR, PUBLISHER, ROLES, isRole } from './roles.mjs';
+import { ADMINISTRATOR, CONTRIBUTOR, ROLES, isRole } from './roles.mjs';
 
 const failure = (status, message) => Object.assign(new Error(message), { status });
 
@@ -14,6 +15,14 @@ const failure = (status, message) => Object.assign(new Error(message), { status 
 const MAX_LENGTH = 200;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The key every change to a role or to the list takes a lock on, for the
+ * length of its transaction. Two administrators taking each other down at the
+ * same moment would each see the other still there and both go through; one
+ * at a time, the second sees what the first did.
+ */
+const ROLES_LOCK = 0x70656f70; // "peop"
 
 const COLUMNS = `p.id, p.name, p.email, p.role, p.created_at, p.last_signed_in,
   coalesce((select array_agg(l.source order by l.source) from logins l where l.person_id = p.id), '{}') as sources,
@@ -159,24 +168,71 @@ export function peopleStore(pool) {
     }
   }
 
-  /** A role that can be given: every one but the administrator's, which is handed over instead. */
   function checkRole(role) {
-    if (!isRole(role)) return `A role is one of ${ROLES.join(', ')}.`;
-    if (role === ADMINISTRATOR) return 'There is one administrator. Hand the role over with Make administrator instead.';
-    return null;
+    return isRole(role) ? null : `A role is one of ${ROLES.join(', ')}.`;
   }
 
-  /** Change what a person may do. The administrator's own role is handed over, never set. */
-  async function setRole(id, role) {
+  /**
+   * `work(client, person)` in one transaction, holding the roles lock, with the
+   * person as the database has them now. Refused before anything is done when
+   * they are not there, when it is `by` acting on their own row — a role is
+   * changed and a person removed by someone else, so whoever does it is still
+   * an administrator after — or when the change `demotes` an administrator
+   * and there is no other.
+   */
+  async function withPerson(id, { by = null, own, demotes }, work) {
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('select pg_advisory_xact_lock($1)', [ROLES_LOCK]);
+      const { rows: [person] } = await client.query(
+        'select id, name, role from people where id = $1', [UUID.test(id ?? '') ? id : null]);
+      if (!person) throw failure(404, 'There is no such person.');
+      if (by && by === person.id) throw failure(409, own);
+      if (person.role === ADMINISTRATOR && demotes) {
+        const { rows: [{ count }] } = await client.query(
+          `select count(*)::int as count from people where role = '${ADMINISTRATOR}' and id <> $1`, [person.id]);
+        if (count === 0) throw failure(409, `${person.name} is the only administrator. Make someone else one first.`);
+      }
+      const answer = await work(client, person);
+      await client.query('commit');
+      return answer;
+    } catch (error) {
+      await client.query('rollback').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Change what a person may do, the administrator's role as any other. `by`
+   * is who asks, when someone does: nobody changes their own row, and the last
+   * administrator stays one.
+   */
+  async function setRole(id, role, { by } = {}) {
     const problem = checkRole(role);
     if (problem) throw failure(400, problem);
+    await withPerson(id, {
+      by,
+      own: 'Your own role is changed by another administrator, not on your own row.',
+      demotes: role !== ADMINISTRATOR,
+    }, (client, person) => client.query('update people set role = $2 where id = $1', [person.id, role]));
+    return read(id);
+  }
 
-    const { rows } = await pool.query(
-      `update people set role = $2 where id = $1 and role <> '${ADMINISTRATOR}' returning id`,
-      [UUID.test(id ?? '') ? id : '00000000-0000-0000-0000-000000000000', role]);
-    if (rows[0]) return read(id);
-    if (!(await read(id))) throw failure(404, 'There is no such person.');
-    throw failure(409, 'The administrator cannot step down. Make someone else the administrator instead.');
+  /**
+   * Take someone off the list, and their sandbox with them: the database
+   * deletes the versions in it, and what they shared stays shared, with nobody
+   * as its sharer. Their logins go too, so a sign-in they can still make finds
+   * nobody, and they come back as anyone new does.
+   */
+  async function remove(id, { by } = {}) {
+    await withPerson(id, {
+      by,
+      own: 'Nobody takes themselves off the list: another administrator does.',
+      demotes: true,
+    }, (client, person) => client.query('delete from people where id = $1', [person.id]));
   }
 
   /**
@@ -204,37 +260,6 @@ export function peopleStore(pool) {
   }
 
   /**
-   * Hand the one administrator's role to `id`. Whoever held it becomes a
-   * publisher -- still able to do everything but manage people -- and the
-   * two changes are one transaction, demoting first, since the database admits
-   * one administrator at a time.
-   */
-  async function makeAdministrator(id) {
-    if (!(await read(id))) throw failure(404, 'There is no such person.');
-
-    const client = await pool.connect();
-    try {
-      await client.query('begin');
-      const { rows: [current] } = await client.query(
-        `select id from people where role = '${ADMINISTRATOR}' for update`);
-      if (current && current.id !== id) {
-        await client.query('update people set role = $2 where id = $1', [current.id, PUBLISHER]);
-      }
-      await client.query('update people set role = $2 where id = $1', [id, ADMINISTRATOR]);
-      await client.query('commit');
-      return {
-        administrator: await read(id),
-        previous: current && current.id !== id ? await read(current.id) : null,
-      };
-    } catch (error) {
-      await client.query('rollback').catch(() => {});
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
    * Fill an empty table, once, from OWNER_EMAILS: the first address is the
    * administrator and the rest are contributors, each named by their address
    * until they sign in. Called on the client that holds the migration lock, so
@@ -253,5 +278,5 @@ export function peopleStore(pool) {
     return emails;
   }
 
-  return { list, read, byEmail, byLogin, hasAdministrator, signIn, touch, add, setRole, edit, makeAdministrator, seedIfEmpty };
+  return { list, read, byEmail, byLogin, hasAdministrator, signIn, touch, add, setRole, remove, edit, seedIfEmpty };
 }

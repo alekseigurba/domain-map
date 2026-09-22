@@ -181,41 +181,50 @@ palette editor, since it holds prose rather than controls.
 Last in the row, the **avatar**: initials in a circle, or a silhouette when
 sign-in is off. It opens the **profile popup**, pinned under it like About and
 narrower: the name, the address, one line saying the role and what it may do —
-*Contributor — edits and saves versions* — and, in the foot, **Users & access**
+*Viewer — sees the published map, and nothing else* — and, in the foot, **Users & access**
 for everyone who works on the map, **Sign out**, and Close on the right.
 
 ### Versions
 
 The chip in the header names the version open and tags it **Published** or, in
 the quiet badge, **Shared** — what Save would do is always in view, since a
-shared version is never saved over. The dialog it opens is centred and 760px
-wide, and holds two lists under small uppercase headings in the dialog title's
-style: **My sandbox**, then **Shared**. Each is the same table — name with its
-tags, when, by whom, actions — and says so in its rows' place when it is empty.
-A sandbox row offers Open, Rename, Share and Delete; a shared row Open, Take a
-copy, and then only what this person may do: Rename and Delete for whoever
-shared it and for a publisher, Publish for a publisher, so a row never carries a
-button that would be refused. The shared version this person put there wears a
-quiet **Yours** tag beside Published and Open. Every button in the dialog is
-held down while an action is on its way, and the lists are read again after.
+shared version is never saved over. The dialog it opens is centred and 920px
+wide — measured against a shared row with all five actions and all three tags,
+so nothing is behind a scroll bar — and holds two lists under small uppercase
+headings in the dialog title's style: **My sandbox**, then **Shared**. Each is
+the same table — name with its tags in a 16rem box, when, by whom, actions — and
+says so in its rows' place when it is empty. On a phone each row is a card: the
+name cut where the card ends, and the actions wrapping. A sandbox row offers
+Open, Rename, Share and Delete; a shared row Open, Take a copy, and then only
+what this person may do: Rename and Delete for whoever shared it and for a
+publisher, Publish for a publisher, so a row never carries a button that would
+be refused. The shared version this person put there wears a quiet **Yours** tag
+beside Published and Open. Every button in the dialog is held down while an
+action is on its way, and the lists are read again after.
 
 ### Users & access
 
 Who may open the map and what each may do: the roster, a dialog laid out like
-Versions — centred, 760px, a table with a row a person — and reached from the
-profile popup, which shuts as it opens, since who may do what belongs with who
-you are. A row is the name in `--fw-semibold` with a quiet **You** badge beside
-it when it is, the address under the name in `--ink-soft`, the role, when they
-were last here (*Not yet* before a first sign-in), and the row's actions. The
-row that is you takes `--chrome`, as the open version does. Between the role
-and the last sign-in, **Sandbox**: how many versions theirs holds, or *Empty* —
-never what. For the administrator the role is a `<select>` the height of a
-chip, on every row but their own, which reads as it is; the action is **Make
-administrator**, which asks first. At the foot, before Close, the administrator's form: a name box, an
-address box and a role select in one row, and **Add** — the same `.field__input`
-and `.field__select` the details panel uses, wrapping to a short form on a
-phone. Contributors and publishers see the same rows with words where the
-controls are, and no form. A viewer is not shown the dialog at all.
+Versions — centred, a table with a row a person, but 760px, since a row here
+carries one action — and reached from the profile popup, which shuts as it
+opens, since who may do what belongs with who you are. Under the title, the
+**key**: the four roles lowest first, a two-column grid of each name in
+`--fw-semibold` against its sentence in `--ink-soft`, the same sentence the
+profile popup and a role's pointer carry. A row is the name in `--fw-semibold`
+with a quiet **You** badge beside it when it is, the address under the name in
+`--ink-soft`, the role, when they were last here (*Not yet* before a first
+sign-in), and the row's actions. The row that is you takes `--chrome`, as the
+open version does. Between the role and the last sign-in, **Sandbox**: how many
+versions theirs holds, or *Empty* — never what. For an administrator the role is
+a `<select>` the height of a chip offering all four, on every row but their own,
+which reads as it is; picking Administrator asks first. The action is
+**Remove**, a danger chip like Delete, which asks first about someone who has
+signed in and names what their sandbox holds. At the foot, before Close, an
+administrator's form: a name box, an address box and a role select in one row,
+and **Add** — the same `.field__input` and `.field__select` the details panel
+uses, wrapping to a short form on a phone. Contributors and publishers see the
+same rows with words where the controls are, and no form. A viewer is not shown
+the dialog at all.
 
 The sign-in screen's bypass, when it is on, is a small form above its button:
 a name box and a role select at 40px, the height of the buttons beside them,
