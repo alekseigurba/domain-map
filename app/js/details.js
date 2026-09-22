@@ -209,6 +209,144 @@ function liveText(type, record, key, {
   return input;
 }
 
+// --- who owns it -------------------------------------------------------------
+
+/**
+ * The people an Owner box offers: everyone on the list, whatever they may do —
+ * a domain's owner is as often a viewer of the map as an editor of it. Read
+ * once and kept, since the panel is rebuilt on every selection; Users & access
+ * asks for it again when it changes someone. A viewer is not shown the list,
+ * and gets a plain box.
+ */
+let people = null;
+let loadingPeople = null;
+
+function loadPeople() {
+  loadingPeople ??= (async () => {
+    try {
+      people = await handlers.onPeople?.() ?? [];
+    } catch {
+      people = [];
+    }
+    fillPeopleOptions();
+    renderDetails();
+  })();
+  return loadingPeople;
+}
+
+/** The list has changed under the page: read it again, and redraw whatever names someone. */
+export async function reloadPeople() {
+  loadingPeople = null;
+  await loadPeople();
+}
+
+/** The names behind every Owner box: one datalist in the page, filled here. */
+function fillPeopleOptions() {
+  const list = document.getElementById('people-options');
+  if (!list) return;
+  list.replaceChildren(...people.map((person) => {
+    const option = document.createElement('option');
+    option.value = person.name;
+    if (person.email && person.email !== person.name) option.label = person.email;
+    return option;
+  }));
+}
+
+const personById = (id) => (id ? (people ?? []).find((person) => person.id === id) ?? null : null);
+
+/** The one person called this, if exactly one is: two of a name, and neither is picked by typing it. */
+function personNamed(name) {
+  const wanted = name.trim().toLowerCase();
+  if (!wanted) return null;
+  const called = (people ?? []).filter((person) => person.name.trim().toLowerCase() === wanted);
+  return called.length === 1 ? called[0] : null;
+}
+
+/** Every element that can name an owner, with the list it is kept in. */
+const OWNED = () => [
+  ['area', store.areas], ['domain', store.domains], ['capability', store.capabilities],
+  ['touchpoint', store.touchpoints], ['actor', store.actors],
+];
+
+/**
+ * Every owner picked from the list, given the name the list has now. Called
+ * before a save, so the file catches up with a person renamed in the
+ * directory. Silent: the file following the directory is nobody's change,
+ * and nothing to undo.
+ */
+export function freshenOwners() {
+  if (!people) return;
+  for (const [kind, list] of OWNED()) {
+    for (const record of list ?? []) {
+      const person = personById(record.ownerId);
+      if (person && person.name !== record.owner) patchLocal(kind, record.id, { owner: person.name });
+    }
+  }
+}
+
+/**
+ * Who owns the thing: a name, picked from the list or typed. The box is a text
+ * field with the list behind it, so a team or someone outside the directory
+ * can still be typed. A name that is one person's on the list carries their
+ * id with it, so the map still knows who it meant after they are renamed; a
+ * name nobody on the list has carries no id. Under the box, who the id names
+ * — their address, or that they are no longer on the list.
+ */
+function ownerField(type, record) {
+  if (people === null) loadPeople();
+
+  const picked = personById(record.ownerId);
+  const shown = () => picked?.name ?? record.owner ?? '';
+
+  const input = document.createElement('input');
+  input.className = 'field__input';
+  input.maxLength = 200;
+  if (people?.length) input.setAttribute('list', 'people-options');
+  input.value = shown();
+
+  const hint = document.createElement('p');
+  hint.className = 'field__hint';
+  const sayWho = () => {
+    const person = personById(record.ownerId);
+    hint.textContent = person
+      ? (person.email && person.email !== person.name ? person.email : '')
+      : (record.ownerId && people ? 'Not on the people list any more.' : '');
+    hint.hidden = !hint.textContent;
+  };
+  sayWho();
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'field__stack';
+  wrapper.append(input, hint);
+
+  if (!editMode) {
+    input.classList.add('field__input--quiet');
+    input.title = 'Browsing: what you type here is not saved. Press Edit to change the map.';
+    input.addEventListener('focus', () => { editingId = record.id; });
+    input.addEventListener('blur', () => {
+      editingId = null;
+      input.value = shown();
+    });
+    return wrapper;
+  }
+
+  const change = () => ({ owner: input.value, ownerId: personNamed(input.value)?.id ?? null });
+  input.addEventListener('input', () => {
+    patchLocal(type, record.id, change());
+    sayWho();
+    handlers.onLive?.();
+    clearTimeout(debounce);
+    debounce = setTimeout(() => handlers.onPatch?.(type, record.id, change()), 400);
+  });
+  input.addEventListener('focus', () => { editingId = record.id; });
+  input.addEventListener('blur', () => {
+    editingId = null;
+    clearTimeout(debounce);
+    handlers.onPatch?.(type, record.id, change());
+  });
+  return wrapper;
+}
+
 /** What holds the caret while the map's own description is being typed: no record has this id. */
 const THE_MAP = 'the-map';
 
@@ -662,7 +800,7 @@ function metadataSection(type, record, { lead = [], trail = [] }) {
       onInput: refreshLabel, shown: oneLine, stored: withBreaks,
     })),
     field('Description', liveText(type, record, 'description', { multiline: true })),
-    field('Owner', liveText(type, record, 'owner')),
+    field('Owner', ownerField(type, record)),
     // What kind of thing this is, from the list its kind keeps.
     field('Type', typeField(type, record)),
     // An icon says what a capability *is*, so it belongs with its name rather

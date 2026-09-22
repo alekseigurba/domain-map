@@ -8,11 +8,16 @@
 // requires assignment, so Entra refuses a token to anyone who is not assigned
 // to it, and the app accepts any token Entra issues for it — so access is
 // managed by who is assigned to the application in Entra, not by anything here.
-// Nor is what they may do once in: `user` hands the session to the server, and
-// scripts/roles.mjs decides who is an owner.
+// Nor is what they may do once in: `user` hands the session to the server,
+// which looks the person up by the door they came in by — `source` and
+// `subject`, Entra's object id — and scripts/roles.mjs says what their row
+// lets them do. `onSignIn` tells the server the moment someone signs in, so
+// the person exists before their first request.
 
 import { createHash, createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto';
 import { posix } from 'node:path';
+
+import { CONTRIBUTOR, isRole } from './roles.mjs';
 
 const SESSION_COOKIE = 'domainmap.auth';
 /** The state, nonce and PKCE verifier of a sign-in on its way through Entra. */
@@ -166,6 +171,31 @@ export function isPublic(method, path) {
 
 const random = () => randomBytes(32).toString('base64url');
 
+/** The bypass form is a name and a role: nothing that needs more than this. */
+const MAX_FORM_BYTES = 4096;
+
+/** A JSON body, or nothing: the bypass works with or without one. */
+function readJson(request) {
+  return new Promise((resolve) => {
+    let text = '';
+    request.on('data', (chunk) => {
+      text += chunk;
+      if (text.length > MAX_FORM_BYTES) request.destroy();
+    });
+    request.on('end', () => {
+      try {
+        resolve(JSON.parse(text || 'null') ?? {});
+      } catch {
+        resolve({});
+      }
+    });
+    request.on('error', () => resolve({}));
+  });
+}
+
+/** "Alice van Example" as a login's subject: the same person each time the name is typed. */
+const slugOf = (name) => name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'developer';
+
 function sendJson(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   response.end(JSON.stringify(body));
@@ -285,12 +315,22 @@ function createEntra(config) {
  * a session and has none. It returns true when it has answered the request, and
  * false when the request should carry on to the files or the API.
  */
-export function createAuth(env = process.env) {
+export function createAuth(env = process.env, { onSignIn } = {}) {
   const config = readConfig(env);
   const entra = config.microsoft ? createEntra(config) : null;
   const sessionMs = config.sessionHours * 3_600_000;
 
-  function startSession(request, response, user) {
+  /**
+   * Someone is in: tell the server, then seal the session. A server that
+   * cannot record the sign-in — the database is away — still lets them in,
+   * since the row is made again on their first request.
+   */
+  async function startSession(request, response, user, extra = {}) {
+    try {
+      await onSignIn?.(user, extra);
+    } catch (error) {
+      console.error(`Could not record the sign-in: ${error.message}`);
+    }
     const now = Date.now();
     const value = seal(config.sessionSecret, { ...user, iat: now, exp: now + sessionMs });
     setCookie(request, response, SESSION_COOKIE, value, Math.floor(sessionMs / 1000));
@@ -346,11 +386,15 @@ export function createAuth(env = process.env) {
         verifier: pending.verifier,
         nonce: pending.nonce,
       });
-      startSession(request, response, {
+      await startSession(request, response, {
+        // The object id is the one thing about a person Entra never changes;
+        // a name or an address can, and the person stays the same row.
+        source: 'entra',
+        subject: claims.oid ?? claims.sub,
         name: claims.name ?? claims.preferred_username ?? 'Signed in',
         username: claims.preferred_username ?? claims.email ?? null,
         // Only there when the tenant issues it, and not always the same as
-        // the sign-in name: owners are matched against either one.
+        // the sign-in name: a person added by address is matched on either.
         email: claims.email ?? null,
         method: 'microsoft',
       });
@@ -362,9 +406,13 @@ export function createAuth(env = process.env) {
   }
 
   /** Whoever the request's session belongs to, or null: nobody signed in, or sign-in off. */
-  const user = (request) => (config.enabled
-    ? unseal(config.sessionSecret, readCookies(request.headers.cookie)[SESSION_COOKIE])
-    : null);
+  const user = (request) => {
+    if (!config.enabled) return null;
+    const who = unseal(config.sessionSecret, readCookies(request.headers.cookie)[SESSION_COOKIE]);
+    // A session sealed before sessions named the door someone came in by has
+    // no person to belong to. Entra signs them straight back in, once.
+    return who && !who.subject ? null : who;
+  };
 
   async function handle(request, response, url) {
     const path = posix.normalize(decodeURIComponent(url.pathname));
@@ -395,7 +443,13 @@ export function createAuth(env = process.env) {
         sendJson(response, 400, { error: 'The development bypass is switched off on this server.' });
         return true;
       }
-      startSession(request, response, { name: 'Developer (bypass)', username: null, method: 'bypass' });
+      // A name makes a person, so a developer can be several in turn and try
+      // what each may do; the role asked for is theirs from this sign-in on.
+      const form = await readJson(request);
+      const name = typeof form.name === 'string' && form.name.trim() ? form.name.trim().slice(0, 200) : 'Developer (bypass)';
+      const role = isRole(form.role) ? form.role : CONTRIBUTOR;
+      await startSession(request, response,
+        { source: 'dev', subject: slugOf(name), name, username: null, method: 'bypass' }, { role });
       sendJson(response, 200, { returnUrl: safeReturnUrl(url.searchParams.get('returnUrl')) });
       return true;
     }

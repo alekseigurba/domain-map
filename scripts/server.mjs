@@ -20,7 +20,8 @@ import { createAssistant } from './assistant.mjs';
 import { createAuth } from './auth.mjs';
 import { describeDatabase, migrate, openDatabase, waitForDatabase, withLock } from './database.mjs';
 import { fileStore } from './file-store.mjs';
-import { OWNER, readOwners, roleOf } from './roles.mjs';
+import { peopleStore } from './people-store.mjs';
+import { ADMINISTRATOR, CONTRIBUTOR, PUBLISHER, atLeast, readOwners, roleOf } from './roles.mjs';
 import { readSeedVersions, seedStore } from './seed.mjs';
 import { versionStore } from './version-store.mjs';
 
@@ -103,12 +104,17 @@ function readBody(request) {
  *                                        icons, the logo and settings; versions are in Postgres.
  * @param {string}   [options.databaseUrl] The Postgres the versions live in. Defaults to
  *                                        `$DATABASE_URL`, and the server does not start without one.
- * @param {string|string[]} [options.owners] Who may edit and publish, by email. Defaults to
- *                                        `$OWNER_EMAILS`, comma-separated. Empty, everyone who
- *                                        signs in may.
+ * @param {string|string[]} [options.owners] Read once, into an empty people table: the first
+ *                                        address becomes the administrator and the rest
+ *                                        contributors. Defaults to `$OWNER_EMAILS`, comma-separated.
+ *                                        Empty, the first person to sign in is the administrator.
  * @param {object}   [options.auth]       A `{ handle, user, required, warnings }` of your own, for
  *                                        a provider that is not Entra ID. `user(request)` answers
- *                                        with `{ name, username, email }` or null.
+ *                                        with `{ source, subject, name, username, email }` or null;
+ *                                        `source` and `subject` are the door someone came in by and
+ *                                        the provider's own id for them, and without them the email
+ *                                        stands in. `createAuth(env, { onSignIn })` is the package's
+ *                                        own, and the hook is what records a sign-in as it happens.
  * @param {object}   [options.assistant]  A `{ chat, host, model }` of your own, for a model that
  *                                        speaks neither chat completions nor Anthropic's Messages
  *                                        API. `chat({ system, messages }, { signal })` answers with
@@ -140,7 +146,6 @@ export function createDomainMapServer(options = {}) {
     : null;
 
   const store = options.store ?? fileStore(storageDir);
-  const auth = options.auth ?? createAuth(env);
 
   const databaseUrl = options.databaseUrl ?? env.DATABASE_URL;
   if (!databaseUrl) {
@@ -149,6 +154,40 @@ export function createDomainMapServer(options = {}) {
   }
   const pool = openDatabase(databaseUrl);
   const versions = versionStore(pool);
+  const people = peopleStore(pool);
+
+  /**
+   * The door a session came in by, as the people table knows it. An auth of
+   * the consumer's own may say only who someone is, not how they got in: then
+   * the address stands in for both, and one without even that is nobody.
+   */
+  function loginOf(user) {
+    const subject = user.subject ?? user.email ?? user.username ?? null;
+    if (!subject) return null;
+    return {
+      source: user.source ?? 'custom',
+      subject: String(subject),
+      name: user.name ?? String(subject),
+      emails: [...new Set([user.email, user.username].filter(Boolean))],
+    };
+  }
+
+  /**
+   * A sign-in as it happens: the person is made or found the moment they are
+   * in, and the bypass's role — a developer trying out what each role sees —
+   * is theirs from then on. Only the bypass carries one.
+   */
+  async function recordSignIn(user, { role } = {}) {
+    const login = loginOf(user);
+    if (!login) return;
+    const person = await people.signIn(login);
+    if (role && role !== person.role) {
+      if (role === ADMINISTRATOR) await people.makeAdministrator(person.id);
+      else if (person.role !== ADMINISTRATOR) await people.setRole(person.id, role);
+    }
+  }
+
+  const auth = options.auth ?? createAuth(env, { onSignIn: recordSignIn });
 
   // The model behind the Assistant, if there is one. One of the consumer's own
   // is connected by being given; the environment's says so itself.
@@ -157,26 +196,37 @@ export function createDomainMapServer(options = {}) {
     : createAssistant(env);
 
   const owners = readOwners(options.owners ?? env.OWNER_EMAILS);
-  // An auth that cannot say who is asking leaves nobody to make an owner of.
+  // An auth that cannot say who is asking leaves nobody to make anything of.
   const required = auth.required !== false;
   const warnings = [...auth.warnings];
   if (required && typeof auth.user !== 'function') {
     warnings.push('The auth given has no user(request), so nobody can be told apart: everyone is a viewer.');
-  } else if (required && owners.size === 0) {
-    warnings.push('OWNER_EMAILS is empty: everyone who signs in is an owner, and can edit and publish the map.');
   }
   warnings.push(...assistant.warnings);
-  // Every message an owner sends is paid for by whoever owns the key.
-  if (assistant.connected && (!required || owners.size === 0)) {
-    warnings.push(`The Assistant is connected to ${assistant.host} and everyone ${required ? 'who signs in' : 'who can reach this server'} `
-      + 'is an owner: any of them can send the map to it, on the key this server holds.');
+  // Every message a contributor sends is paid for by whoever owns the key, and
+  // everyone who signs in is a contributor until the administrator says otherwise.
+  if (assistant.connected) {
+    warnings.push(`The Assistant is connected to ${assistant.host}: everyone ${required ? 'who signs in is a contributor until the administrator says otherwise, and any contributor' : 'who can reach this server'} `
+      + 'can send the map to it, on the key this server holds.');
   }
 
-  /** Who is asking, and what they may do. */
-  function identify(request) {
-    const user = required ? auth.user?.(request) ?? null : null;
-    return { user, role: roleOf(user, { required, owners }) };
+  /**
+   * Who is asking, and what they may do. The role is the person's row, read
+   * now rather than at sign-in, so a change in Users & access applies at the
+   * person's next click. A session whose login the table has never seen — a
+   * consumer's own auth, with no hook to record sign-ins — is entered here.
+   */
+  async function identify(request) {
+    if (!required) return { user: null, person: null, role: roleOf(null, null, { required }) };
+    const user = auth.user?.(request) ?? null;
+    const login = user ? loginOf(user) : null;
+    const person = login
+      ? await people.byLogin(login.source, login.subject) ?? await people.signIn(login)
+      : null;
+    return { user, person, role: roleOf(user, person, { required }) };
   }
+
+  const may = (who, role) => atLeast(who.role, role);
 
   // Where a static request is looked for, in order: the brand's copy of a file
   // wins over the app's own, and a brand that has nothing to say about a file
@@ -205,7 +255,7 @@ export function createDomainMapServer(options = {}) {
     }
 
     if (request.method === 'PUT') {
-      if (who.role !== OWNER) return sendJson(response, 403, { error: 'Only an owner can change the map.' });
+      if (!may(who, CONTRIBUTOR)) return sendJson(response, 403, { error: 'Only a contributor can change the map.' });
       if (key === '') return sendJson(response, 400, { error: 'A key is needed to write to.' });
       if (isVersionKey(key)) return sendJson(response, 403, { error: 'Versions are saved to /api/versions now.' });
       const body = await readBody(request);
@@ -252,33 +302,43 @@ export function createDomainMapServer(options = {}) {
     return text;
   }
 
-  // Versions: every owner sees them all, and a viewer only ever the published
-  // one. Saving, deleting and publishing are an owner's.
+  const notAllowed = (response, allow) => {
+    response.writeHead(405, { Allow: allow });
+    response.end();
+  };
+
+  // Versions: every contributor sees them all, and a viewer only ever the
+  // published one. Saving, renaming and deleting are a contributor's;
+  // publishing is a publisher's.
   async function handleVersions(request, response, url, who) {
     const { method } = request;
     const path = url.pathname;
-    const isOwner = who.role === OWNER;
-    const by = who.user
-      ? { name: who.user.name ?? null, email: who.user.email ?? who.user.username ?? null }
-      : null;
-    const ownersOnly = () => sendJson(response, 403, { error: 'Only an owner can do that.' });
-    const notAllowed = (allow) => {
-      response.writeHead(405, { Allow: allow });
-      response.end();
-    };
+    const contributes = may(who, CONTRIBUTOR);
+    // Who saved it, as the people table names them; a session the table has
+    // no row for is named as the session names it.
+    const by = who.person
+      ? { name: who.person.name, email: who.person.email }
+      : who.user
+        ? { name: who.user.name ?? null, email: who.user.email ?? who.user.username ?? null }
+        : null;
+    const contributorsOnly = () => sendJson(response, 403, { error: 'Only a contributor can do that.' });
 
     if (path === '/api/me') {
-      if (method !== 'GET') return notAllowed('GET');
+      if (method !== 'GET') return notAllowed(response, 'GET');
+      // The page asks once each time it loads, which is as good a "last
+      // signed in" as the sign-in itself, and the one an old session gets.
+      if (who.person) await people.touch(who.person.id);
       return sendJson(response, 200, {
         required,
-        name: who.user?.name ?? null,
+        id: who.person?.id ?? null,
+        name: who.person?.name ?? who.user?.name ?? null,
         username: who.user?.username ?? null,
-        email: who.user?.email ?? null,
+        email: who.person?.email ?? who.user?.email ?? null,
         method: who.user?.method ?? null,
         role: who.role,
-        // Where an owner's messages would go, so the page can say so before one
-        // is sent. A viewer has no chat, and is told nothing about it.
-        assistant: isOwner && assistant.connected
+        // Where a contributor's messages would go, so the page can say so
+        // before one is sent. A viewer has no chat, and is told nothing about it.
+        assistant: contributes && assistant.connected
           ? { host: assistant.host ?? null, model: assistant.model ?? null }
           : null,
       });
@@ -292,25 +352,25 @@ export function createDomainMapServer(options = {}) {
           : sendJson(response, 404, { error: 'Nothing has been published yet.' });
       }
       if (method === 'PUT') {
-        if (!isOwner) return ownersOnly();
+        if (!may(who, PUBLISHER)) return sendJson(response, 403, { error: 'Only a publisher can publish.' });
         const { name } = await readJson(request);
         if (typeof name !== 'string' || !name) throw failure(400, 'Say which version to publish.');
         return sendJson(response, 200, await versions.publish(name));
       }
-      return notAllowed('GET, PUT');
+      return notAllowed(response, 'GET, PUT');
     }
 
     if (path === '/api/versions') {
       if (method === 'GET') {
-        if (!isOwner) return ownersOnly();
+        if (!contributes) return contributorsOnly();
         return sendJson(response, 200, { versions: await versions.list() });
       }
       if (method === 'POST') {
-        if (!isOwner) return ownersOnly();
+        if (!contributes) return contributorsOnly();
         const { document } = await readJson(request);
         return sendJson(response, 201, await versions.create(checkDocument(document), by));
       }
-      return notAllowed('GET, POST');
+      return notAllowed(response, 'GET, POST');
     }
 
     const name = decodeURIComponent(path.slice('/api/versions/'.length));
@@ -322,7 +382,7 @@ export function createDomainMapServer(options = {}) {
       const version = await versions.read(name);
       // The same answer whether or not the version exists: a viewer is not told
       // which drafts there are.
-      if (!isOwner && !version?.published) {
+      if (!contributes && !version?.published) {
         return sendJson(response, 403, { error: 'Only the published version is open to viewers.' });
       }
       return version
@@ -330,7 +390,7 @@ export function createDomainMapServer(options = {}) {
         : sendJson(response, 404, { error: `There is no version "${name}".` });
     }
     if (method === 'PUT') {
-      if (!isOwner) return ownersOnly();
+      if (!contributes) return contributorsOnly();
       const { document, base } = await readJson(request);
       if (typeof base !== 'string' || Number.isNaN(Date.parse(base))) {
         throw failure(400, 'A save has to say when the version it changes was last saved.');
@@ -340,17 +400,61 @@ export function createDomainMapServer(options = {}) {
     // Renaming is not saving, so it does not carry a `base`: it changes what
     // the version is called and nothing about what is in it.
     if (method === 'PATCH') {
-      if (!isOwner) return ownersOnly();
+      if (!contributes) return contributorsOnly();
       const { name: wanted } = await readJson(request);
       return sendJson(response, 200, await versions.rename(name, checkVersionName(wanted)));
     }
     if (method === 'DELETE') {
-      if (!isOwner) return ownersOnly();
+      if (!contributes) return contributorsOnly();
       await versions.remove(name);
       response.writeHead(204).end();
       return;
     }
-    return notAllowed('GET, PUT, PATCH, DELETE');
+    return notAllowed(response, 'GET, PUT, PATCH, DELETE');
+  }
+
+  // People: everyone who works on the map may see who else does and what each
+  // may do; only the administrator changes it. A viewer is not shown the list.
+  async function handlePeople(request, response, url, who) {
+    const { method } = request;
+    const path = url.pathname;
+    const administratorOnly = () =>
+      sendJson(response, 403, { error: 'Only the administrator can change who may do what.' });
+
+    if (path === '/api/administrator') {
+      if (method !== 'PUT') return notAllowed(response, 'PUT');
+      if (!may(who, ADMINISTRATOR)) return administratorOnly();
+      const { id } = await readJson(request);
+      if (typeof id !== 'string' || !id) throw failure(400, 'Say who is to be the administrator.');
+      return sendJson(response, 200, await people.makeAdministrator(id));
+    }
+
+    if (path === '/api/people') {
+      if (method === 'GET') {
+        if (!may(who, CONTRIBUTOR)) return sendJson(response, 403, { error: 'Only a contributor can see who else is here.' });
+        return sendJson(response, 200, { people: await people.list() });
+      }
+      if (method === 'POST') {
+        if (!may(who, ADMINISTRATOR)) return administratorOnly();
+        const { name, email, role } = await readJson(request);
+        return sendJson(response, 201, await people.add({ name, email, role: role ?? CONTRIBUTOR }));
+      }
+      return notAllowed(response, 'GET, POST');
+    }
+
+    const id = decodeURIComponent(path.slice('/api/people/'.length));
+    if (!path.startsWith('/api/people/') || id === '' || id.includes('/')) {
+      return sendJson(response, 404, { error: `Nothing at ${path}.` });
+    }
+    if (method !== 'PATCH') return notAllowed(response, 'PATCH');
+    if (!may(who, ADMINISTRATOR)) return administratorOnly();
+
+    const { role, name, email } = await readJson(request);
+    let person = null;
+    if (name !== undefined || email !== undefined) person = await people.edit(id, { name, email });
+    if (role !== undefined) person = await people.setRole(id, role);
+    if (!person) throw failure(400, 'Say what to change: a role, or a name and address.');
+    return sendJson(response, 200, person);
   }
 
   /** How much one turn may carry: a prompt is the two formats and the map, a few tens of kilobytes. */
@@ -368,7 +472,7 @@ export function createDomainMapServer(options = {}) {
       response.writeHead(405, { Allow: 'POST' });
       return response.end();
     }
-    if (who.role !== OWNER) return sendJson(response, 403, { error: 'Only an owner can talk to the Assistant\'s model.' });
+    if (!may(who, CONTRIBUTOR)) return sendJson(response, 403, { error: 'Only a contributor can talk to the Assistant\'s model.' });
     if (!assistant.connected) return sendJson(response, 404, { error: 'No model is connected to the Assistant.' });
 
     const body = await readBody(request);
@@ -464,12 +568,25 @@ export function createDomainMapServer(options = {}) {
     for (const what of seeded) log(`Seeded ${what} into ${storageDir}`);
 
     await waitForDatabase(pool, { log });
-    const { applied, imported } = await withLock(pool, async (client) => ({
+    const { applied, imported, listed } = await withLock(pool, async (client) => ({
       applied: await migrate(client),
       imported: await versions.importIfEmpty(client, versionsToImport),
+      listed: await people.seedIfEmpty(client, owners),
     }));
     for (const name of applied) log(`Applied migration ${name}`);
     if (imported.length > 0) log(`Imported ${imported.length} version${imported.length === 1 ? '' : 's'}: ${imported.join(', ')}`);
+    if (listed.length > 0) {
+      log(`Seeded ${listed.length} ${listed.length === 1 ? 'person' : 'people'} from OWNER_EMAILS: `
+        + `${listed[0]} is the administrator${listed.length > 1 ? ', the rest are contributors' : ''}`);
+    } else if (owners.length > 0) {
+      log('OWNER_EMAILS is only read into an empty people table; who may do what is managed in Users & access now.');
+    }
+    // Nobody can hand out roles until someone holds this one, and it goes to
+    // whoever signs in first — worth knowing before the first person does.
+    if (required && !(await people.hasAdministrator())) {
+      warn('WARNING: Nobody is the administrator yet: the first person to sign in becomes one. '
+        + 'Set OWNER_EMAILS before the first start to choose who.');
+    }
   })().catch((error) => {
     seedFailure = error;
     warn(`ERROR: ${error.message}`);
@@ -492,11 +609,13 @@ export function createDomainMapServer(options = {}) {
       if (await auth.handle(request, response, url)) {
         // answered: a sign-in route, or someone who has to sign in first
       } else if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
-        await handleFiles(request, response, url, identify(request));
+        await handleFiles(request, response, url, await identify(request));
       } else if (url.pathname.startsWith('/api/assistant/')) {
-        await handleAssistant(request, response, url, identify(request));
+        await handleAssistant(request, response, url, await identify(request));
+      } else if (url.pathname === '/api/people' || url.pathname.startsWith('/api/people/') || url.pathname === '/api/administrator') {
+        await handlePeople(request, response, url, await identify(request));
       } else if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-        await handleVersions(request, response, url, identify(request));
+        await handleVersions(request, response, url, await identify(request));
       } else {
         await handleStatic(request, response, url);
       }

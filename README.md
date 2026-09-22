@@ -91,7 +91,7 @@ keys that apply while renaming.
 *Grill the boundaries*, *Find missing connections*, *Compare with a standard*,
 *Trace a flow*, or *Ask your own*.
 
-**With a model connected**, an owner presses a skill and **Send**; *Ask your
+**With a model connected**, a contributor presses a skill and **Send**; *Ask your
 own* opens a box for a question of your own. The answer comes back under the
 button, and what it suggests as cards underneath. Only the last exchange is
 shown and nothing of it is kept, though the model is reminded of the last few
@@ -136,12 +136,17 @@ one you are on — opens the list: open another, *Save as new* to keep the
 current map as the next version, publish one, or delete one. **Cancel** unwinds
 everything done since **Edit** was pressed, all at once.
 
-Who may do any of this is one setting, `OWNER_EMAILS`: a comma-separated list
-of the people who may open any version, edit, save, delete and publish.
-Everyone else who signs in sees the published version and nothing else. Left
-empty it names nobody in particular and everyone who signs in is an owner — the
-server warns about that at startup. With sign-in off, as in `dev.env`, everyone
-is an owner, which is what makes `npm start` work with no configuration at all.
+Who may do any of this is a role, one to a person. Everyone who signs in is a
+**contributor**: they open any version, edit, save, rename and delete. A
+**publisher** also chooses which version is the map everyone sees. The one
+**administrator** also decides who is what, in **Users & access** under the
+avatar: a role on each row, someone added by email ahead of their first
+sign-in, and *Make administrator* to hand the role over. A **viewer** sees the
+published map and nothing else — nobody is one until the administrator says so.
+`OWNER_EMAILS` seeds the list the first time the server starts, the first
+address as the administrator; after that the list rules. With sign-in off, as
+in `dev.env`, whoever is there is the administrator, which is what makes `npm
+start` work with no configuration at all.
 
 ## Taking it elsewhere
 

@@ -565,6 +565,9 @@ export function updateDomain(id, changes = {}) {
   if (changes.title !== undefined) domain.title = titled(changes.title, domain.title);
   if (changes.clearArea) domain.areaId = null;
   roundPositions(domain, DOMAIN_POSITIONS);
+  // An owner picked from the list can be un-picked, so here null is a value
+  // rather than an absence: a name typed over the pick carries no id.
+  if ('ownerId' in changes && !changes.ownerId) domain.ownerId = null;
   rememberPlace(domain, wasIn);
 
   emit('data');
@@ -636,6 +639,9 @@ export function updateCapability(id, changes = {}) {
   if (changes.clearDomain) capability.domainId = null;
   if (changes.clearArea) capability.areaId = null;
   if (changes.icon === '') capability.icon = null;
+  // An owner picked from the list can be un-picked, so here null is a value
+  // rather than an absence: a name typed over the pick carries no id.
+  if ('ownerId' in changes && !changes.ownerId) capability.ownerId = null;
   roundPositions(capability, CAPABILITY_POSITIONS);
   rememberPlace(capability, wasIn);
 
@@ -704,6 +710,9 @@ function updateElement(kind, id, changes = {}) {
   if (changes.icon === '') record.icon = null;
   if (changes.clearArea) record.areaId = null;
   if (changes.clearTitleAngle) record.titleAngle = null;
+  // An owner picked from the list can be un-picked, so here null is a value
+  // rather than an absence: a name typed over the pick carries no id.
+  if ('ownerId' in changes && !changes.ownerId) record.ownerId = null;
   roundPositions(record, POSITIONS_FOR[kind]);
   // To a tenth of a degree: round a long band a whole one is a hand's width of
   // border. Rounded up to a full turn, an angle is back where it started.

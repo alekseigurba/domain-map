@@ -645,6 +645,15 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 
 /* Typed, but not a colour yet — say so without throwing the value away. */
+/* A line under a box that says something about what is in it: the address of
+   the person an Owner box names, or that they have left the list. */
+.field__hint {
+  margin: var(--gap-1) 0 0;
+  font-size: var(--fs-200);
+  line-height: var(--lh-m);
+  color: var(--ink-soft);
+}
+
 .field__input--bad {
   border-color: var(--r-red-400);
   outline-color: var(--r-red-400);
@@ -1203,7 +1212,8 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   overflow-x: auto;
 }
 
-.versions {
+.versions,
+.roster {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--fs-200);
@@ -1211,7 +1221,9 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 
 .versions th,
-.versions td {
+.versions td,
+.roster th,
+.roster td {
   padding: var(--gap-2) var(--gap-3) var(--gap-2) 0;
   text-align: left;
   vertical-align: middle;
@@ -1222,22 +1234,30 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
    to the open row alone, which nudged its name eight pixels along and made the
    column look like it moved as the selection did. */
 .versions th:first-child,
-.versions td:first-child { padding-left: var(--gap-2); }
+.versions td:first-child,
+.roster th:first-child,
+.roster td:first-child { padding-left: var(--gap-2); }
 
 .versions th:last-child,
-.versions td:last-child { padding-right: var(--gap-2); }
+.versions td:last-child,
+.roster th:last-child,
+.roster td:last-child { padding-right: var(--gap-2); }
 
-.versions th {
+.versions th,
+.roster th {
   font-weight: var(--fw-semibold);
   color: var(--ink-soft);
   border-bottom: 1px solid var(--line-strong);
 }
 
-.versions td { border-top: 1px solid var(--line); }
-.versions tbody tr:first-child td { border-top: none; }
+.versions td,
+.roster td { border-top: 1px solid var(--line); }
+.versions tbody tr:first-child td,
+.roster tbody tr:first-child td { border-top: none; }
 
-/* The version open in this tab, picked out the way a selected row is. */
-.versions tr[data-open="true"] td { background: var(--chrome); }
+/* The version open in this tab — or, on the roster, you — picked out the way a selected row is. */
+.versions tr[data-open="true"] td,
+.roster tr[data-open="true"] td { background: var(--chrome); }
 
 /* The fixed label width lives on the box inside the cell, not on the cell. A
    width on a table cell is only a hint — a column never shrinks below what its
@@ -1287,10 +1307,60 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 /* Shrink-to-fit, and never wrapped: what can be done with a version is the one
    thing in the row that holds its shape whatever else is in it. */
 .versions th:last-child,
-.versions td:last-child {
+.versions td:last-child,
+.roster th:last-child,
+.roster td:last-child {
   width: 1%;
   white-space: nowrap;
 }
+
+/* Users & access is the Versions dialog's twin: the same centred width and
+   the same table, a row a person. The roster shares the table's rules above by
+   name rather than by class, so a row of people is never called a version. */
+.dialog--people {
+  inset: 0;
+  margin: auto;
+  width: min(760px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+/* Who they are: the name, You beside it when it is, and the address under it
+   in the quiet ink, since the name is what the row is about. */
+.roster__who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--gap-2);
+  min-width: 12rem;
+}
+
+.roster__name { font-weight: var(--fw-semibold); }
+
+.roster__email {
+  flex-basis: 100%;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* A select the height of a chip, so the administrator's rows stand no taller
+   than everyone else's. */
+.roster__role {
+  width: auto;
+  min-height: var(--chip-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Add a person: name, address and role in one row, the button at the end. On
+   a phone the boxes wrap and the row becomes a short form. */
+.roster__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-2);
+}
+
+.roster__add .field__input { flex: 1 1 10rem; }
+.roster__add .field__select { flex: 0 1 auto; width: auto; }
 
 /* Said over the empty stage, in the middle of it, when there is no map to show.
    Above the zoom stack, which is the only other thing floating over the stage. */
@@ -1686,13 +1756,18 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
    edge is a row that cannot be acted on. Each one becomes a small card instead:
    the name, then when and by whom, then what can be done with it. */
 @media (max-width: 640px) and (orientation: portrait) {
-  .versions thead { display: none; }
+  .versions thead,
+  .roster thead { display: none; }
 
   .versions,
   .versions tbody,
-  .versions td { display: block; }
+  .versions td,
+  .roster,
+  .roster tbody,
+  .roster td { display: block; }
 
-  .versions tr {
+  .versions tr,
+  .roster tr {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1701,11 +1776,15 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
     border-top: 1px solid var(--line);
   }
 
-  .versions tbody tr:first-child { border-top: none; }
+  .versions tbody tr:first-child,
+  .roster tbody tr:first-child { border-top: none; }
 
   .versions td,
   .versions td:first-child,
-  .versions td:last-child {
+  .versions td:last-child,
+  .roster td,
+  .roster td:first-child,
+  .roster td:last-child {
     padding: 0;
     border: none;
   }

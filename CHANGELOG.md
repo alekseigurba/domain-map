@@ -7,6 +7,51 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+Four roles instead of two, a list of the people the map knows, and an owner
+picked from it. Full notes: [docs/releases/2.4.0.md](docs/releases/2.4.0.md).
+
+### Added
+
+- **Roles.** Everyone who signs in is a **contributor**: they edit, save,
+  rename and delete versions, and talk to the Assistant. A **publisher** also
+  chooses which version is the map everyone sees. The one **administrator**
+  also decides who is what. A **viewer** sees the published map and nothing
+  else, as before — but nobody is one until the administrator says so.
+- **Users & access**, in the profile popup: everyone on the list, their role
+  and when they were last here. Everyone who works on the map can read it. The
+  administrator changes a role on its row, adds someone by email ahead of their
+  first sign-in, and hands their own role to someone else with *Make
+  administrator*.
+- **The Owner box offers the people on the list.** Start typing and the names
+  come up; pick one and the map keeps who was meant, so a rename in the
+  directory follows them onto the map. A team, or someone outside, is typed as
+  before. Under the box, the person's address — or that they are no longer on
+  the list.
+- **The development bypass asks who to be**: a name and a role on the sign-in
+  screen, so every role can be tried locally. The first name in is the
+  administrator.
+- **`npm run make-administrator -- someone@example.com`**, for the day the
+  administrator has left without handing over.
+
+### Changed
+
+- **`OWNER_EMAILS` is read once**, into an empty people table at first start:
+  the first address is the administrator and the rest are contributors. After
+  that Users & access rules, and the variable is not looked at again. Left
+  empty, the first person to sign in is the administrator, and the server says
+  so at startup.
+- **Map files are version 4**: an element's `owner` may carry an `ownerId`
+  beside it. Files from 2.3 and before open as they did; a 2.3 deployment
+  refuses a file written here.
+- **The site role is called Administrator**, not Owner. *Owner* stays the word
+  for who owns a domain or a capability on the map.
+- **Everyone signs in once more** after the upgrade: a session from before
+  cannot say who its person is on the list, and Entra signs them straight back
+  in.
+- For a repo with an `auth` of its own: `user(request)` should now answer
+  `source` and `subject` as well; without them the address stands in. See
+  [docs/BRANDING.md](docs/BRANDING.md).
+
 ## 2.3.1 — 2026-09-22
 
 The layers are Presentation, Domains and Areas, and an area's title can break

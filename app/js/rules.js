@@ -238,6 +238,7 @@ export const AREA_DEFAULTS = {
   title: AREA_SHAPE.title,
   description: '',
   owner: '',
+  ownerId: null,
   type: '',
   colorIndex: 1,
   x: 0,
@@ -254,6 +255,7 @@ export const DOMAIN_DEFAULTS = {
   title: DOMAIN_SHAPE.title,
   description: '',
   owner: '',
+  ownerId: null,
   type: '',
   colorIndex: 1,
   x: 0,
@@ -274,6 +276,7 @@ export const CAPABILITY_DEFAULTS = {
   title: CAPABILITY_SHAPE.title,
   description: '',
   owner: '',
+  ownerId: null,
   type: '',
   colorIndex: 1,
   fontSize: CAPABILITY_SHAPE.fontSize,
@@ -301,6 +304,7 @@ export const TOUCHPOINT_DEFAULTS = {
   title: TOUCHPOINT_SHAPE.title,
   description: '',
   owner: '',
+  ownerId: null,
   type: '',
   colorIndex: 1,
   fontSize: TOUCHPOINT_SHAPE.fontSize,
@@ -324,6 +328,7 @@ export const ACTOR_DEFAULTS = {
   title: ACTOR_SHAPE.title,
   description: '',
   owner: '',
+  ownerId: null,
   type: '',
   colorIndex: 1,
   fontSize: ACTOR_SHAPE.fontSize,
@@ -384,13 +389,17 @@ export const validateMapDescription = (description) =>
     ? "The map's description must be text."
     : describes(description));
 
-function text(title, description, owner) {
+function text(title, description, owner, ownerId) {
   if (given(title) && (title.trim().length === 0 || title.length > MAX_TITLE_LENGTH))
     return `Title must be 1..${MAX_TITLE_LENGTH} characters.`;
   const described = describes(description);
   if (described) return described;
   if (given(owner) && owner.length > MAX_TITLE_LENGTH)
     return `Owner must be at most ${MAX_TITLE_LENGTH} characters.`;
+  // The id of the person the owner's name was picked from, when it was. It is
+  // the people table's, so a file only carries it and never makes one up.
+  if (given(ownerId) && (typeof ownerId !== 'string' || ownerId.length === 0 || ownerId.length > MAX_TITLE_LENGTH))
+    return 'ownerId must be a short string.';
   return null;
 }
 
@@ -444,7 +453,7 @@ export function validatePalette(palette) {
 }
 
 export function validateDomain(fields) {
-  return text(fields.title, fields.description, fields.owner)
+  return text(fields.title, fields.description, fields.owner, fields.ownerId)
     ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, FONT_SIZES)
@@ -472,7 +481,7 @@ const faded = (opacity, least = 10) =>
 export const MAX_TITLE_ANGLE = 360;
 
 export function validateArea(fields) {
-  return text(fields.title, fields.description, fields.owner)
+  return text(fields.title, fields.description, fields.owner, fields.ownerId)
     ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, FONT_SIZES)
@@ -491,7 +500,7 @@ const placed = (placement) =>
     : null);
 
 export function validateCapability(fields) {
-  return text(fields.title, fields.description, fields.owner)
+  return text(fields.title, fields.description, fields.owner, fields.ownerId)
     ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)
@@ -514,7 +523,7 @@ export function validateTouchpoint(fields) {
 }
 
 export function validateActor(fields) {
-  return text(fields.title, fields.description, fields.owner)
+  return text(fields.title, fields.description, fields.owner, fields.ownerId)
     ?? typed(fields.type)
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)

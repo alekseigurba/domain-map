@@ -17,8 +17,9 @@ import {
 } from './store.js';
 import { fromDocument, toDocument, stringify, validate } from './document.js';
 import * as files from './files.js';
-import { showIdentity, signingIn, whoAmI } from './identity.js';
+import { mayAs, showIdentity, signingIn, whoAmI } from './identity.js';
 import * as api from './versions.js';
+import { initPeople, listPeople } from './people.js';
 import { diagramSvg } from './svg-export.js';
 import {
   initDiagram, render, fitToScreen, zoomBy, centerOn, cancelDraft, viewportCenter, resolvedPoints,
@@ -28,6 +29,7 @@ import {
 import { renderMenu, collapseAll } from './menu.js';
 import {
   initDetails, renderDetails, fitAreas, setEditMode as setDetailsEditMode,
+  freshenOwners, reloadPeople,
 } from './details.js';
 import { initPalette, openPalette, renderPalette, paletteOpen } from './palette.js';
 import {
@@ -85,11 +87,12 @@ async function run(label, work) {
 // is open. The versions live on the server, and one of them is published: that
 // is the map everyone lands on, and the only one a viewer ever sees.
 
-/** What this person may do, 'owner' or 'viewer'. Nothing until the server has said. */
+/** What this person may do: viewer, contributor, publisher or administrator. Nothing until the server has said. */
 let role = null;
-const isOwner = () => role === 'owner';
+const mayEdit = () => mayAs(role, 'contributor');
+const mayPublish = () => mayAs(role, 'publisher');
 
-/** The model the Assistant is connected to, as the server tells an owner: `{ host, model }`, or null. */
+/** The model the Assistant is connected to, as the server tells a contributor: `{ host, model }`, or null. */
 let assistantModel = null;
 
 /**
@@ -120,11 +123,11 @@ function showSaveState() {
   else saveButton.title = `Saved to "${name}"`;
   saveButton.hidden = !editMode;
   cancelButton.hidden = !editMode;
-  editModeButton.hidden = editMode || !isOwner();
+  editModeButton.hidden = editMode || !mayEdit();
 
-  // An owner's only: a viewer has one version, and nothing to put in it.
-  versionsButton.hidden = !isOwner();
-  importButton.hidden = !isOwner();
+  // A contributor's only: a viewer has one version, and nothing to put in it.
+  versionsButton.hidden = !mayEdit();
+  importButton.hidden = !mayEdit();
   document.getElementById('version-name').textContent = name ?? 'Not saved yet';
   document.getElementById('version-published').hidden = !isPublished(name);
 }
@@ -161,7 +164,7 @@ function applyEditMode() {
   renderLayerControl();
   showSaveState();
   showSelectionActions();
-  setAssistantMode({ editMode, owner: isOwner(), model: assistantModel });
+  setAssistantMode({ editMode, contributor: mayEdit(), model: assistantModel });
 }
 
 function setEditMode(next) {
@@ -207,7 +210,11 @@ async function cancelEdit() {
 const savedAt = (iso) => new Date(iso)
   .toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const documentText = () => stringify(toDocument(store));
+/** The map as the file has it. Owners picked from the list are written with the name the list has now. */
+const documentText = () => {
+  freshenOwners();
+  return stringify(toDocument(store));
+};
 
 /** Written: `version` is the one on screen now, with nothing left unsaved in it. */
 function saved(version) {
@@ -336,12 +343,12 @@ async function openPublished() {
   }
 
   publishedName = null;
-  if (isOwner()) {
+  if (mayEdit()) {
     showBlank();
     status('Nothing is published yet: make a map, save it from Versions and publish it there.');
   } else {
     showNotice('Nothing to see yet',
-      'No version of this map has been published. It will be here once an owner publishes one.');
+      'No version of this map has been published. It will be here once a publisher publishes one.');
   }
 }
 
@@ -495,8 +502,12 @@ function versionRow(version) {
       () => act(() => openVersion(version.name), { close: true }), { disabled: open }),
     rowButton('Rename', `Give "${version.name}" another name`,
       () => act(() => rename(version.name))),
-    rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
-      () => act(() => publish(version.name)), { disabled: published }),
+    // Publishing is a publisher's: a contributor's row has no button for it
+    // rather than one that would be refused.
+    ...(mayPublish()
+      ? [rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
+        () => act(() => publish(version.name)), { disabled: published })]
+      : []),
     // The published version stays until another takes its place, so the map
     // everyone lands on can never be deleted out from under them.
     rowButton('Delete', published ? 'Publish another version before deleting this one' : `Delete "${version.name}" for good`,
@@ -569,8 +580,8 @@ function applyMap(state) {
 }
 
 /**
- * For an owner: what this tab had before a refresh, or the version the address
- * names, or the published one. Unsaved changes come back whatever the server
+ * For a contributor: what this tab had before a refresh, or the version the
+ * address names, or the published one. Unsaved changes come back whatever the server
  * holds now, since this tab is the only place they exist.
  *
  * For a viewer: the published version, and nothing else. A link to any other
@@ -580,14 +591,14 @@ function applyMap(state) {
 async function loadMap() {
   const wanted = new URL(location.href).searchParams.get('version');
 
-  if (!isOwner()) {
+  if (!mayEdit()) {
     if (!wanted) return openPublished();
     try {
       showVersion(await api.readVersion(wanted)); // only the published one is open to a viewer
     } catch (error) {
       if (error.status !== 403 && error.status !== 404) throw error;
       showNotice('This version is not open to you',
-        `Only an owner can open "${wanted}". Everyone else sees the published map.`, { link: true });
+        `Only a contributor can open "${wanted}". Everyone else sees the published map.`, { link: true });
     }
     return;
   }
@@ -1856,6 +1867,8 @@ undoStack.init({ apply: applyUndo, onChange: keepSession });
 
 initDetails({
   onPatch: patch,
+  // The names an Owner box offers. A viewer is not shown the list, and types.
+  onPeople: listPeople,
   onArea: placeInArea,
   onShow: showOnMap,
   onMapPatch: (changes) => patchMap(changes, 'Describing the map'),
@@ -1919,6 +1932,7 @@ initTextDialog('getting-around');
 initTextDialog('about');
 initTextDialog('profile');
 initTextDialog('versions');
+initTextDialog('people');
 
 /**
  * The colours live in two places: the map, and the geometry that draws it. The
@@ -2015,7 +2029,7 @@ document.getElementById('zoom-out').addEventListener('click', () => zoomBy(1 / 1
 document.getElementById('zoom-fit').addEventListener('click', fitToScreen);
 saveButton.addEventListener('click', () => save());
 editModeButton.addEventListener('click', () => {
-  if (isOwner()) setEditMode(true);
+  if (mayEdit()) setEditMode(true);
 });
 cancelButton.addEventListener('click', cancelEdit);
 
@@ -2130,7 +2144,7 @@ window.addEventListener('keydown', async (event) => {
   // ours covers the map, and only one of them owns a focused field.
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing) {
     event.preventDefault();
-    if (!editMode) return status(isOwner() ? 'Press Edit to make changes' : 'This map is read-only', true);
+    if (!editMode) return status(mayEdit() ? 'Press Edit to make changes' : 'This map is read-only', true);
     if (!undoStack.canUndo()) return status('Nothing to undo');
     status('Undoing…');
     const label = await undoStack.undo();
@@ -2302,6 +2316,7 @@ Promise.all([applySettings(), whoAmI()])
     role = me.role;
     assistantModel = me.assistant ?? null;
     showIdentity(me, (message) => status(message, true));
+    initPeople({ id: me.id, role: me.role }, { onChange: reloadPeople });
     applyEditMode();
     await loadMap();
     fitToScreen();

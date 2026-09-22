@@ -10,7 +10,7 @@ import { readFile } from 'node:fs/promises';
 // document.js makes fresh ids for everything it reads. Nothing else here wants a browser.
 globalThis.crypto ??= { randomUUID };
 
-const { fromDocument, toDocument, validate } = await import('../app/js/document.js');
+const { fromDocument, toDocument, validate, CURRENT_VERSION } = await import('../app/js/document.js');
 const rules = await import('../app/js/rules.js');
 const {
   OPERATIONS, REPLY_FORMAT, MAX_SUGGESTIONS,
@@ -72,7 +72,7 @@ check('and read back from it', fromDocument(written).description === 'A BNPL pro
 check('a map that says nothing writes no field, so an older file is unchanged',
   !('description' in toDocument({ ...state, description: '' })));
 check('a description alone would not have moved the file on: it is a field a reader may skip',
-  !('description' in toDocument({ ...state, description: '' })) && written.version === 3);
+  !('description' in toDocument({ ...state, description: '' })) && written.version === CURRENT_VERSION);
 check('a description that is not text is refused', (validate({ description: 7 }) ?? '').includes('must be text'));
 check('and one past the limit, in the words every description is held to',
   (validate({ description: 'x'.repeat(rules.MAX_TEXT_LENGTH + 1) }) ?? '').includes(String(rules.MAX_TEXT_LENGTH)));

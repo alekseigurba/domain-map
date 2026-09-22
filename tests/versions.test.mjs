@@ -1,5 +1,5 @@
 // Versions and roles, checked against the real server and a throwaway database:
-// what an owner and a viewer may each do, how a new version is named, a save
+// what a contributor, a publisher and a viewer may each do, how a new version is named, a save
 // that lost a race, the published version's guard, the old versions folder in
 // the file store, and a store from before versions moved into Postgres.
 //   docker compose up -d postgres
@@ -17,10 +17,12 @@ import { throwawayDatabase } from './support/database.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const SESSION_SECRET = 'versions-test-secret';
-const OWNER = { name: 'Olivia Owner', username: 'olivia@contoso.example', method: 'microsoft' };
-// Owners are matched on the email claim too, when the sign-in name is something else.
-const OWNER_BY_EMAIL = { name: 'Oscar', username: 'oscar.upn@contoso.example', email: 'Oscar@Contoso.example', method: 'microsoft' };
-const VIEWER = { name: 'Victor Viewer', username: 'victor@contoso.example', method: 'microsoft' };
+// The first address on OWNER_EMAILS: the administrator, who may do everything a publisher and a contributor may.
+const OWNER = { source: 'entra', subject: 'oid-olivia', name: 'Olivia Owner', username: 'olivia@contoso.example', method: 'microsoft' };
+// The second, matched on the email claim when the sign-in name is something else: a contributor.
+const OWNER_BY_EMAIL = { source: 'entra', subject: 'oid-oscar', name: 'Oscar', username: 'oscar.upn@contoso.example', email: 'Oscar@Contoso.example', method: 'microsoft' };
+// Not on the list at all: a contributor on arrival, and a viewer once the administrator says so.
+const VIEWER = { source: 'entra', subject: 'oid-victor', name: 'Victor Viewer', username: 'victor@contoso.example', method: 'microsoft' };
 
 const seedText = await readFile(new URL('../seed/data/versions/v1.json', import.meta.url), 'utf8');
 const seedMap = JSON.parse(seedText);
@@ -111,7 +113,8 @@ try {
   cleanup.push(() => rm(storage, { recursive: true, force: true }), () => database.drop());
   let app = await startServer({ storage, databaseUrl: database.url });
 
-  check('the schema is applied on first start', app.log().includes('Applied migration 001-versions.sql'), app.log());
+  check('the schema is applied on first start',
+    app.log().includes('Applied migration 001-versions.sql') && app.log().includes('Applied migration 002-people.sql'), app.log());
   check('and the seed map is imported into it', app.log().includes('Imported 1 version: v1'), app.log());
 
   const stranger = await as(app, null, 'GET', '/api/published');
@@ -120,9 +123,13 @@ try {
   const ownerMe = await as(app, OWNER, 'GET', '/api/me');
   const emailMe = await as(app, OWNER_BY_EMAIL, 'GET', '/api/me');
   const viewerMe = await as(app, VIEWER, 'GET', '/api/me');
-  check('an address on OWNER_EMAILS is an owner', ownerMe.body.role === 'owner', JSON.stringify(ownerMe.body));
-  check('so is an email claim on it, whatever its case', emailMe.body.role === 'owner', JSON.stringify(emailMe.body));
-  check('anyone else is a viewer', viewerMe.body.role === 'viewer' && viewerMe.body.name === 'Victor Viewer');
+  check('the first address on OWNER_EMAILS is the administrator', ownerMe.body.role === 'administrator', JSON.stringify(ownerMe.body));
+  check('the second a contributor, matched on the email claim whatever its case', emailMe.body.role === 'contributor', JSON.stringify(emailMe.body));
+  check('anyone else who signs in is a contributor too',
+    viewerMe.body.role === 'contributor' && viewerMe.body.name === 'Victor Viewer', JSON.stringify(viewerMe.body));
+  const demoted = await as(app, OWNER, 'PATCH', `/api/people/${viewerMe.body.id}`, { role: 'viewer' });
+  check('until the administrator makes them a viewer', demoted.status === 200 && demoted.body.role === 'viewer', JSON.stringify(demoted.body));
+  check('which takes at once, on the session they already have', (await as(app, VIEWER, 'GET', '/api/me')).body.role === 'viewer');
 
   const published = await as(app, VIEWER, 'GET', '/api/published');
   check('a viewer sees the published version',
@@ -142,6 +149,7 @@ try {
   check('nor rename one', (await as(app, VIEWER, 'PATCH', '/api/versions/v1', { name: 'mine' })).status === 403);
   check('nor delete one', (await as(app, VIEWER, 'DELETE', '/api/versions/v1')).status === 403);
   check('nor publish one', (await as(app, VIEWER, 'PUT', '/api/published', { name: 'v1' })).status === 403);
+  check('a contributor cannot publish either', (await as(app, OWNER_BY_EMAIL, 'PUT', '/api/published', { name: 'v1' })).status === 403);
   check('nor write to the file store', (await as(app, VIEWER, 'PUT', '/api/files/data/settings.json', '{}')).status === 403);
 
   // --- the old versions folder in the file store ---
@@ -152,14 +160,14 @@ try {
   check('the seed put none there either', !(await stat(join(storage, 'data', 'versions')).catch(() => null)));
   await mkdir(join(storage, 'data', 'versions'), { recursive: true });
   await writeFile(join(storage, 'data', 'versions', 'draft.json'), mapText('A draft'));
-  check('an old version file is not served, even to an owner',
+  check('an old version file is not served, even to the administrator',
     (await as(app, OWNER, 'GET', '/api/files/data/versions/draft.json')).status === 404);
   check('not by another case of the folder', (await as(app, OWNER, 'GET', '/api/files/data/Versions/draft.json')).status === 404);
   check('nor by climbing into it', (await as(app, OWNER, 'GET', '/api/files/data/icons/..%2Fversions%2Fdraft.json')).status === 404);
   check('and one cannot be written there',
     (await as(app, OWNER, 'PUT', '/api/files/data/versions/draft.json', mapText())).status === 403);
 
-  // --- an owner's versions ---
+  // --- a contributor's versions ---
   const first = await as(app, OWNER, 'POST', '/api/versions', { document: mapText('First') });
   check('Save as new takes the next number after the seed\'s v1',
     first.status === 201 && first.body.name === 'v2', JSON.stringify(first.body).slice(0, 200));
@@ -176,7 +184,7 @@ try {
   check('and so is one that is not JSON', (await as(app, OWNER, 'POST', '/api/versions', { document: '{' })).status === 400);
 
   const list = await as(app, OWNER, 'GET', '/api/versions');
-  check('an owner sees every version, newest first',
+  check('a contributor sees every version, newest first',
     list.status === 200 && list.body.versions.length === 5 && list.body.versions.at(-1).name === 'v1'
     && list.body.versions.every((version) => version.document === undefined),
     JSON.stringify(list.body.versions?.map((version) => version.name)));
@@ -202,7 +210,7 @@ try {
   // and neither does when it was last saved.
   const was = list.body.versions.find((version) => version.name === 'v5');
   const renamed = await as(app, OWNER, 'PATCH', '/api/versions/v5', { name: '  Q3 planning  ' });
-  check('an owner renames a version, and the name is trimmed',
+  check('a contributor renames a version, and the name is trimmed',
     renamed.status === 200 && renamed.body.name === 'Q3 planning', JSON.stringify(renamed.body));
   check('renaming is not saving, so it leaves the times alone',
     renamed.body.updatedAt === was.updatedAt && renamed.body.createdAt === was.createdAt);
@@ -225,7 +233,7 @@ try {
   const refused = await as(app, OWNER, 'DELETE', '/api/versions/v1');
   check('the published version cannot be deleted', refused.status === 409 && /published/.test(refused.body.error), JSON.stringify(refused.body));
   const publish = await as(app, OWNER, 'PUT', '/api/published', { name: 'v2' });
-  check('an owner publishes another', publish.status === 200 && publish.body.published === true);
+  check('a publisher publishes another', publish.status === 200 && publish.body.published === true);
   // The site points at the row, not at the name, so a rename cannot unpublish.
   check('renaming the published version leaves it published',
     (await as(app, OWNER, 'PATCH', '/api/versions/v2', { name: 'live' })).body.published === true);
@@ -253,19 +261,22 @@ try {
 
   // --- sign-in off ---
   const open = await startServer({ storage, databaseUrl: database.url, env: { AUTH_ENABLED: 'false' } });
-  check('with sign-in off, everyone is an owner', (await as(open, null, 'GET', '/api/me')).body.role === 'owner');
+  check('with sign-in off, whoever is there is the administrator', (await as(open, null, 'GET', '/api/me')).body.role === 'administrator');
   check('and can list the versions', (await as(open, null, 'GET', '/api/versions')).status === 200);
   const anonymous = await as(open, null, 'POST', '/api/versions', { document: mapText() });
   check('a version saved with nobody signed in has nobody to name', anonymous.status === 201 && anonymous.body.createdBy === null);
   await open.stop();
 
   // --- no owners named ---
-  const unnamed = await startServer({ storage, databaseUrl: database.url, env: { OWNER_EMAILS: '' } });
-  check('with OWNER_EMAILS empty, everyone who signs in is an owner',
-    (await as(unnamed, VIEWER, 'GET', '/api/me')).body.role === 'owner');
-  check('and can list the versions', (await as(unnamed, VIEWER, 'GET', '/api/versions')).status === 200);
+  const fresh = await throwawayDatabase('unnamed');
+  cleanup.push(() => fresh.drop());
+  const unnamed = await startServer({ storage, databaseUrl: fresh.url, env: { OWNER_EMAILS: '' } });
+  check('with OWNER_EMAILS empty, the server says at startup that nobody is the administrator yet',
+    unnamed.log().includes('Nobody is the administrator yet'), unnamed.log());
+  check('and the first person to sign in becomes one', (await as(unnamed, VIEWER, 'GET', '/api/me')).body.role === 'administrator');
+  check('the next a contributor', (await as(unnamed, OWNER, 'GET', '/api/me')).body.role === 'contributor');
+  check('who can list the versions', (await as(unnamed, OWNER, 'GET', '/api/versions')).status === 200);
   check('nobody signed in still gets nothing', (await as(unnamed, null, 'GET', '/api/published')).status === 401);
-  check('and the server says so at startup', unnamed.log().includes('everyone who signs in is an owner'), unnamed.log());
   await unnamed.stop();
 
   // --- a store from before versions moved into Postgres ---

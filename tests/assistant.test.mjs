@@ -156,8 +156,8 @@ const turn = { system: 'You review maps.', messages: [{ role: 'user', content: '
 // --- the route, in front of a stand-in model --------------------------------------
 
 const SESSION_SECRET = 'assistant-test-secret';
-const OWNER = { name: 'Olivia Owner', username: 'olivia@contoso.example', method: 'microsoft' };
-const VIEWER = { name: 'Victor Viewer', username: 'victor@contoso.example', method: 'microsoft' };
+const OWNER = { source: 'entra', subject: 'oid-olivia', name: 'Olivia Owner', username: 'olivia@contoso.example', method: 'microsoft' };
+const VIEWER = { source: 'entra', subject: 'oid-victor', name: 'Victor Viewer', username: 'victor@contoso.example', method: 'microsoft' };
 const cookieFor = (user) =>
   `domainmap.auth=${seal(SESSION_SECRET, { ...user, iat: Date.now(), exp: Date.now() + 3_600_000 })}`;
 
@@ -210,12 +210,15 @@ try {
   });
 
   const me = await connected.as(OWNER, 'GET', '/api/me');
-  check('an owner is told where their messages would go', me.body.assistant?.host === `localhost:${modelPort}` && me.body.assistant.model === 'stand-in');
+  check('a contributor is told where their messages would go', me.body.assistant?.host === `localhost:${modelPort}` && me.body.assistant.model === 'stand-in');
+  // Everyone who signs in is a contributor until the administrator says otherwise, so Victor is made a viewer first.
+  const victor = await connected.as(VIEWER, 'GET', '/api/me');
+  await connected.as(OWNER, 'PATCH', `/api/people/${victor.body.id}`, { role: 'viewer' });
   check('and never the key', !JSON.stringify(me.body).includes('sk-server-side'));
   check('a viewer is told nothing about it', (await connected.as(VIEWER, 'GET', '/api/me')).body.assistant === null);
 
   const said = await connected.as(OWNER, 'POST', '/api/assistant/chat', turn);
-  check('an owner\'s turn is relayed, and the model\'s text comes back', said.status === 200 && said.body.text === '{"suggestions": []}');
+  check('a contributor\'s turn is relayed, and the model\'s text comes back', said.status === 200 && said.body.text === '{"suggestions": []}');
   check('on the server\'s key, which the browser never sent', heard[0].headers.authorization === 'Bearer sk-server-side');
   check('as the system prompt and the messages it was given', heard[0].body.messages.length === 2 && heard[0].body.model === 'stand-in');
 
@@ -233,7 +236,7 @@ try {
   check('with no model connected an owner is told so', (await bare.as(OWNER, 'GET', '/api/me')).body.assistant === null);
   check('and the route is simply not there', (await bare.as(OWNER, 'POST', '/api/assistant/chat', turn)).status === 404);
 
-  // Sign-in off makes everyone an owner, and an owner can spend the key.
+  // Sign-in off makes whoever is there the administrator, who can spend the key.
   warned.length = 0;
   await boot({ AUTH_ENABLED: 'false', ASSISTANT_API_URL: `http://localhost:${modelPort}/v1`, ASSISTANT_API_KEY: 'k' });
   check('a connected model with sign-in off is warned about at startup',

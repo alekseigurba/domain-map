@@ -82,12 +82,13 @@ async function start() {
 
   const microsoft = document.getElementById('sign-in-microsoft');
   const bypass = document.getElementById('sign-in-dev');
+  const bypassForm = document.getElementById('sign-in-dev-form');
   microsoft.hidden = !state.options?.microsoft;
-  bypass.hidden = !state.options?.bypass;
+  bypassForm.hidden = !state.options?.bypass;
 
   const code = params.get('code');
   const reason = REASONS[params.get('error')];
-  if (microsoft.hidden && bypass.hidden) {
+  if (microsoft.hidden && bypassForm.hidden) {
     say('No sign-in method is configured on this server.', 'error');
     return;
   } else if (reason) {
@@ -95,7 +96,7 @@ async function start() {
     say(known ? `${reason} ${CODES[known] ?? ''} (${known})` : reason, 'error');
   } else if (params.has('signedOut')) {
     say('Signed out.');
-  } else if (!bypass.hidden) {
+  } else if (!bypassForm.hidden) {
     say('The development bypass is on: this server is not protecting anything.', 'warn');
   }
 
@@ -107,13 +108,19 @@ async function start() {
     location.href = `auth/login/microsoft?${query}`;
   });
 
-  bypass.addEventListener('click', async () => {
+  bypassForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
     bypass.disabled = true;
     say('Signing in…');
     try {
       const response = await fetch(`auth/login/dev?returnUrl=${encodeURIComponent(returnUrl())}`, {
         method: 'POST',
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', 'Content-Type': 'application/json' },
+        // Who to be, and what they may do. An empty name is the stock developer.
+        body: JSON.stringify({
+          name: document.getElementById('sign-in-dev-name').value,
+          role: document.getElementById('sign-in-dev-role').value,
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error ?? `The server answered ${response.status}.`);

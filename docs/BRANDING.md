@@ -35,15 +35,20 @@ Azure OpenAI, Azure AI Foundry, a gateway, Ollama — or Anthropic's Messages AP
 `ASSISTANT_API_STYLE` (`openai` or `anthropic`) says which where the URL does
 not, and `ASSISTANT_MODEL` names a model where the URL does not — by the API's
 own id for it, `claude-haiku-4-5` rather than `haiku`. The key stays on
-the server. Every message carries the whole map to that URL, drafts included, so
-the people in `OWNER_EMAILS` are also the people who may spend the key.
+the server. Every message carries the whole map to that URL, drafts included, and
+every contributor may send one — which is everyone who signs in, until the
+administrator says otherwise.
 
-`OWNER_EMAILS` — a comma-separated list of the people who may open any version,
-edit, save, delete and publish. Everyone else who signs in sees the published
-version and nothing else. Left empty, it names nobody in particular and everyone
-who signs in is an owner; the server warns about that at startup. With sign-in
-off, everyone is an owner too, which is what makes `npm run start:dev` work with
-no configuration at all.
+`OWNER_EMAILS` — read **once**, into an empty people table the first time the
+server starts: the first address becomes the administrator and the rest
+contributors. After that, who may do what is managed in the app, in *Users &
+access*, and the variable is not looked at again. Left empty, the first person to
+sign in is the administrator, and the server warns about that at startup. With
+sign-in off, whoever is there is the administrator, which is what makes `npm run
+start:dev` work with no configuration at all. For the day the administrator has
+left without handing over, `npm run make-administrator -- someone@example.com`
+against `DATABASE_URL` makes someone else the administrator — on a Container
+App, through `az containerapp exec` into the running revision.
 
 ## What you may override
 
@@ -59,13 +64,19 @@ sharp tool, so only this list is supported:
 | `js/defaults.js` | What a new domain, capability, touchpoint, actor or area looks like. See the caveat below. One written before 2.3 has no `AREA_SHAPE` and still loads: a new area falls back on the package's own. The three layers are not here: they are a fixed model, in `rules.js`, and not a deployment's to redefine. |
 
 A server of your own is a parameter rather than a file to shadow:
-`createDomainMapServer` takes `databaseUrl`, `owners`, `storageDir`, `store`,
-`auth` and `assistant`. An `assistant` of your own is `{ chat, host, model }`,
+`createDomainMapServer` takes `databaseUrl`, `owners` — what `OWNER_EMAILS`
+is, seeded once — `storageDir`, `store`, `auth` and `assistant`. An `assistant` of your own is `{ chat, host, model }`,
 for a model that speaks neither of the two shapes above:
 `chat({ system, messages }, { signal })` answers with the model's text, and
-`host` and `model` are what the page tells an owner their messages go to. An `auth` of your own answers `{ handle, user, required, warnings }`,
-where `user(request)` gives `{ name, username, email }` or null — without it
-nobody can be told apart, and everyone is a viewer.
+`host` and `model` are what the page tells a contributor their messages go to.
+An `auth` of your own answers `{ handle, user, required, warnings }`, where
+`user(request)` gives `{ source, subject, name, username, email }` or null.
+`source` is the door someone came in by and `subject` the provider's own id for
+them — `entra` and the object id, in the package's own — and the two are how the
+server finds the person's row; without them the email stands in, and without
+that nobody can be told apart and everyone is a viewer. The package's own is
+`createAuth(env, { onSignIn })`, and the hook is what records a sign-in as it
+happens; an auth without one is entered on the person's first request instead.
 
 `skills/*` — what the Assistant can be asked — is **not on this list yet**. The
 skill files are new in 2.2 and their format will move once it has met a

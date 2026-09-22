@@ -11,13 +11,18 @@
 // the areas on it, and the area a domain, a touchpoint or a loose capability
 // names. The number moved because an app from before it would read past all
 // of that and write the map back without it — better that it refuses the
-// file. Versions 1 and 2 still read, as a map with no areas. Writing is
-// always version 3.
+// file. Versions 1 and 2 still read, as a map with no areas.
+//
+// Version 4 added `ownerId` beside an element's `owner`: the id of the person
+// the name was picked from, so the map still knows who it meant after they
+// are renamed. Same reason for the number: an app from before would drop it
+// on the next save. Versions 1 to 3 still read, with every owner a plain
+// name. Writing is always version 4.
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';
 
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;
 
 /** A position as the file writes it: two whole numbers, "x,y". */
 export const position = (x, y) => `${Math.round(x)},${Math.round(y)}`;
@@ -112,6 +117,7 @@ const commonFields = (node) => ({
   title: node.title?.trim(),
   description: node.description,
   owner: node.owner,
+  ownerId: node.ownerId,
   type: node.type,
   colorIndex: node.shape?.color,
   fontSize: node.shape?.size,
@@ -142,6 +148,7 @@ export function fromDocument(document_) {
         title: node.title?.trim(),
         description: node.description,
         owner: node.owner,
+        ownerId: node.ownerId,
         type: node.type,
         colorIndex: node.shape?.color,
         x: at && Math.round(at.x),
@@ -171,6 +178,7 @@ export function fromDocument(document_) {
         title: node.title?.trim(),
         description: node.description,
         owner: node.owner,
+        ownerId: node.ownerId,
         type: node.type,
         colorIndex: node.shape?.color,
         x: at && Math.round(at.x),
@@ -363,6 +371,7 @@ export function toDocument(state) {
       title: area.title,
       description: blank(area.description),
       owner: blank(area.owner),
+      ownerId: blank(area.ownerId),
       type: blank(area.type),
       shape: compact({
         // Where it sits while it holds nothing. Round its members, the band is
@@ -390,6 +399,7 @@ export function toDocument(state) {
       title: domain.title,
       description: blank(domain.description),
       owner: blank(domain.owner),
+      ownerId: blank(domain.ownerId),
       type: blank(domain.type),
       shape: compact({
         position: position(domain.x, domain.y),
@@ -418,6 +428,7 @@ export function toDocument(state) {
       title: capability.title,
       description: blank(capability.description),
       owner: blank(capability.owner),
+      ownerId: blank(capability.ownerId),
       type: blank(capability.type),
       // The name only. An exported map points at its icons; it does not carry
       // them, so the files travel separately.
@@ -451,6 +462,7 @@ export function toDocument(state) {
       title: touchpoint.title,
       description: blank(touchpoint.description),
       owner: blank(touchpoint.owner),
+      ownerId: blank(touchpoint.ownerId),
       type: blank(touchpoint.type),
       icon: touchpoint.icon,
       shape: compact({
@@ -479,6 +491,7 @@ export function toDocument(state) {
       title: actor.title,
       description: blank(actor.description),
       owner: blank(actor.owner),
+      ownerId: blank(actor.ownerId),
       type: blank(actor.type),
       shape: compact({
         position: position(actor.x, actor.y),
@@ -658,6 +671,7 @@ export function validate(document_) {
       title: area.title,
       description: area.description,
       owner: area.owner,
+      ownerId: area.ownerId,
       type: area.type,
       colorIndex: shape?.color,
       fontSize: shape?.size,
@@ -690,6 +704,7 @@ export function validate(document_) {
       title: domain.title,
       description: domain.description,
       owner: domain.owner,
+      ownerId: domain.ownerId,
       type: domain.type,
       colorIndex: shape?.color,
       fontSize: shape?.size,
@@ -724,6 +739,7 @@ export function validate(document_) {
       title: capability.title,
       description: capability.description,
       owner: capability.owner,
+      ownerId: capability.ownerId,
       type: capability.type,
       colorIndex: shape?.color,
       fontSize: shape?.size,
@@ -762,6 +778,7 @@ export function validate(document_) {
         title: node.title,
         description: node.description,
         owner: node.owner,
+        ownerId: node.ownerId,
         type: node.type,
         colorIndex: node.shape?.color,
         fontSize: node.shape?.size,

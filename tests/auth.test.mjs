@@ -107,7 +107,7 @@ const entra = createServer(async (request, response) => {
     const claims = {
       iss: issuer, aud: tamper === 'aud' ? 'another-app' : CLIENT, tid: TENANT,
       iat: now, nbf: now, exp: now + 3600, nonce: grant.nonce,
-      name: 'Alice Example', preferred_username: 'alice@contoso.example',
+      oid: 'oid-alice', name: 'Alice Example', preferred_username: 'alice@contoso.example',
     };
     return json(200, { token_type: 'Bearer', id_token: jwt(claims, tamper === 'signature' ? strangerKey : privateKey) });
   }
@@ -259,12 +259,15 @@ try {
   const forged = `domainmap.auth=${Buffer.from(JSON.stringify({ name: 'Mallory', method: 'microsoft', exp: Date.now() + 1e7 })).toString('base64url')}.${mac}`;
   check('a forged session is turned away', (await get(app, '/', { cookie: forged })).status === 302 && body);
 
-  const ageing = `domainmap.auth=${seal(SESSION_SECRET, { name: 'Alice', method: 'microsoft', exp: Date.now() + 60_000 })}`;
+  const ageing = `domainmap.auth=${seal(SESSION_SECRET, { source: 'entra', subject: 'oid-alice', name: 'Alice', method: 'microsoft', exp: Date.now() + 60_000 })}`;
   const used = await get(app, '/', { cookie: ageing });
   check('a session sealed with the server\'s secret opens the map', used.status === 200);
   check('using a session does not extend it, so removed access ends with it', cookiesFrom(used) === '');
-  const expired = `domainmap.auth=${seal(SESSION_SECRET, { name: 'Alice', method: 'microsoft', exp: Date.now() - 1 })}`;
+  const expired = `domainmap.auth=${seal(SESSION_SECRET, { source: 'entra', subject: 'oid-alice', name: 'Alice', method: 'microsoft', exp: Date.now() - 1 })}`;
   check('an expired session is sent to sign in', (await get(app, '/', { cookie: expired })).status === 302);
+  const stale = `domainmap.auth=${seal(SESSION_SECRET, { name: 'Alice', method: 'microsoft', exp: Date.now() + 60_000 })}`;
+  check('a session from before sessions named the door someone came in by is sent to sign in again',
+    (await get(app, '/', { cookie: stale })).status === 302);
 
   tamper = 'aud';
   const forOther = await authorize(app);

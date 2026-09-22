@@ -42,12 +42,12 @@ const el = (id) => document.getElementById(id);
 
 let handlers = {};
 let editMode = false;
-let owner = false;
+let contributor = false;
 let showing = false;
 
-/** The model the server is connected to, as `{ host, model }`, or null. Only an owner is told. */
+/** The model the server is connected to, as `{ host, model }`, or null. Only a contributor is told. */
 let connected = null;
-/** An owner with a model connected who would rather copy the prompt out to another one. */
+/** A contributor with a model connected who would rather copy the prompt out to another one. */
 let byHand = false;
 
 /** The skills as read from the folder, or why they could not be. Null until first wanted. */
@@ -68,8 +68,8 @@ let exchange = null;
 /** When the turn in flight was sent, while there is one. */
 let waitingSince = null;
 
-/** Whether the owner is talking to the connected model, rather than copying prompts out. */
-const chatting = () => owner && connected !== null && !byHand;
+/** Whether the contributor is talking to the connected model, rather than copying prompts out. */
+const chatting = () => contributor && connected !== null && !byHand;
 
 // --- keeping --------------------------------------------------------------------
 
@@ -175,10 +175,10 @@ function renderCallout() {
   let says = 'The assistant writes the prompt; you take it to the AI chat you use and paste the reply back '
     + 'here to review. It carries the whole map, without its drawing, so paste it only where your organisation allows.';
 
-  if (owner && connected) {
+  if (contributor && connected) {
     title = 'Using another chat';
     says = 'Copy the prompt into a chat of your own and paste its reply below. It carries the whole map, without its drawing.';
-  } else if (!owner) {
+  } else if (!contributor) {
     title = 'Take it to a chat of your own';
     says = 'The assistant writes the prompt for the AI chat you use. It carries the whole published map, without its drawing.';
   }
@@ -192,7 +192,7 @@ function renderCallout() {
     : '';
 
   const other = el('assistant-other');
-  other.hidden = !(owner && connected);
+  other.hidden = !(contributor && connected);
   other.textContent = byHand ? `Back to ${connected?.host ?? 'the connected model'}` : 'Use another chat';
 }
 
@@ -535,8 +535,8 @@ const applicable = () => (review?.cards ?? []).filter((card) => !isNote(card) &&
 function renderReview() {
   const section = el('assistant-review');
   // With a model connected and nothing back from it yet, there is nothing to review.
-  section.hidden = !owner || (chatting() && !review);
-  if (!owner) return;
+  section.hidden = !contributor || (chatting() && !review);
+  if (!contributor) return;
 
   // A reply pasted in by hand is the start of changing the map, so it waits for
   // Edit with everything else. Asking the connected model is only asking: the
@@ -689,11 +689,11 @@ export async function showAssistant(next) {
 
 export const assistantShowing = () => showing;
 
-/** `model` is what the server says it is connected to — `{ host, model }` — and only ever says to an owner. */
+/** `model` is what the server says it is connected to — `{ host, model }` — and only ever says to a contributor. */
 export function setAssistantMode(mode) {
   editMode = mode.editMode;
-  owner = mode.owner;
-  connected = mode.owner ? mode.model ?? null : null;
+  contributor = mode.contributor;
+  connected = mode.contributor ? mode.model ?? null : null;
   renderAssistant();
 }
 

@@ -178,6 +178,33 @@ its own rather than beside anything. About holds the README's first chapter, cop
 page, pinned to the top right corner under the button, and wider than the
 palette editor, since it holds prose rather than controls.
 
+Last in the row, the **avatar**: initials in a circle, or a silhouette when
+sign-in is off. It opens the **profile popup**, pinned under it like About and
+narrower: the name, the address, one line saying the role and what it may do —
+*Contributor — edits and saves versions* — and, in the foot, **Users & access**
+for everyone who works on the map, **Sign out**, and Close on the right.
+
+### Users & access
+
+Who may open the map and what each may do: the roster, a dialog laid out like
+Versions — centred, 760px, a table with a row a person — and reached from the
+profile popup, which shuts as it opens, since who may do what belongs with who
+you are. A row is the name in `--fw-semibold` with a quiet **You** badge beside
+it when it is, the address under the name in `--ink-soft`, the role, when they
+were last here (*Not yet* before a first sign-in), and the row's actions. The
+row that is you takes `--chrome`, as the open version does. For the
+administrator the role is a `<select>` the height of a chip, on every row but
+their own, which reads as it is; the action is **Make administrator**, which
+asks first. At the foot, before Close, the administrator's form: a name box, an
+address box and a role select in one row, and **Add** — the same `.field__input`
+and `.field__select` the details panel uses, wrapping to a short form on a
+phone. Contributors and publishers see the same rows with words where the
+controls are, and no form. A viewer is not shown the dialog at all.
+
+The sign-in screen's bypass, when it is on, is a small form above its button:
+a name box and a role select at 40px, the height of the buttons beside them,
+in the page's own field style.
+
 ### Panels
 
 Both are the same frame: the body, then `panel__actions` and a `panel__foot`,
@@ -247,6 +274,13 @@ special — and each sits under a small `--ink-soft` label, except in Shape: fon
 size, weight, the shape or title size and a connector's line are short choices, so each sits beside
 its label on one row, as does a connector's Anchor checkbox. A domain's opacity follows its color, since it says how
 much of that color shows.
+
+The **Owner** box is a text field with the people on the list behind it — a
+`datalist`, so the names come up as they are typed and the box still takes a
+team or someone outside — and a **hint** under it in `--ink-soft` at
+`--fs-200`: the address of the person the name was picked from, or that they
+are no longer on the list. Nothing under a typed name. Browsing, it is the same
+quiet box every field is, and a viewer's has no list behind it.
 
 With **nothing selected** the panel is about the map itself. A **Map** section
 holds **What the business is** — the map's own description, a text area like any

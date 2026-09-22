@@ -34,7 +34,8 @@
   ],
   "scripts": {
     "start": "node --env-file=dev.env scripts/serve.mjs app 8000",
-    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/layers.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/suggestions.test.mjs && node tests/auth.test.mjs && node tests/versions.test.mjs && node tests/assistant.test.mjs"
+    "make-administrator": "node --env-file-if-exists=dev.env scripts/make-administrator.mjs",
+    "test": "node tests/defaults.test.mjs && node tests/geometry.test.mjs && node tests/layers.test.mjs && node tests/seed.test.mjs && node tests/links.test.mjs && node tests/suggestions.test.mjs && node tests/auth.test.mjs && node tests/versions.test.mjs && node tests/people.test.mjs && node tests/assistant.test.mjs"
   },
   "dependencies": {
     "pg": "8.23.0"

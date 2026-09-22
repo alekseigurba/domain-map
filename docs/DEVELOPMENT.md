@@ -17,11 +17,18 @@ npm start
 ```
 
 `npm start` reads [dev.env](../dev.env), which switches sign-in **off**: every
-page and every API call goes straight through, and everyone may edit and
-publish. Drop `AUTH_ENABLED` to bring the gate back — the sign-in screen then
-offers *Bypass (dev)* — or export `AUTH_TENANT_ID`, `AUTH_CLIENT_ID` and
-`AUTH_CLIENT_SECRET` to try Microsoft sign-in locally. Anything already set in
-the shell wins over the file.
+page and every API call goes straight through, and whoever is there is the
+administrator. Drop `AUTH_ENABLED` to bring the gate back — the sign-in screen
+then offers *Bypass (dev)*, with a name and a role, so every role can be tried:
+a name makes a person, the first name in is the administrator, and asking for
+the administrator's role afterwards hands it over — or export `AUTH_TENANT_ID`,
+`AUTH_CLIENT_ID` and `AUTH_CLIENT_SECRET` to try Microsoft sign-in locally.
+Anything already set in the shell wins over the file.
+
+Roles are rows in Postgres, seeded once from `OWNER_EMAILS` and managed in
+*Users & access* after that. For a database whose administrator has gone,
+`npm run make-administrator -- someone@example.com` makes someone else the
+administrator; it reads `dev.env` for `DATABASE_URL` when there is one.
 
 To try the Assistant with a model behind it, export `ASSISTANT_API_URL` and
 `ASSISTANT_API_KEY` before `npm start` — a local Ollama at
@@ -42,7 +49,7 @@ npm test
 
 Each test is a plain script that prints its checks and exits non-zero on the
 first failing run — no test runner, no framework. `npm test` runs them in order
-(defaults, geometry, layers, seed, links, suggestions, auth, versions,
+(defaults, geometry, layers, seed, links, suggestions, auth, versions, people,
 assistant), and any one of them also runs on its own:
 
 ```bash
@@ -64,6 +71,10 @@ node tests/geometry.test.mjs
 | `scripts/assistant.mjs` | The model behind the Assistant, when `ASSISTANT_API_URL` and `ASSISTANT_API_KEY` name one: the two request shapes, one retry, and the API's own words when it says no. `tests/assistant.test.mjs` runs it against a stand-in model on a local port. |
 | `app/skills/` | One folder per skill, each a `SKILL.md` in the agent-skills form, with the two formats a prompt writes in. [Its README](../app/skills/README.md) says what a skill file holds. |
 | `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`. |
+| `scripts/roles.mjs` | The four roles, lowest first, and what each may do. |
+| `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, the administrator's role handed over, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
+| `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made the administrator from outside the app. |
+| `app/js/people.js` | Users & access: the roster, and what the administrator can do on it. |
 | `scripts/serve.mjs` | The CLI over it, for running the stock app from this checkout. |
 | `scripts/create-app.mjs` | `create-domain-map-app`: writes a consumer repo from `scaffold/`. |
 | `scripts/migrations/` | Numbered `.sql`, applied in name order at startup and recorded in a table of their own. There is nothing to run by hand. |

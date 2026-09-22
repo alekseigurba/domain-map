@@ -231,8 +231,9 @@ check('both are written back where they were read',
 check('and only what was chosen: the touchpoint wrote no weight',
   !('iconWeight' in dressedOut.touchpoints[0].shape));
 // Placement and weight were fields an older app could read past. Areas are
-// not: read past, they would be lost on the next save, so the number moved.
-check('every save writes version 3', dressedOut.version === 3 && CURRENT_VERSION === 3);
+// not: read past, they would be lost on the next save, so the number moved --
+// and again for the owner's id, which is dropped the same way.
+check('every save writes version 4', dressedOut.version === 4 && CURRENT_VERSION === 4);
 check('a map with no areas writes no list of them', !('areas' in dressedOut));
 
 // --- what a file may not say -------------------------------------------------
@@ -554,6 +555,31 @@ check('and drops the selection it was', store.selection.id === null);
 store_.restore(freed);
 check('undoing it puts every one of them back',
   store.areas.length === 2 && store.touchpoints[0].areaId === growth.id && refunds.areaId === growth.id);
+
+// --- who owns it: a name, and the id of the person it was picked from ---------
+
+const owned = fromDocument({
+  version: 4,
+  domains: [
+    { key: 'billing', title: 'Billing', owner: 'Jane Doe', ownerId: '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41' },
+    { key: 'lending', title: 'Lending', owner: 'Platform team' },
+  ],
+  capabilities: [{ key: 'invoicing', title: 'Invoicing', domain: 'billing', ownerId: '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41' }],
+});
+check('an owner picked from the list reads with the person\'s id beside the name',
+  titled(owned.domains, 'Billing').ownerId === '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41'
+  && titled(owned.domains, 'Billing').owner === 'Jane Doe');
+check('a name typed for a team carries no id', titled(owned.domains, 'Lending').ownerId === null);
+check('a capability may carry one as a domain does',
+  titled(owned.capabilities, 'Invoicing').ownerId === '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41');
+const ownedOut = toDocument(owned);
+check('the id is written back beside the name, and left out where there is none',
+  keyed(ownedOut.domains, 'billing').ownerId === '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41'
+  && !('ownerId' in keyed(ownedOut.domains, 'lending')));
+check('a version 3 file reads with every owner a plain name',
+  fromDocument({ version: 3, domains: [{ key: 'a', title: 'A', owner: 'Someone' }] }).domains[0].ownerId === null);
+refuses('an id that is not text is refused', { version: 4, domains: [{ key: 'a', title: 'A', ownerId: 7 }] }, 'ownerId');
+refuses('and one too long to be one', { version: 4, actors: [{ key: 'a', title: 'A', ownerId: 'x'.repeat(201) }] }, 'ownerId');
 
 console.log(failures === 0 ? '\nAll layer checks passed.' : `\n${failures} check(s) failed.`);
 process.exitCode = failures === 0 ? 0 : 1;

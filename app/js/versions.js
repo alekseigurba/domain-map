@@ -6,40 +6,11 @@
 // server's own words, its status, and — for a save that lost a race — the
 // version as it now stands.
 
-import { signInAgain } from './identity.js';
+import { call } from './api.js';
 
 const path = (name) => `api/versions/${encodeURIComponent(name)}`;
 
-async function call(method, url, body) {
-  const response = await fetch(url, {
-    method,
-    cache: 'no-store',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (response.status === 204) return null;
-
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    /* no body worth reading */
-  }
-  if (response.ok) return payload;
-
-  // The session ended while the page was open: nothing here can be retried
-  // until the person signs in again.
-  if (response.status === 401) {
-    signInAgain();
-    throw Object.assign(new Error('Your session has ended. Signing in again…'), { status: 401 });
-  }
-  throw Object.assign(new Error(payload?.error ?? `The server answered ${response.status}.`), {
-    status: response.status,
-    version: payload?.version ?? null,
-  });
-}
-
-/** Every version, newest first, without their documents. Owners only. */
+/** Every version, newest first, without their documents. Contributors only. */
 export const listVersions = async () => (await call('GET', 'api/versions')).versions;
 
 /** One version with its document. A viewer may only read the published one. */

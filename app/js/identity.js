@@ -15,10 +15,33 @@ export function signInAgain() {
   location.assign(`login.html?returnUrl=${encodeURIComponent(here)}`);
 }
 
+// The roles, lowest first, as scripts/roles.mjs has them: the server decides,
+// and this is only so the page can hide what a press would be refused.
+const RANK = ['viewer', 'contributor', 'publisher', 'administrator'];
+export const ADMINISTRATOR = 'administrator';
+
+/** Whether `role` may do what `needed` may: each role holds everything the one below it does. */
+export const mayAs = (role, needed) => RANK.indexOf(role) >= RANK.indexOf(needed);
+
+export const ROLE_NAMES = {
+  administrator: 'Administrator',
+  publisher: 'Publisher',
+  contributor: 'Contributor',
+  viewer: 'Viewer',
+};
+
+/** What each role may do, in a few words, for the profile and the roster. */
+export const ROLE_SAYS = {
+  administrator: 'manages people and access, publishes, edits and saves',
+  publisher: 'publishes the map, edits and saves',
+  contributor: 'edits and saves versions',
+  viewer: 'sees the published map',
+};
+
 /**
- * `{ required, name, username, email, method, role }`, where the role is
- * 'owner' or 'viewer'. With sign-in off there is nobody to name, and everyone
- * is an owner.
+ * `{ required, id, name, username, email, method, role }`, where the role is
+ * one of RANK. With sign-in off there is nobody to name, and whoever is there
+ * is the administrator.
  */
 export async function whoAmI() {
   const response = await fetch('api/me', { cache: 'no-store', headers: { accept: 'application/json' } });
@@ -39,10 +62,8 @@ export function initialsOf(name) {
   return `${first}${last ?? ''}`.toUpperCase();
 }
 
-const ROLE_TEXT = {
-  owner: 'Owner — can open any version, edit and publish',
-  viewer: 'Viewer — sees the published map',
-};
+/** "Contributor — edits and saves versions". */
+const roleLine = (role) => (ROLE_NAMES[role] ? `${ROLE_NAMES[role]} — ${ROLE_SAYS[role]}` : role);
 
 /**
  * The avatar in the header, and the popup it opens: who this is, what they may
@@ -69,7 +90,7 @@ export function showIdentity(me, report) {
   const emailLine = document.getElementById('profile-email');
   emailLine.textContent = email;
   emailLine.hidden = !email;
-  document.getElementById('profile-role').textContent = ROLE_TEXT[me.role] ?? me.role;
+  document.getElementById('profile-role').textContent = roleLine(me.role);
   document.getElementById('profile-bypass').hidden = !bypass;
 
   // With no gate there is nothing to sign out of.

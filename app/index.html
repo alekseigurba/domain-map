@@ -153,6 +153,8 @@
         <span class="details-bar__chevron" aria-hidden="true">&#9662;</span>
       </button>
       <div class="details" id="details"></div>
+      <!-- The names an Owner box offers, once for every box; details.js fills it. -->
+      <datalist id="people-options"></datalist>
       <!-- The Assistant, in the details column's place while its chip is pressed.
            The frame is written here and assistant.js fills what moves: the
            chips, what the task is about, the exchange and the cards. The text
@@ -341,8 +343,52 @@
       <p class="profile__role" id="profile-role"></p>
       <p class="profile__bypass" id="profile-bypass" hidden>Signed in through the development bypass.</p>
       <div class="dialog__foot">
+        <!-- Who may do what belongs with who you are. people.js shows it to
+             everyone who works on the map, and lets the administrator change it. -->
+        <button class="btn btn--chip" type="button" id="people"
+                title="Who may open the map, and what each may do"
+                aria-haspopup="dialog" aria-controls="people-dialog" hidden>Users &amp; access</button>
         <button class="btn btn--chip" type="button" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
         <button class="btn btn--chip" type="button" id="profile-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Users & access: who may open the map and what each may do. Everyone who
+       works on the map reads it; the administrator gives out roles, adds
+       someone by email and hands their own role over. people.js fills the rows
+       each time it opens. -->
+  <dialog class="dialog dialog--people" id="people-dialog" aria-labelledby="people-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="people-title">Users &amp; access</h2>
+      <p class="versions__note" id="people-note" hidden></p>
+      <div class="versions__scroll">
+        <table class="roster">
+          <thead>
+            <tr>
+              <th scope="col">Person</th>
+              <th scope="col">Role</th>
+              <th scope="col">Last signed in</th>
+              <th scope="col" aria-label="Actions"></th>
+            </tr>
+          </thead>
+          <tbody id="people-rows"></tbody>
+        </table>
+      </div>
+      <!-- The administrator's: someone added by email is on the list before
+           they have signed in, and their first sign-in finds them here. -->
+      <form class="roster__add" id="people-add" hidden>
+        <input class="field__input" id="people-add-name" name="name" placeholder="Name" maxlength="200" aria-label="Name">
+        <input class="field__input" id="people-add-email" name="email" type="email" placeholder="Email" required maxlength="200" aria-label="Email">
+        <select class="field__select" id="people-add-role" name="role" aria-label="Role">
+          <option value="contributor" selected>Contributor</option>
+          <option value="publisher">Publisher</option>
+          <option value="viewer">Viewer</option>
+        </select>
+        <button class="btn btn--chip" type="submit" title="Add someone by email, ahead of their first sign-in">Add</button>
+      </form>
+      <div class="dialog__foot dialog__foot--end">
+        <button class="btn btn--chip" type="button" id="people-close">Close</button>
       </div>
     </div>
   </dialog>

@@ -33,7 +33,18 @@
         Login with Microsoft
       </button>
 
-      <button class="login__button" id="sign-in-dev" hidden>Bypass (dev)</button>
+      <!-- The bypass: a name makes a person, and the role is theirs from this
+           sign-in on, so a developer can be several people in turn. -->
+      <form class="login__form" id="sign-in-dev-form" hidden>
+        <input class="login__field" id="sign-in-dev-name" name="name" placeholder="Name (Developer)" maxlength="200" aria-label="Name">
+        <select class="login__field" id="sign-in-dev-role" name="role" aria-label="Role">
+          <option value="contributor" selected>Contributor</option>
+          <option value="publisher">Publisher</option>
+          <option value="administrator">Administrator</option>
+          <option value="viewer">Viewer</option>
+        </select>
+        <button class="login__button" id="sign-in-dev" type="submit">Bypass (dev)</button>
+      </form>
     </div>
 
     <p class="login__note" id="note" role="status"></p>
