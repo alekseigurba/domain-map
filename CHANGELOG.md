@@ -7,6 +7,8 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.5.1 — 2026-09-22
+
 More than one administrator, people taken off the list, and a Versions dialog
 that shows every action without scrolling. One migration, applied at startup;
 map files stay version 4. Full notes:
