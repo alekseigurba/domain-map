@@ -47,8 +47,10 @@ sign in is the administrator, and the server warns about that at startup. With
 sign-in off, whoever is there is the administrator, which is what makes `npm run
 start:dev` work with no configuration at all. For the day the administrator has
 left without handing over, `npm run make-administrator -- someone@example.com`
-against `DATABASE_URL` makes someone else the administrator — on a Container
-App, through `az containerapp exec` into the running revision.
+against `DATABASE_URL` makes someone else the administrator — from a repo built
+on the package, as
+`node node_modules/domain-map/scripts/make-administrator.mjs someone@example.com`,
+and on a Container App through `az containerapp exec` into the running revision.
 
 ## What you may override
 

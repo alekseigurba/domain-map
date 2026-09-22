@@ -216,8 +216,14 @@ export function createDomainMapServer(options = {}) {
    * person's next click. A session whose login the table has never seen — a
    * consumer's own auth, with no hook to record sign-ins — is entered here.
    */
+  const LOCAL = { source: 'local', subject: 'local', name: 'Local', emails: [] };
   async function identify(request) {
-    if (!required) return { user: null, person: null, role: roleOf(null, null, { required }) };
+    // With sign-in off there is nobody to tell apart, but a sandbox has to be
+    // somebody's, so one local person holds it and whatever is saved.
+    if (!required) {
+      const person = await people.byLogin(LOCAL.source, LOCAL.subject) ?? await people.signIn(LOCAL);
+      return { user: null, person, role: roleOf(null, person, { required }) };
+    }
     const user = auth.user?.(request) ?? null;
     const login = user ? loginOf(user) : null;
     const person = login
@@ -307,33 +313,39 @@ export function createDomainMapServer(options = {}) {
     response.end();
   };
 
-  // Versions: every contributor sees them all, and a viewer only ever the
-  // published one. Saving, renaming and deleting are a contributor's;
-  // publishing is a publisher's.
+  // Versions: a contributor's own sandbox and the shared versions, and a viewer
+  // only ever the published one. A sandbox version is saved, renamed, deleted
+  // and shared by the one person whose it is; a shared one is renamed or
+  // deleted by whoever shared it, a publisher or the administrator, and never
+  // saved over. Publishing is a publisher's, from the shared versions only.
   async function handleVersions(request, response, url, who) {
     const { method } = request;
     const path = url.pathname;
     const contributes = may(who, CONTRIBUTOR);
+    const me = who.person;
     // Who saved it, as the people table names them; a session the table has
     // no row for is named as the session names it.
-    const by = who.person
-      ? { name: who.person.name, email: who.person.email }
+    const by = me
+      ? { name: me.name, email: me.email }
       : who.user
         ? { name: who.user.name ?? null, email: who.user.email ?? who.user.username ?? null }
         : null;
     const contributorsOnly = () => sendJson(response, 403, { error: 'Only a contributor can do that.' });
+    // A publisher renames and deletes what anyone shared; a contributor only their own.
+    const force = may(who, PUBLISHER);
 
     if (path === '/api/me') {
       if (method !== 'GET') return notAllowed(response, 'GET');
       // The page asks once each time it loads, which is as good a "last
       // signed in" as the sign-in itself, and the one an old session gets.
-      if (who.person) await people.touch(who.person.id);
+      if (me) await people.touch(me.id);
       return sendJson(response, 200, {
         required,
-        id: who.person?.id ?? null,
-        name: who.person?.name ?? who.user?.name ?? null,
+        id: me?.id ?? null,
+        // With sign-in off there is nobody to name, whoever holds the sandbox.
+        name: required ? me?.name ?? who.user?.name ?? null : null,
         username: who.user?.username ?? null,
-        email: who.person?.email ?? who.user?.email ?? null,
+        email: required ? me?.email ?? who.user?.email ?? null : null,
         method: who.user?.method ?? null,
         role: who.role,
         // Where a contributor's messages would go, so the page can say so
@@ -346,7 +358,7 @@ export function createDomainMapServer(options = {}) {
 
     if (path === '/api/published') {
       if (method === 'GET') {
-        const version = await versions.published();
+        const version = await versions.published(me);
         return version
           ? sendJson(response, 200, version)
           : sendJson(response, 404, { error: 'Nothing has been published yet.' });
@@ -355,62 +367,92 @@ export function createDomainMapServer(options = {}) {
         if (!may(who, PUBLISHER)) return sendJson(response, 403, { error: 'Only a publisher can publish.' });
         const { name } = await readJson(request);
         if (typeof name !== 'string' || !name) throw failure(400, 'Say which version to publish.');
-        return sendJson(response, 200, await versions.publish(name));
+        return sendJson(response, 200, await versions.publish(name, me));
       }
       return notAllowed(response, 'GET, PUT');
     }
 
     if (path === '/api/versions') {
-      if (method === 'GET') {
-        if (!contributes) return contributorsOnly();
-        return sendJson(response, 200, { versions: await versions.list() });
-      }
+      if (method !== 'GET') return notAllowed(response, 'GET');
+      if (!contributes) return contributorsOnly();
+      return sendJson(response, 200, { versions: await versions.listShared(me) });
+    }
+
+    if (path === '/api/drafts') {
+      if (!contributes) return contributorsOnly();
+      if (method === 'GET') return sendJson(response, 200, { versions: await versions.listDrafts(me) });
       if (method === 'POST') {
-        if (!contributes) return contributorsOnly();
-        const { document } = await readJson(request);
-        return sendJson(response, 201, await versions.create(checkDocument(document), by));
+        const { document, name } = await readJson(request);
+        const wanted = name == null ? null : checkVersionName(name);
+        return sendJson(response, 201, await versions.createDraft(checkDocument(document), by, me, { name: wanted }));
       }
       return notAllowed(response, 'GET, POST');
     }
 
-    const name = decodeURIComponent(path.slice('/api/versions/'.length));
-    if (!path.startsWith('/api/versions/') || name === '' || name.includes('/')) {
+    // `/api/versions/<name>` is a shared version and `/api/drafts/<name>` one
+    // in this person's sandbox; `/share` and `/copy` after the name move a
+    // version from the one to the other.
+    const at = path.startsWith('/api/versions/') ? 'shared' : path.startsWith('/api/drafts/') ? 'sandbox' : null;
+    const [name, action, ...more] = at
+      ? path.slice(at === 'shared' ? '/api/versions/'.length : '/api/drafts/'.length).split('/').map(decodeURIComponent)
+      : [];
+    if (!at || !name || more.length > 0 || (action !== undefined && action !== (at === 'shared' ? 'copy' : 'share'))) {
       return sendJson(response, 404, { error: `Nothing at ${path}.` });
     }
 
+    if (action) {
+      if (method !== 'POST') return notAllowed(response, 'POST');
+      if (!contributes) return contributorsOnly();
+      if (at === 'sandbox') {
+        const { name: as } = await readJson(request);
+        return sendJson(response, 200, await versions.share(name, me, by, { as: as == null ? null : checkVersionName(as) }));
+      }
+      return sendJson(response, 201, await versions.copyToSandbox(name, me, by));
+    }
+
     if (method === 'GET') {
-      const version = await versions.read(name);
+      if (at === 'sandbox') {
+        if (!contributes) return contributorsOnly();
+        const draft = await versions.readDraft(name, me);
+        return draft
+          ? sendJson(response, 200, draft)
+          : sendJson(response, 404, { error: `There is no version "${name}" in your sandbox.` });
+      }
+      const version = await versions.readShared(name, me);
       // The same answer whether or not the version exists: a viewer is not told
-      // which drafts there are.
+      // which shared versions there are.
       if (!contributes && !version?.published) {
         return sendJson(response, 403, { error: 'Only the published version is open to viewers.' });
       }
       return version
         ? sendJson(response, 200, version)
-        : sendJson(response, 404, { error: `There is no version "${name}".` });
+        : sendJson(response, 404, { error: `There is no shared version "${name}".` });
     }
+    if (!contributes) return contributorsOnly();
+
     if (method === 'PUT') {
-      if (!contributes) return contributorsOnly();
+      if (at === 'shared') {
+        response.writeHead(405, { Allow: 'GET, PATCH, DELETE', 'Content-Type': 'application/json; charset=utf-8' });
+        return response.end(JSON.stringify({ error: 'A shared version is not changed in place. Take a copy into your sandbox and share it again.' }));
+      }
       const { document, base } = await readJson(request);
       if (typeof base !== 'string' || Number.isNaN(Date.parse(base))) {
         throw failure(400, 'A save has to say when the version it changes was last saved.');
       }
-      return sendJson(response, 200, await versions.save(name, checkDocument(document), base, by));
+      return sendJson(response, 200, await versions.saveDraft(name, checkDocument(document), base, by, me));
     }
     // Renaming is not saving, so it does not carry a `base`: it changes what
     // the version is called and nothing about what is in it.
     if (method === 'PATCH') {
-      if (!contributes) return contributorsOnly();
       const { name: wanted } = await readJson(request);
-      return sendJson(response, 200, await versions.rename(name, checkVersionName(wanted)));
+      return sendJson(response, 200, await versions.rename(at, name, checkVersionName(wanted), me, { force }));
     }
     if (method === 'DELETE') {
-      if (!contributes) return contributorsOnly();
-      await versions.remove(name);
+      await versions.remove(at, name, me, { force });
       response.writeHead(204).end();
       return;
     }
-    return notAllowed(response, 'GET, PUT, PATCH, DELETE');
+    return notAllowed(response, at === 'shared' ? 'GET, PATCH, DELETE' : 'GET, PUT, PATCH, DELETE');
   }
 
   // People: everyone who works on the map may see who else does and what each

@@ -16,7 +16,8 @@ const MAX_LENGTH = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const COLUMNS = `p.id, p.name, p.email, p.role, p.created_at, p.last_signed_in,
-  coalesce((select array_agg(l.source order by l.source) from logins l where l.person_id = p.id), '{}') as sources`;
+  coalesce((select array_agg(l.source order by l.source) from logins l where l.person_id = p.id), '{}') as sources,
+  (select count(*) from versions v where v.sandbox_of = p.id)::int as drafts`;
 
 function toPerson(row) {
   return {
@@ -28,6 +29,8 @@ function toPerson(row) {
     lastSignedIn: row.last_signed_in?.toISOString() ?? null,
     // Which doors they have come in by. Empty until the first sign-in.
     sources: row.sources,
+    // How many versions their sandbox holds — the count, never what.
+    drafts: row.drafts,
   };
 }
 

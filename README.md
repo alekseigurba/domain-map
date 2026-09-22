@@ -128,13 +128,18 @@ review of your business and a review of a map.
 
 ## Versions, and the one everyone sees
 
-Versions are kept in Postgres, and one of them is **published**. That is the
-one anyone who signs in sees, and the one the map opens at.
+Versions are kept in Postgres, in two places. **My sandbox** is yours: what
+you save there is nobody else's to see. **Shared** is what every contributor
+sees: fixed copies put in the open, never saved over. One shared version is
+**published** — the one anyone who signs in sees, and the one the map opens at.
 
-**Save** writes the version that is open. **Versions** — the chip naming the
-one you are on — opens the list: open another, *Save as new* to keep the
-current map as the next version, publish one, or delete one. **Cancel** unwinds
-everything done since **Edit** was pressed, all at once.
+**Save** writes the sandbox version that is open; on a shared one it puts a
+copy in your sandbox instead, after asking. **Versions** — the chip naming the
+one you are on — opens the two lists: open another, *Save as new* to keep the
+current map as the next version in your sandbox, *Share* one into the open,
+*Take a copy* of a shared one to work on, rename, delete, and — a publisher —
+publish a shared one. **Cancel** unwinds everything done since **Edit** was
+pressed, all at once.
 
 Who may do any of this is a role, one to a person. Everyone who signs in is a
 **contributor**: they open any version, edit, save, rename and delete. A

@@ -1,7 +1,9 @@
 // Versions and roles, checked against the real server and a throwaway database:
-// what a contributor, a publisher and a viewer may each do, how a new version is named, a save
-// that lost a race, the published version's guard, the old versions folder in
-// the file store, and a store from before versions moved into Postgres.
+// what a contributor, a publisher and a viewer may each do, a sandbox of one's
+// own and the shared versions, how a new version is named, a save that lost a
+// race, sharing and taking a copy, the published version's guard, the old
+// versions folder in the file store, and a store from before versions moved
+// into Postgres.
 //   docker compose up -d postgres
 //   node tests/versions.test.mjs
 
@@ -104,6 +106,8 @@ async function as(app, user, method, path, body) {
   return { status: response.status, body: parsed };
 }
 
+const names = (list) => (list ?? []).map((version) => version.name);
+
 const cleanup = [];
 
 try {
@@ -114,7 +118,7 @@ try {
   let app = await startServer({ storage, databaseUrl: database.url });
 
   check('the schema is applied on first start',
-    app.log().includes('Applied migration 001-versions.sql') && app.log().includes('Applied migration 002-people.sql'), app.log());
+    ['001-versions.sql', '002-people.sql', '003-sandboxes.sql'].every((name) => app.log().includes(`Applied migration ${name}`)), app.log());
   check('and the seed map is imported into it', app.log().includes('Imported 1 version: v1'), app.log());
 
   const stranger = await as(app, null, 'GET', '/api/published');
@@ -133,24 +137,26 @@ try {
 
   const published = await as(app, VIEWER, 'GET', '/api/published');
   check('a viewer sees the published version',
-    published.status === 200 && published.body.name === 'v1' && published.body.published === true);
+    published.status === 200 && published.body.name === 'v1' && published.body.published === true && published.body.scope === 'shared');
   check('word for word as the seed has it', published.body.document === seedText);
 
   // --- what a viewer may not do ---
-  check('a viewer cannot list the versions', (await as(app, VIEWER, 'GET', '/api/versions')).status === 403);
+  check('a viewer cannot list the shared versions', (await as(app, VIEWER, 'GET', '/api/versions')).status === 403);
+  check('nor a sandbox', (await as(app, VIEWER, 'GET', '/api/drafts')).status === 403);
   check('a viewer can open the published one by name',
     (await as(app, VIEWER, 'GET', '/api/versions/v1')).status === 200);
   check('but is not told whether any other exists',
     (await as(app, VIEWER, 'GET', '/api/versions/no-such-version')).status === 403);
   check('a viewer cannot save a new version',
-    (await as(app, VIEWER, 'POST', '/api/versions', { document: mapText() })).status === 403);
-  check('nor save over one', (await as(app, VIEWER, 'PUT', '/api/versions/v1',
+    (await as(app, VIEWER, 'POST', '/api/drafts', { document: mapText() })).status === 403);
+  check('nor save over one', (await as(app, VIEWER, 'PUT', '/api/drafts/v1',
     { document: mapText(), base: published.body.updatedAt })).status === 403);
   check('nor rename one', (await as(app, VIEWER, 'PATCH', '/api/versions/v1', { name: 'mine' })).status === 403);
   check('nor delete one', (await as(app, VIEWER, 'DELETE', '/api/versions/v1')).status === 403);
+  check('nor take a copy', (await as(app, VIEWER, 'POST', '/api/versions/v1/copy', {})).status === 403);
   check('nor publish one', (await as(app, VIEWER, 'PUT', '/api/published', { name: 'v1' })).status === 403);
-  check('a contributor cannot publish either', (await as(app, OWNER_BY_EMAIL, 'PUT', '/api/published', { name: 'v1' })).status === 403);
   check('nor write to the file store', (await as(app, VIEWER, 'PUT', '/api/files/data/settings.json', '{}')).status === 403);
+  check('a contributor cannot publish either', (await as(app, OWNER_BY_EMAIL, 'PUT', '/api/published', { name: 'v1' })).status === 403);
 
   // --- the old versions folder in the file store ---
   const listing = await as(app, OWNER, 'GET', '/api/files?prefix=data/');
@@ -167,104 +173,172 @@ try {
   check('and one cannot be written there',
     (await as(app, OWNER, 'PUT', '/api/files/data/versions/draft.json', mapText())).status === 403);
 
-  // --- a contributor's versions ---
-  const first = await as(app, OWNER, 'POST', '/api/versions', { document: mapText('First') });
-  check('Save as new takes the next number after the seed\'s v1',
-    first.status === 201 && first.body.name === 'v2', JSON.stringify(first.body).slice(0, 200));
-  check('and says who saved it',
-    first.body.createdBy?.name === 'Olivia Owner' && first.body.updatedBy?.email === 'olivia@contoso.example');
+  // --- a sandbox of one's own ---
+  const oscarFirst = await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts', { document: mapText('Oscar') });
+  check('Save as new goes to the sandbox, which counts its own: the first is v1 whatever is shared',
+    oscarFirst.status === 201 && oscarFirst.body.name === 'v1' && oscarFirst.body.scope === 'sandbox', JSON.stringify(oscarFirst.body).slice(0, 200));
+  check('and says who saved it, as the list names them',
+    oscarFirst.body.createdBy?.name === 'Oscar' && oscarFirst.body.updatedBy?.email === 'oscar@contoso.example', JSON.stringify(oscarFirst.body.createdBy));
+  const first = await as(app, OWNER, 'POST', '/api/drafts', { document: mapText('First') });
+  check('the same name sits in two sandboxes', first.status === 201 && first.body.name === 'v1');
 
-  const racing = await Promise.all([1, 2, 3].map((n) => as(app, OWNER, 'POST', '/api/versions', { document: mapText(`Race ${n}`) })));
+  const racing = await Promise.all([1, 2, 3].map((n) => as(app, OWNER, 'POST', '/api/drafts', { document: mapText(`Race ${n}`) })));
   const raced = racing.map((result) => result.body.name).sort();
   check('three at once get three names', racing.every((result) => result.status === 201)
-    && JSON.stringify(raced) === JSON.stringify(['v3', 'v4', 'v5']), JSON.stringify(raced));
+    && JSON.stringify(raced) === JSON.stringify(['v2', 'v3', 'v4']), JSON.stringify(raced));
 
+  const named = await as(app, OWNER, 'POST', '/api/drafts', { document: mapText('Plan'), name: 'Q3 planning' });
+  const namedAgain = await as(app, OWNER, 'POST', '/api/drafts', { document: mapText('Plan again'), name: 'Q3 planning' });
+  check('a new version asked for by name takes it, and the next the name with a number after it',
+    named.body.name === 'Q3 planning' && namedAgain.body.name === 'Q3 planning (2)', JSON.stringify([named.body.name, namedAgain.body.name]));
   check('a map the app could not open is refused',
-    (await as(app, OWNER, 'POST', '/api/versions', { document: '{"domains":[{"key":""}]}' })).status === 400);
-  check('and so is one that is not JSON', (await as(app, OWNER, 'POST', '/api/versions', { document: '{' })).status === 400);
+    (await as(app, OWNER, 'POST', '/api/drafts', { document: '{"domains":[{"key":""}]}' })).status === 400);
+  check('and so is one that is not JSON', (await as(app, OWNER, 'POST', '/api/drafts', { document: '{' })).status === 400);
+  check('and a name with a slash in it, which would read as a path',
+    (await as(app, OWNER, 'POST', '/api/drafts', { document: mapText(), name: 'drafts/q3' })).status === 400);
 
-  const list = await as(app, OWNER, 'GET', '/api/versions');
-  check('a contributor sees every version, newest first',
-    list.status === 200 && list.body.versions.length === 5 && list.body.versions.at(-1).name === 'v1'
-    && list.body.versions.every((version) => version.document === undefined),
-    JSON.stringify(list.body.versions?.map((version) => version.name)));
+  const mine = await as(app, OWNER, 'GET', '/api/drafts');
+  check('a contributor sees their own sandbox, newest first, without the documents',
+    mine.status === 200 && mine.body.versions.length === 6 && mine.body.versions.at(-1).name === 'v1'
+    && mine.body.versions.every((version) => version.document === undefined && version.scope === 'sandbox'),
+    JSON.stringify(names(mine.body.versions)));
+  check('and nobody else\'s: a sandbox is private',
+    JSON.stringify(names((await as(app, OWNER_BY_EMAIL, 'GET', '/api/drafts')).body.versions)) === '["v1"]'
+    && (await as(app, OWNER_BY_EMAIL, 'GET', '/api/drafts/v2')).status === 404);
+  check('the shared list is still the seed alone',
+    JSON.stringify(names((await as(app, OWNER, 'GET', '/api/versions')).body.versions)) === '["v1"]');
+  check('a shared version is not saved over',
+    (await as(app, OWNER, 'PUT', '/api/versions/v1', { document: mapText(), base: published.body.updatedAt })).status === 405);
+  check('nor is a new one saved straight into the open', (await as(app, OWNER, 'POST', '/api/versions', { document: mapText() })).status === 405);
 
-  // --- saving over a version ---
-  const saved = await as(app, OWNER, 'PUT', '/api/versions/v2', { document: mapText('First, again'), base: first.body.updatedAt });
+  // --- saving over a sandbox version ---
+  const saved = await as(app, OWNER, 'PUT', '/api/drafts/v1', { document: mapText('First, again'), base: first.body.updatedAt });
   check('a save sent with the version it began from goes through',
     saved.status === 200 && saved.body.updatedAt !== first.body.updatedAt, JSON.stringify(saved.body).slice(0, 200));
-  const stale = await as(app, OWNER_BY_EMAIL, 'PUT', '/api/versions/v2', { document: mapText('Oscar'), base: first.body.updatedAt });
-  check('one begun from before that save is refused, saying who saved since',
-    stale.status === 409 && stale.body.version?.updatedBy?.name === 'Olivia Owner'
-    && stale.body.version.updatedAt === saved.body.updatedAt, JSON.stringify(stale.body));
-  const kept = await as(app, OWNER, 'GET', '/api/versions/v2');
+  const stale = await as(app, OWNER, 'PUT', '/api/drafts/v1', { document: mapText('Another tab'), base: first.body.updatedAt });
+  check('one begun from before that save is refused, saying when it was saved since',
+    stale.status === 409 && stale.body.version?.updatedAt === saved.body.updatedAt, JSON.stringify(stale.body));
+  const kept = await as(app, OWNER, 'GET', '/api/drafts/v1');
   check('and leaves the version as it was', kept.body.document === mapText('First, again'));
   check('a save has to say what it began from',
-    (await as(app, OWNER, 'PUT', '/api/versions/v2', { document: mapText() })).status === 400);
-  check('saving over a version that is not there is a 404', (await as(app, OWNER, 'PUT', '/api/versions/gone',
+    (await as(app, OWNER, 'PUT', '/api/drafts/v1', { document: mapText() })).status === 400);
+  check('saving over a version that is not there is a 404', (await as(app, OWNER, 'PUT', '/api/drafts/gone',
     { document: mapText(), base: first.body.updatedAt })).status === 404);
 
   // --- renaming ---
   // A version's name is also its address, so renaming moves it: the old name
   // stops answering and the new one starts. Nothing in the document changes,
   // and neither does when it was last saved.
-  const was = list.body.versions.find((version) => version.name === 'v5');
-  const renamed = await as(app, OWNER, 'PATCH', '/api/versions/v5', { name: '  Q3 planning  ' });
-  check('a contributor renames a version, and the name is trimmed',
-    renamed.status === 200 && renamed.body.name === 'Q3 planning', JSON.stringify(renamed.body));
+  const was = mine.body.versions.find((version) => version.name === 'v4');
+  const renamed = await as(app, OWNER, 'PATCH', '/api/drafts/v4', { name: '  Team review  ' });
+  check('a contributor renames a sandbox version, and the name is trimmed',
+    renamed.status === 200 && renamed.body.name === 'Team review', JSON.stringify(renamed.body));
   check('renaming is not saving, so it leaves the times alone',
     renamed.body.updatedAt === was.updatedAt && renamed.body.createdAt === was.createdAt);
-  const moved = await as(app, OWNER, 'GET', '/api/versions/Q3%20planning');
+  const moved = await as(app, OWNER, 'GET', '/api/drafts/Team%20review');
   check('it answers to the new name, document and all',
     moved.status === 200 && moved.body.document !== undefined);
-  check('and the old name is gone', (await as(app, OWNER, 'GET', '/api/versions/v5')).status === 404);
-  check('a name another version already has is refused',
-    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: 'v2' })).status === 409);
+  check('and the old name is gone', (await as(app, OWNER, 'GET', '/api/drafts/v4')).status === 404);
+  check('a name another version in the sandbox has is refused',
+    (await as(app, OWNER, 'PATCH', '/api/drafts/Team%20review', { name: 'v2' })).status === 409);
+  check('but the same name in another sandbox is fine',
+    (await as(app, OWNER_BY_EMAIL, 'PATCH', '/api/drafts/v1', { name: 'Team review' })).body.name === 'Team review');
   check('a blank name is refused',
-    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: '   ' })).status === 400);
+    (await as(app, OWNER, 'PATCH', '/api/drafts/Team%20review', { name: '   ' })).status === 400);
   check('and one with a slash in it, which would read as a path',
-    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: 'drafts/q3' })).status === 400);
+    (await as(app, OWNER, 'PATCH', '/api/drafts/Team%20review', { name: 'drafts/q3' })).status === 400);
   check('renaming a version that is not there is a 404',
-    (await as(app, OWNER, 'PATCH', '/api/versions/gone', { name: 'x' })).status === 404);
-  check('and it can be named back',
-    (await as(app, OWNER, 'PATCH', '/api/versions/Q3%20planning', { name: 'v5' })).body.name === 'v5');
+    (await as(app, OWNER, 'PATCH', '/api/drafts/gone', { name: 'x' })).status === 404);
+
+  // --- sharing ---
+  const shared = await as(app, OWNER, 'POST', '/api/drafts/v2/share', {});
+  check('a contributor shares a sandbox version: a copy among the shared ones, theirs to manage',
+    shared.status === 200 && shared.body.scope === 'shared' && shared.body.name === 'v2' && shared.body.mine === true
+    && shared.body.createdBy?.name === 'Olivia Owner', JSON.stringify(shared.body).slice(0, 300));
+  check('the sandbox version is still there', (await as(app, OWNER, 'GET', '/api/drafts/v2')).status === 200);
+  check('and the copy is what the sandbox held',
+    (await as(app, OWNER, 'GET', '/api/versions/v2')).body.document === (await as(app, OWNER, 'GET', '/api/drafts/v2')).body.document);
+  const before = (await as(app, OWNER, 'GET', '/api/drafts/v2')).body.updatedAt;
+  await as(app, OWNER, 'PUT', '/api/drafts/v2', { document: mapText('Race 2, fixed'), base: before });
+  const again = await as(app, OWNER, 'POST', '/api/drafts/v2/share', {});
+  check('sharing again under the same name writes one\'s own share over',
+    again.status === 200 && again.body.updatedAt !== shared.body.updatedAt
+    && (await as(app, OWNER, 'GET', '/api/versions/v2')).body.document === mapText('Race 2, fixed')
+    && names((await as(app, OWNER, 'GET', '/api/versions')).body.versions).filter((name) => name === 'v2').length === 1);
+  const taken = await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts/Team%20review/share', { name: 'v2' });
+  check('a name somebody else shared under is refused, with their name',
+    taken.status === 409 && /Olivia Owner/.test(taken.body.error), JSON.stringify(taken.body));
+  const asPublished = await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts/Team%20review/share', { name: 'v1' });
+  check('and so is the published one\'s', asPublished.status === 409 && /published/.test(asPublished.body.error), JSON.stringify(asPublished.body));
+  const under = await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts/Team%20review/share', { name: 'oscar-review' });
+  check('sharing under another name is fine', under.status === 200 && under.body.name === 'oscar-review' && under.body.mine === true);
+  check('sharing what is not in the sandbox is a 404', (await as(app, OWNER, 'POST', '/api/drafts/gone/share', {})).status === 404);
+  const seen = (await as(app, OWNER_BY_EMAIL, 'GET', '/api/versions')).body.versions;
+  check('every contributor sees the shared versions, and which are theirs',
+    JSON.stringify(names(seen)) === '["oscar-review","v2","v1"]'
+    && seen.find((version) => version.name === 'v2').mine === false
+    && seen.find((version) => version.name === 'oscar-review').mine === true, JSON.stringify(seen.map((v) => [v.name, v.mine])));
+
+  // --- taking a copy ---
+  const copied = await as(app, OWNER_BY_EMAIL, 'POST', '/api/versions/v2/copy', {});
+  check('a copy of a shared version lands in the sandbox under its name',
+    copied.status === 201 && copied.body.scope === 'sandbox' && copied.body.name === 'v2'
+    && copied.body.document === mapText('Race 2, fixed'), JSON.stringify(copied.body).slice(0, 200));
+  check('and the next copy after it', (await as(app, OWNER_BY_EMAIL, 'POST', '/api/versions/v2/copy', {})).body.name === 'v2 (2)');
+  check('a copy of nothing is a 404', (await as(app, OWNER_BY_EMAIL, 'POST', '/api/versions/gone/copy', {})).status === 404);
+
+  // --- whose a shared version is to rename or delete ---
+  check('a contributor cannot rename what somebody else shared',
+    (await as(app, OWNER_BY_EMAIL, 'PATCH', '/api/versions/v2', { name: 'mine now' })).status === 403);
+  check('nor delete it', (await as(app, OWNER_BY_EMAIL, 'DELETE', '/api/versions/v2')).status === 403);
+  check('but renames their own', (await as(app, OWNER_BY_EMAIL, 'PATCH', '/api/versions/oscar-review', { name: 'oscar-final' })).body.name === 'oscar-final');
+  check('a publisher renames anyone\'s', (await as(app, OWNER, 'PATCH', '/api/versions/oscar-final', { name: 'review' })).body.name === 'review');
+  check('a name another shared version has is refused', (await as(app, OWNER, 'PATCH', '/api/versions/v2', { name: 'v1' })).status === 409);
+  check('and one that is not there is a 404', (await as(app, OWNER, 'PATCH', '/api/versions/gone', { name: 'x' })).status === 404);
 
   // --- publishing, and the published version's guard ---
   const refused = await as(app, OWNER, 'DELETE', '/api/versions/v1');
   check('the published version cannot be deleted', refused.status === 409 && /published/.test(refused.body.error), JSON.stringify(refused.body));
-  const publish = await as(app, OWNER, 'PUT', '/api/published', { name: 'v2' });
-  check('a publisher publishes another', publish.status === 200 && publish.body.published === true);
+  const publish = await as(app, OWNER, 'PUT', '/api/published', { name: 'review' });
+  check('a publisher publishes a shared version', publish.status === 200 && publish.body.published === true);
+  check('and only a shared one: a sandbox name is nothing to publish',
+    (await as(app, OWNER, 'PUT', '/api/published', { name: 'Q3 planning' })).status === 404);
   // The site points at the row, not at the name, so a rename cannot unpublish.
   check('renaming the published version leaves it published',
-    (await as(app, OWNER, 'PATCH', '/api/versions/v2', { name: 'live' })).body.published === true);
+    (await as(app, OWNER, 'PATCH', '/api/versions/review', { name: 'live' })).body.published === true);
   check('and a viewer still lands on it',
     (await as(app, VIEWER, 'GET', '/api/published')).body.name === 'live');
-  await as(app, OWNER, 'PATCH', '/api/versions/live', { name: 'v2' });
-  check('which is what a viewer now sees',
-    (await as(app, VIEWER, 'GET', '/api/published')).body.name === 'v2');
   check('and the one before is closed to them',
     (await as(app, VIEWER, 'GET', '/api/versions/v1')).status === 403);
+  check('whoever shared the published version cannot delete it either',
+    (await as(app, OWNER_BY_EMAIL, 'DELETE', '/api/versions/live')).status === 409);
   check('publishing a version that is not there is a 404',
     (await as(app, OWNER, 'PUT', '/api/published', { name: 'nope' })).status === 404);
   check('once it is not published, it can be deleted',
     (await as(app, OWNER, 'DELETE', '/api/versions/v1')).status === 204);
   check('and is gone', (await as(app, OWNER, 'GET', '/api/versions/v1')).status === 404);
   check('deleting it twice is a 404', (await as(app, OWNER, 'DELETE', '/api/versions/v1')).status === 404);
+  check('a sandbox version is deleted by its owner alone',
+    (await as(app, OWNER, 'DELETE', '/api/drafts/v2%20(2)')).status === 404
+    && (await as(app, OWNER_BY_EMAIL, 'DELETE', '/api/drafts/v2%20(2)')).status === 204);
 
   // --- a restart ---
   await app.stop();
   app = await startServer({ storage, databaseUrl: database.url });
   check('a restart applies nothing twice', !app.log().includes('Applied migration'), app.log());
   check('nor imports anything, though the store has a version file in it', !app.log().includes('Imported'), app.log());
-  check('and the versions are as they were', (await as(app, OWNER, 'GET', '/api/versions')).body.versions.length === 4);
+  check('and the versions are as they were',
+    JSON.stringify(names((await as(app, OWNER, 'GET', '/api/versions')).body.versions)) === '["live","v2"]'
+    && (await as(app, OWNER, 'GET', '/api/drafts')).body.versions.length === 6);
   await app.stop();
 
   // --- sign-in off ---
   const open = await startServer({ storage, databaseUrl: database.url, env: { AUTH_ENABLED: 'false' } });
   check('with sign-in off, whoever is there is the administrator', (await as(open, null, 'GET', '/api/me')).body.role === 'administrator');
-  check('and can list the versions', (await as(open, null, 'GET', '/api/versions')).status === 200);
-  const anonymous = await as(open, null, 'POST', '/api/versions', { document: mapText() });
-  check('a version saved with nobody signed in has nobody to name', anonymous.status === 201 && anonymous.body.createdBy === null);
+  check('and can list the shared versions', (await as(open, null, 'GET', '/api/versions')).status === 200);
+  const anonymous = await as(open, null, 'POST', '/api/drafts', { document: mapText() });
+  check('a version saved with nobody signed in goes to the one local sandbox',
+    anonymous.status === 201 && anonymous.body.name === 'v1' && anonymous.body.createdBy?.name === 'Local', JSON.stringify(anonymous.body).slice(0, 200));
   await open.stop();
 
   // --- no owners named ---
@@ -294,15 +368,18 @@ try {
 
   const upgrade = await startServer({ storage: oldStore, databaseUrl: upgraded.url });
   const imported = (await as(upgrade, OWNER, 'GET', '/api/versions')).body.versions ?? [];
-  check('an upgrade imports the store\'s versions rather than the seed\'s',
-    JSON.stringify(imported.map((version) => version.name).sort()) === '["first-draft","team-review"]',
-    JSON.stringify(imported.map((version) => version.name)));
+  check('an upgrade imports the store\'s versions rather than the seed\'s, as shared versions of nobody\'s',
+    JSON.stringify(names(imported).sort()) === '["first-draft","team-review"]'
+    && imported.every((version) => version.scope === 'shared' && version.mine === false),
+    JSON.stringify(imported.map((version) => [version.name, version.scope, version.mine])));
   check('keeping when each was saved', imported.find((version) => version.name === 'first-draft')?.updatedAt === '2026-01-01T10:00:00.000Z');
   check('and publishes the newest', (await as(upgrade, VIEWER, 'GET', '/api/published')).body.name === 'team-review');
   check('it says which it could not open', /not importing version "broken"/.test(upgrade.log()), upgrade.log());
   check('and leaves the files where they were', Boolean(await stat(older).catch(() => null)));
-  const numbered = await as(upgrade, OWNER, 'POST', '/api/versions', { document: mapText('Next') });
-  check('names that are not numbers are counted out, so the first new one is v1',
+  check('a contributor cannot delete what nobody shared', (await as(upgrade, OWNER_BY_EMAIL, 'DELETE', '/api/versions/first-draft')).status === 403);
+  check('a publisher can', (await as(upgrade, OWNER, 'DELETE', '/api/versions/first-draft')).status === 204);
+  const numbered = await as(upgrade, OWNER, 'POST', '/api/drafts', { document: mapText('Next') });
+  check('a sandbox counts its own names, so the first new one is v1',
     numbered.status === 201 && numbered.body.name === 'v1', JSON.stringify(numbered.body).slice(0, 120));
   await upgrade.stop();
 

@@ -184,6 +184,21 @@ narrower: the name, the address, one line saying the role and what it may do —
 *Contributor — edits and saves versions* — and, in the foot, **Users & access**
 for everyone who works on the map, **Sign out**, and Close on the right.
 
+### Versions
+
+The chip in the header names the version open and tags it **Published** or, in
+the quiet badge, **Shared** — what Save would do is always in view, since a
+shared version is never saved over. The dialog it opens is centred and 760px
+wide, and holds two lists under small uppercase headings in the dialog title's
+style: **My sandbox**, then **Shared**. Each is the same table — name with its
+tags, when, by whom, actions — and says so in its rows' place when it is empty.
+A sandbox row offers Open, Rename, Share and Delete; a shared row Open, Take a
+copy, and then only what this person may do: Rename and Delete for whoever
+shared it and for a publisher, Publish for a publisher, so a row never carries a
+button that would be refused. The shared version this person put there wears a
+quiet **Yours** tag beside Published and Open. Every button in the dialog is
+held down while an action is on its way, and the lists are read again after.
+
 ### Users & access
 
 Who may open the map and what each may do: the roster, a dialog laid out like
@@ -192,10 +207,11 @@ profile popup, which shuts as it opens, since who may do what belongs with who
 you are. A row is the name in `--fw-semibold` with a quiet **You** badge beside
 it when it is, the address under the name in `--ink-soft`, the role, when they
 were last here (*Not yet* before a first sign-in), and the row's actions. The
-row that is you takes `--chrome`, as the open version does. For the
-administrator the role is a `<select>` the height of a chip, on every row but
-their own, which reads as it is; the action is **Make administrator**, which
-asks first. At the foot, before Close, the administrator's form: a name box, an
+row that is you takes `--chrome`, as the open version does. Between the role
+and the last sign-in, **Sandbox**: how many versions theirs holds, or *Empty* —
+never what. For the administrator the role is a `<select>` the height of a
+chip, on every row but their own, which reads as it is; the action is **Make
+administrator**, which asks first. At the foot, before Close, the administrator's form: a name box, an
 address box and a role select in one row, and **Add** — the same `.field__input`
 and `.field__select` the details panel uses, wrapping to a short form on a
 phone. Contributors and publishers see the same rows with words where the

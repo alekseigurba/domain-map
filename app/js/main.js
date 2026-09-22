@@ -84,8 +84,11 @@ async function run(label, work) {
 
 // Editing happens in this page and nowhere else: changes are held in memory
 // until Save is pressed, and then the whole map is written to the version that
-// is open. The versions live on the server, and one of them is published: that
-// is the map everyone lands on, and the only one a viewer ever sees.
+// is open. The versions live on the server, in two places: this person's
+// sandbox, where what they save is theirs alone, and the shared versions,
+// fixed copies in the open that are never saved over — Save on one of those
+// puts a copy in the sandbox. One shared version is published: that is the
+// map everyone lands on, and the only one a viewer ever sees.
 
 /** What this person may do: viewer, contributor, publisher or administrator. Nothing until the server has said. */
 let role = null;
@@ -96,17 +99,19 @@ const mayPublish = () => mayAs(role, 'publisher');
 let assistantModel = null;
 
 /**
- * The version on screen, as `{ name, updatedAt }` — the second is sent back
- * with a save, so the server can refuse it if somebody saved in between — and
- * whether it has changes it has not been given. No version at all when nothing
- * is published yet and an owner is starting from a blank map.
+ * The version on screen, as `{ scope, name, updatedAt }` — 'sandbox' or
+ * 'shared', and when it was last saved, which is sent back with a save so the
+ * server can refuse it if another tab saved in between — and whether it has
+ * changes it has not been given. No version at all when nothing is published
+ * yet and a contributor is starting from a blank map.
  */
 let current = null;
 let dirty = false;
 
-/** Which version is published, as last heard from the server. */
+/** Which shared version is published, as last heard from the server. */
 let publishedName = null;
-const isPublished = (name) => name != null && name === publishedName;
+const isPublished = (version) => version?.scope === 'shared' && version.name === publishedName;
+const isShared = (version) => version?.scope === 'shared';
 
 const saveButton = document.getElementById('save-map');
 const editModeButton = document.getElementById('edit-mode-toggle');
@@ -119,6 +124,7 @@ function showSaveState() {
   saveButton.dataset.dirty = String(dirty);
   saveButton.disabled = !current;
   if (!current) saveButton.title = 'Nothing to save over yet: Versions saves this map as a new one';
+  else if (isShared(current)) saveButton.title = `"${name}" is shared and is not changed in place — Save puts a copy in your sandbox`;
   else if (dirty) saveButton.title = `Unsaved changes — press to write them to "${name}"`;
   else saveButton.title = `Saved to "${name}"`;
   saveButton.hidden = !editMode;
@@ -129,7 +135,10 @@ function showSaveState() {
   versionsButton.hidden = !mayEdit();
   importButton.hidden = !mayEdit();
   document.getElementById('version-name').textContent = name ?? 'Not saved yet';
-  document.getElementById('version-published').hidden = !isPublished(name);
+  document.getElementById('version-published').hidden = !isPublished(current);
+  // A shared version that is not the published one says so, since Save on it
+  // goes to the sandbox rather than over it.
+  document.getElementById('version-shared').hidden = !isShared(current) || isPublished(current);
 }
 
 function markDirty() {
@@ -138,11 +147,16 @@ function markDirty() {
   keepSession();
 }
 
-/** The address names the version open, unless it is the published one: that one keeps the clean URL. */
+/**
+ * The address names the version open — `?version=` for a shared one, `?draft=`
+ * for one in the sandbox, which only its owner can follow — unless it is the
+ * published one: that one keeps the clean URL.
+ */
 function showVersionInUrl() {
   const url = new URL(location.href);
-  if (current && !isPublished(current.name)) url.searchParams.set('version', current.name);
-  else url.searchParams.delete('version');
+  url.searchParams.delete('version');
+  url.searchParams.delete('draft');
+  if (current && !isPublished(current)) url.searchParams.set(isShared(current) ? 'version' : 'draft', current.name);
   if (url.href !== location.href) history.replaceState(null, '', url);
 }
 
@@ -218,7 +232,7 @@ const documentText = () => {
 
 /** Written: `version` is the one on screen now, with nothing left unsaved in it. */
 function saved(version) {
-  current = { name: version.name, updatedAt: version.updatedAt };
+  current = { scope: version.scope, name: version.name, updatedAt: version.updatedAt };
   if (version.published) publishedName = version.name;
   dirty = false;
   showVersionInUrl();
@@ -229,20 +243,25 @@ function saved(version) {
 }
 
 /**
- * Write the map to the version that is open. Over the published one it asks
- * first, since everyone will see the change. And if somebody else saved the
- * version after this tab opened it, the server refuses, and a new version is
- * offered instead of writing over their work. Answers whether it saved.
+ * Write the map to the version that is open. A shared version is not written
+ * over: the map goes to the sandbox as a copy under the same name, which is
+ * then the one open here, and it says so first. And if another tab of this
+ * person's saved the sandbox version after this one opened it, the server
+ * refuses, and a new version is offered instead of writing over that work.
+ * Answers whether it saved.
  */
 async function save({ ask = true } = {}) {
   if (!current) return false;
   const { name } = current;
-  if (ask && isPublished(name)
-      && !confirm(`"${name}" is the published version: everyone will see this change. Save it?`)) return false;
+  if (isShared(current)) {
+    if (ask && !confirm(`"${name}" is shared, and shared versions are not changed in place. `
+      + 'Save a copy of it, with these changes, to your sandbox?')) return false;
+    return saveAsNew(name);
+  }
 
   status('Saving…');
   try {
-    saved(await api.saveVersion(name, documentText(), current.updatedAt));
+    saved(await api.saveDraft(name, documentText(), current.updatedAt));
     status(`Saved to "${name}"`);
     return true;
   } catch (error) {
@@ -250,22 +269,26 @@ async function save({ ask = true } = {}) {
       status(`Could not save: ${error.message}`, true);
       return false;
     }
-    const who = error.version.updatedBy?.name ?? error.version.updatedBy?.email ?? 'Someone';
     const when = savedAt(error.version.updatedAt);
-    status(`Not saved: ${who} saved "${name}" at ${when}, after you opened it.`, true);
-    if (!confirm(`${who} saved "${name}" at ${when}, after you opened it, and saving now would write `
-      + 'over their changes.\n\nSave your map as a new version instead?')) return false;
+    status(`Not saved: "${name}" was saved at ${when}, after this tab opened it.`, true);
+    if (!confirm(`"${name}" was saved at ${when}, after this tab opened it — from another tab, most likely — `
+      + 'and saving now would write over that.\n\nSave this map as a new version instead?')) return false;
     return saveAsNew();
   }
 }
 
-/** The map as it stands, saved as a new version, one number past the last. That is the one open from then on. */
-async function saveAsNew() {
+/**
+ * The map as it stands, saved to the sandbox as a new version: called `name`
+ * if the sandbox has it free — a shared version being saved keeps its name —
+ * or numbered, one past the last the sandbox has. That is the one open from
+ * then on.
+ */
+async function saveAsNew(name = null) {
   status('Saving…');
   try {
-    const version = await api.createVersion(documentText());
+    const version = await api.createDraft(documentText(), name);
     saved(version);
-    status(`Saved as "${version.name}"`);
+    status(`Saved to your sandbox as "${version.name}"`);
     return true;
   } catch (error) {
     status(`Could not save: ${error.message}`, true);
@@ -293,7 +316,7 @@ function showVersion(version) {
   undoStack.clear(); // its inverse operations name records that are gone
   forgetReview(); // and so do the Assistant's cards
   applyMap(fromDocument(document_));
-  current = { name: version.name, updatedAt: version.updatedAt };
+  current = { scope: version.scope, name: version.name, updatedAt: version.updatedAt };
   if (version.published) publishedName = version.name;
   dirty = false;
   setEditMode(false); // a fresh version opens for browsing, not mid-edit
@@ -316,12 +339,12 @@ function showBlank() {
 }
 
 /** Open a version in place of what is on screen. Answers whether it did. */
-async function openVersion(name) {
+async function openVersion(scope, name) {
   if (dirty && !confirm(`Open "${name}"? The changes made here have not been saved.`)) return false;
 
   status('Opening…');
   try {
-    showVersion(await api.readVersion(name));
+    showVersion(await api.readVersion(scope, name));
     select(null, null);
     fitToScreen();
     status(`Opened "${name}"`);
@@ -353,16 +376,15 @@ async function openPublished() {
 }
 
 /**
- * Make `name` the map everyone lands on. What is published is what is saved,
- * so the version open here is saved first if it has changes, or not published.
+ * Make a shared version the map everyone lands on. What is published is what
+ * is shared: changes made here to that version are not in it, and would go
+ * to the sandbox, so the question says so when there are any.
  */
 async function publish(name) {
-  if (name === current?.name && dirty) {
-    if (!confirm(`"${name}" has changes that are not saved. Save them and publish it?`)) return;
-    if (!await save({ ask: false })) return;
-  } else if (!confirm(`Publish "${name}"? Everyone will see it the next time they open the map.`)) {
-    return;
-  }
+  const question = isShared(current) && name === current.name && dirty
+    ? `Publish "${name}" as it is shared? The changes made here are not in it — Save puts them in your sandbox, and Share puts them in the open.`
+    : `Publish "${name}"? Everyone will see it the next time they open the map.`;
+  if (!confirm(question)) return;
 
   status('Publishing…');
   try {
@@ -378,13 +400,13 @@ async function publish(name) {
 
 /**
  * Give a version another name. A version's name is also its address — a
- * `?version=` link names it — so anything pointing at the old name stops
- * working, and the question says so before it is answered.
+ * `?version=` or `?draft=` link names it — so anything pointing at the old
+ * name stops working, and the question says so before it is answered.
  *
  * Nothing in the map changes, so a tab with this version open keeps whatever
  * it was doing; it only learns what the thing it is editing is now called.
  */
-async function rename(name) {
+async function rename(scope, name) {
   const wanted = prompt(
     `Rename "${name}" to what? Any link that names "${name}" will stop working.`, name);
   if (wanted === null) return;
@@ -393,23 +415,26 @@ async function rename(name) {
 
   status('Renaming…');
   try {
-    await api.renameVersion(name, to);
+    await api.renameVersion(scope, name, to);
   } catch (error) {
     status(`Could not rename: ${error.message}`, true);
     return;
   }
 
   // This tab may have it open, and the address may be naming it.
-  if (current?.name === name) current = { ...current, name: to };
-  if (publishedName === name) publishedName = to;
+  if (isOpen(scope, name)) current = { ...current, name: to };
+  if (scope === 'shared' && publishedName === name) publishedName = to;
   showVersionInUrl();
   showSaveState();
   status(`Renamed "${name}" to "${to}"`);
 }
 
+/** Whether the version open in this tab is this one: the same name in the same list. */
+const isOpen = (scope, name) => current?.scope === scope && current.name === name;
+
 /** Delete a version for good. When it is the one open here, the published one takes its place. */
-async function removeVersion(name) {
-  const open = name === current?.name;
+async function removeVersion(scope, name) {
+  const open = isOpen(scope, name);
   const question = open && dirty
     ? `Delete "${name}"? It is open here with changes that are not saved, and they go with it. This cannot be undone.`
     : `Delete "${name}"? This cannot be undone.`;
@@ -417,7 +442,7 @@ async function removeVersion(name) {
 
   status('Deleting…');
   try {
-    await api.deleteVersion(name);
+    await api.deleteVersion(scope, name);
   } catch (error) {
     status(`Could not delete: ${error.message}`, true);
     return;
@@ -429,12 +454,56 @@ async function removeVersion(name) {
   status(`Deleted "${name}"`);
 }
 
+/**
+ * Put a fixed copy of a sandbox version among the shared ones. Sharing again
+ * under a name this person already shared writes that share over, and the
+ * question says so; a name somebody else shared under is refused by the
+ * server, in its own words, and the version stays in the sandbox.
+ */
+async function share(name) {
+  const there = sharedList.find((version) => version.name === name);
+  const question = there?.mine
+    ? `Share "${name}" again? Your shared "${name}" is written over with this one.`
+    : `Share "${name}"? Every contributor can open the copy, and a publisher can publish it.`;
+  if (!confirm(question)) return;
+
+  status('Sharing…');
+  try {
+    await api.shareDraft(name);
+    status(`Shared "${name}"`);
+  } catch (error) {
+    status(`Could not share: ${error.message}`, true);
+  }
+}
+
+/** A copy of a shared version in the sandbox, opened here to work on. Answers whether it did. */
+async function takeCopy(name) {
+  if (dirty && !confirm(`Take a copy of "${name}" and open it? The changes made here have not been saved.`)) return false;
+
+  status('Copying…');
+  try {
+    const draft = await api.copyVersion(name);
+    showVersion(draft);
+    select(null, null);
+    fitToScreen();
+    status(`Took a copy of "${name}" into your sandbox as "${draft.name}"`);
+    return true;
+  } catch (error) {
+    status(`Could not take a copy: ${error.message}`, true);
+    return false;
+  }
+}
+
 // --- the Versions dialog -----------------------------------------------------
 
 const versionsDialog = document.getElementById('versions-dialog');
-const versionsRows = document.getElementById('versions-rows');
+const draftsRows = document.getElementById('drafts-rows');
+const sharedRows = document.getElementById('shared-rows');
 const versionsNote = document.getElementById('versions-note');
 const saveAsNewButton = document.getElementById('save-as-new');
+
+/** The shared versions as last listed, for Share to know whose name it would take. */
+let sharedList = [];
 
 function note(text, isError = false) {
   versionsNote.textContent = text ?? '';
@@ -467,11 +536,8 @@ function rowButton(label, title, onClick, { disabled = false, danger = false } =
   return button;
 }
 
-/** One row a version: its name, when and by whom it was last saved, and what can be done with it. */
-function versionRow(version) {
-  const open = version.name === current?.name;
-  const { published } = version;
-
+/** The name with its tags: the name gives way, the tags hold their place, since they are what the row is telling you. */
+function nameCell(version, tags) {
   const name = document.createElement('span');
   name.className = 'versions__name';
   // The name may run to sixty-four characters and the column is fixed, so what
@@ -481,54 +547,117 @@ function versionRow(version) {
   label.textContent = version.name;
   label.title = version.name;
   name.append(label);
-
-  // Published and Open belong together and travel together: they are what the
-  // row is telling you, so they hold their place and the name gives way.
-  if (published || open) {
-    const tags = document.createElement('span');
-    tags.className = 'versions__tags';
-    if (published) tags.append(badge('Published'));
-    if (open) tags.append(badge('Open', true));
-    name.append(tags);
+  if (tags.length > 0) {
+    const holder = document.createElement('span');
+    holder.className = 'versions__tags';
+    holder.append(...tags);
+    name.append(holder);
   }
+  return name;
+}
 
+function byCell(version) {
   const by = cell('versions__by', version.updatedBy?.name ?? version.updatedBy?.email ?? '—');
   if (version.updatedBy?.email) by.title = version.updatedBy.email;
+  return by;
+}
 
+function actionsCell(...buttons) {
   const actions = document.createElement('div');
   actions.className = 'versions__actions';
-  actions.append(
-    rowButton('Open', open ? 'This is the version open here' : `Open "${version.name}"`,
-      () => act(() => openVersion(version.name), { close: true }), { disabled: open }),
-    rowButton('Rename', `Give "${version.name}" another name`,
-      () => act(() => rename(version.name))),
-    // Publishing is a publisher's: a contributor's row has no button for it
-    // rather than one that would be refused.
-    ...(mayPublish()
-      ? [rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
-        () => act(() => publish(version.name)), { disabled: published })]
-      : []),
-    // The published version stays until another takes its place, so the map
-    // everyone lands on can never be deleted out from under them.
-    rowButton('Delete', published ? 'Publish another version before deleting this one' : `Delete "${version.name}" for good`,
-      () => act(() => removeVersion(version.name)), { disabled: published, danger: true }),
-  );
+  actions.append(...buttons);
+  return cell(null, actions);
+}
 
+/** One row a sandbox version: open, rename, share into the open, or delete. */
+function draftRow(version) {
+  const open = isOpen('sandbox', version.name);
   const row = document.createElement('tr');
   row.dataset.open = String(open);
-  row.append(cell(null, name), cell('versions__when', savedAt(version.updatedAt)), by, cell(null, actions));
+  row.append(
+    cell(null, nameCell(version, open ? [badge('Open', true)] : [])),
+    cell('versions__when', savedAt(version.updatedAt)),
+    byCell(version),
+    actionsCell(
+      rowButton('Open', open ? 'This is the version open here' : `Open "${version.name}"`,
+        () => act(() => openVersion('sandbox', version.name), { close: true }), { disabled: open }),
+      rowButton('Rename', `Give "${version.name}" another name`, () => act(() => rename('sandbox', version.name))),
+      rowButton('Share', `Put a copy of "${version.name}" among the shared versions`, () => act(() => share(version.name))),
+      rowButton('Delete', `Delete "${version.name}" for good`,
+        () => act(() => removeVersion('sandbox', version.name)), { danger: true }),
+    ),
+  );
   return row;
 }
 
-/** Read the versions again and show them. */
+/**
+ * One row a shared version. Take a copy is for everyone; Rename and Delete for
+ * whoever shared it, and for a publisher; Publish for a publisher. A row has no
+ * button for what would be refused, rather than one that is.
+ */
+function sharedRow(version) {
+  const open = isOpen('shared', version.name);
+  const { published } = version;
+  const manages = version.mine || mayPublish();
+
+  const tags = [];
+  if (published) tags.push(badge('Published'));
+  if (open) tags.push(badge('Open', true));
+  if (version.mine) tags.push(badge('Yours', true));
+
+  const row = document.createElement('tr');
+  row.dataset.open = String(open);
+  row.append(
+    cell(null, nameCell(version, tags)),
+    cell('versions__when', savedAt(version.updatedAt)),
+    byCell(version),
+    actionsCell(
+      rowButton('Open', open ? 'This is the version open here' : `Open "${version.name}"`,
+        () => act(() => openVersion('shared', version.name), { close: true }), { disabled: open }),
+      rowButton('Take a copy', `Copy "${version.name}" into your sandbox and open it there`,
+        () => act(() => takeCopy(version.name), { close: true })),
+      ...(manages
+        ? [rowButton('Rename', `Give "${version.name}" another name`, () => act(() => rename('shared', version.name)))]
+        : []),
+      ...(mayPublish()
+        ? [rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
+          () => act(() => publish(version.name)), { disabled: published })]
+        : []),
+      // The published version stays until another takes its place, so the map
+      // everyone lands on can never be deleted out from under them.
+      ...(manages
+        ? [rowButton('Delete', published ? 'Publish another version before deleting this one' : `Delete "${version.name}" for good`,
+          () => act(() => removeVersion('shared', version.name)), { disabled: published, danger: true })]
+        : []),
+    ),
+  );
+  return row;
+}
+
+/** A list with nothing in it says so, in the row where the versions would be. */
+function emptyRow(text) {
+  const row = document.createElement('tr');
+  const td = cell('versions__empty', text);
+  td.colSpan = 4;
+  row.append(td);
+  return row;
+}
+
+/** Read both lists again and show them. */
 async function refreshVersions() {
   try {
-    const list = await api.listVersions();
-    publishedName = list.find((version) => version.published)?.name ?? null;
+    const [drafts, shared] = await Promise.all([api.listDrafts(), api.listShared()]);
+    sharedList = shared;
+    publishedName = shared.find((version) => version.published)?.name ?? null;
     showVersionInUrl();
-    showSaveState(); // the header's Published tag follows
-    versionsRows.replaceChildren(...list.map(versionRow));
-    note(list.length === 0 ? 'There are no versions yet. Save this map as the first one.' : null);
+    showSaveState(); // the header's tags follow
+    draftsRows.replaceChildren(...(drafts.length
+      ? drafts.map(draftRow)
+      : [emptyRow('Your sandbox is empty. Save this map as a new version, or take a copy of a shared one.')]));
+    sharedRows.replaceChildren(...(shared.length
+      ? shared.map(sharedRow)
+      : [emptyRow('Nothing is shared yet. Share a version from your sandbox.')]));
+    note(null);
   } catch (error) {
     note(`Could not read the versions: ${error.message}`, true);
   }
@@ -536,8 +665,8 @@ async function refreshVersions() {
 
 /**
  * One of the dialog's actions, with its buttons held down while it runs so a
- * second press cannot start a second request; then the list as it now stands.
- * An Open that went through closes the dialog: the map is what was wanted.
+ * second press cannot start a second request; then the lists as they now
+ * stand. An Open that went through closes the dialog: the map is what was wanted.
  */
 async function act(work, { close = false } = {}) {
   for (const button of versionsDialog.querySelectorAll('button:not(#versions-close)')) button.disabled = true;
@@ -581,24 +710,29 @@ function applyMap(state) {
 
 /**
  * For a contributor: what this tab had before a refresh, or the version the
- * address names, or the published one. Unsaved changes come back whatever the server
- * holds now, since this tab is the only place they exist.
+ * address names — `?version=` a shared one, `?draft=` one in the sandbox — or
+ * the published one. Unsaved changes come back whatever the server holds now,
+ * since this tab is the only place they exist.
  *
  * For a viewer: the published version, and nothing else. A link to any other
  * is turned away rather than quietly swapped for the published one, so nobody
  * mistakes one for the other.
  */
 async function loadMap() {
-  const wanted = new URL(location.href).searchParams.get('version');
+  const address = new URL(location.href).searchParams;
+  const wanted = address.has('draft')
+    ? { scope: 'sandbox', name: address.get('draft') }
+    : address.has('version') ? { scope: 'shared', name: address.get('version') } : null;
 
   if (!mayEdit()) {
     if (!wanted) return openPublished();
     try {
-      showVersion(await api.readVersion(wanted)); // only the published one is open to a viewer
+      if (wanted.scope !== 'shared') throw Object.assign(new Error('not open to a viewer'), { status: 403 });
+      showVersion(await api.readVersion('shared', wanted.name)); // only the published one is open to a viewer
     } catch (error) {
       if (error.status !== 403 && error.status !== 404) throw error;
       showNotice('This version is not open to you',
-        `Only a contributor can open "${wanted}". Everyone else sees the published map.`, { link: true });
+        `Only a contributor can open "${wanted.name}". Everyone else sees the published map.`, { link: true });
     }
     return;
   }
@@ -611,31 +745,33 @@ async function loadMap() {
     // A session kept before saves carried a base has none: the version as it
     // is now is the nearest thing, and a save still says if it moves on again.
     let base = session.base;
-    if (!base) base = (await api.readVersion(session.version).catch(() => null))?.updatedAt ?? null;
+    if (!base) base = (await api.readVersion(session.scope, session.version).catch(() => null))?.updatedAt ?? null;
     resume(session, base);
     status(`Restored the unsaved changes to "${session.version}"`);
     return;
   }
 
   let version = null;
-  const name = wanted ?? session?.version ?? null;
-  if (name && name !== published?.name) {
+  const asked = wanted ?? (session ? { scope: session.scope, name: session.version } : null);
+  if (asked && !(asked.scope === 'shared' && asked.name === published?.name)) {
     try {
-      version = await api.readVersion(name);
+      version = await api.readVersion(asked.scope, asked.name);
     } catch (error) {
       if (error.status !== 404) throw error;
       // The address asked for it, so say it is not there; a session's version
       // that has since been deleted just gives way to the published one.
-      if (wanted) status(`There is no version "${wanted}", so this is the published one.`, true);
+      if (wanted) status(`There is no version "${wanted.name}", so this is the published one.`, true);
     }
   }
   version ??= published;
   if (!version) return openPublished();
 
   // A clean session is this same version under the ids its history names, so
-  // the history comes back with it. Unless somebody has saved over it since:
-  // then the server's copy is the map, and the history belongs to one that is gone.
-  if (session?.version === version.name && stringify(toDocument(session.map)) === version.document.trimEnd()) {
+  // the history comes back with it. Unless it has been saved over since, from
+  // another tab: then the server's copy is the map, and the history belongs to
+  // one that is gone.
+  if (session?.version === version.name && session.scope === version.scope
+      && stringify(toDocument(session.map)) === version.document.trimEnd()) {
     resume(session, version.updatedAt);
     return;
   }
@@ -667,6 +803,7 @@ function keepSession() {
     try {
       sessionStorage.setItem(SESSION, JSON.stringify({
         version: current.name,
+        scope: current.scope,
         // When the version was saved as this tab has it, for the save to send back.
         base: current.updatedAt,
         dirty,
@@ -702,8 +839,10 @@ function readSession() {
     return null;
   }
   if (!session?.version || !session.map) return null;
-  // Kept before the versions moved into the database, it names a file.
+  // Kept before the versions moved into the database, it names a file; kept
+  // before sandboxes, it names a version that is shared now.
   session.version = session.version.replace(/^data\/versions\//, '').replace(/\.json$/, '');
+  session.scope ??= 'shared';
 
   // The code may have moved on since it was written. A map that no longer
   // passes is refused, the way a file would be.
@@ -724,7 +863,7 @@ function resume(session, updatedAt) {
   hideNotice();
   undoStack.load(session.history);
   applyMap(session.map);
-  current = { name: session.version, updatedAt };
+  current = { scope: session.scope, name: session.version, updatedAt };
   dirty = session.dirty === true;
   setEditMode(session.editMode === true);
   showVersionInUrl();
@@ -2035,11 +2174,12 @@ cancelButton.addEventListener('click', cancelEdit);
 
 // initTextDialog opens it; this fills it, afresh each time.
 versionsButton.addEventListener('click', () => {
-  versionsRows.replaceChildren();
+  draftsRows.replaceChildren();
+  sharedRows.replaceChildren();
   note('Reading the versions…');
   refreshVersions();
 });
-saveAsNewButton.addEventListener('click', () => act(saveAsNew));
+saveAsNewButton.addEventListener('click', () => act(() => saveAsNew()));
 
 panels.menu.button.addEventListener('click', () => togglePanel('menu'));
 panels.details.button.addEventListener('click', () => togglePanel('details'));

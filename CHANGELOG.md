@@ -7,11 +7,30 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
-Four roles instead of two, a list of the people the map knows, and an owner
-picked from it. Full notes: [docs/releases/2.4.0.md](docs/releases/2.4.0.md).
+Four roles instead of two, a list of the people the map knows, an owner picked
+from it, and a sandbox for every contributor beside the shared versions — the
+two releases planned as 2.4 and 2.5, shipped as one. Full notes:
+[docs/releases/2.5.0.md](docs/releases/2.5.0.md).
 
 ### Added
 
+- **A sandbox of your own.** What you save is yours until you share it: nobody
+  else — not a publisher, not the administrator — is shown what is in it. *Save
+  as new* goes there, numbered `v1`, `v2`… by your sandbox alone, and Users &
+  access says how many versions each sandbox holds, never what.
+- **Share** puts a fixed copy of a sandbox version among the **Shared**
+  versions, which every contributor can open. Sharing again under the same name
+  writes your own share over; a name somebody else shared under is refused,
+  with their name; the published one is refused. Whoever shared a version, a
+  publisher and the administrator can rename or delete it; nobody saves over
+  it.
+- **Take a copy** brings a shared version into your sandbox to work on, under
+  the same name where your sandbox has it free. Save on a shared version does
+  the same, after asking.
+- **Publish** goes live from the shared versions only, so what everyone lands
+  on was in the open first.
+- **Links**: `?version=` names a shared version, as it did; `?draft=` names one
+  in your sandbox, which only you can follow.
 - **Roles.** Everyone who signs in is a **contributor**: they edit, save,
   rename and delete versions, and talk to the Assistant. A **publisher** also
   chooses which version is the map everyone sees. The one **administrator**
@@ -48,6 +67,10 @@ picked from it. Full notes: [docs/releases/2.4.0.md](docs/releases/2.4.0.md).
 - **Everyone signs in once more** after the upgrade: a session from before
   cannot say who its person is on the list, and Entra signs them straight back
   in.
+- **Every version already in the database is shared** after the upgrade, as
+  everything site-wide was; sandboxes start empty and fill as people take
+  copies. A version from before has no sharer, so renaming or deleting it is a
+  publisher's.
 - For a repo with an `auth` of its own: `user(request)` should now answer
   `source` and `subject` as well; without them the address stands in. See
   [docs/BRANDING.md](docs/BRANDING.md).

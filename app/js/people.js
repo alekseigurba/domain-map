@@ -117,9 +117,13 @@ function personRow(person) {
     actions.append(hand);
   }
 
+  // How many versions their sandbox holds, never what: a sandbox is private.
+  const sandbox = person.drafts === 0 ? 'Empty' : `${person.drafts} version${person.drafts === 1 ? '' : 's'}`;
+
   const row = document.createElement('tr');
   row.dataset.open = String(isMe);
-  row.append(cell(null, who), cell(null, role), cell('versions__when', seen(person.lastSignedIn)), cell(null, actions));
+  row.append(cell(null, who), cell(null, role), cell('versions__when', sandbox),
+    cell('versions__when', seen(person.lastSignedIn)), cell(null, actions));
   return row;
 }
 

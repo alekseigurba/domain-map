@@ -1206,6 +1206,25 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 .versions__note[data-error="true"] { color: #8c2f18; }
 
+/* The two lists, My sandbox and Shared, each under a small heading in the
+   dialog title's own style, so the dialog reads as one thing with two parts. */
+.versions__heading {
+  margin: 0 0 var(--gap-2);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.versions__heading + .versions + .versions__heading { margin-top: var(--gap-4); }
+
+/* A list with nothing in it says so where its rows would be. */
+.versions__empty {
+  color: var(--ink-soft);
+  white-space: normal;
+}
+
 /* On a phone the table keeps its columns and scrolls sideways instead. */
 .versions__scroll {
   min-height: 0;

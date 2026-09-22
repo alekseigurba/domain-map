@@ -41,14 +41,15 @@
       <button class="btn btn--chip save-now" id="save-map" hidden>
         <span class="btn__label">Save</span>
       </button>
-      <!-- An owner's: which version is open, and the dialog that opens,
-           publishes and deletes versions. -->
+      <!-- A contributor's: which version is open, and the dialog that holds
+           their sandbox and the shared versions. -->
       <button class="btn btn--chip version-chip" id="versions" hidden
-              title="Versions: open, save as new, publish or delete"
+              title="Versions: your sandbox and the shared versions"
               aria-haspopup="dialog" aria-controls="versions-dialog">
         <span class="version-chip__label">Version</span>
         <span class="version-chip__name" id="version-name">Versions</span>
         <span class="badge" id="version-published" hidden>Published</span>
+        <span class="badge badge--quiet" id="version-shared" hidden>Shared</span>
       </button>
       <button class="btn btn--chip" id="export-map" title="Download the whole map as JSON">Export</button>
       <button class="btn btn--chip" id="export-svg" title="Download the diagram as an SVG picture">Export SVG</button>
@@ -295,14 +296,16 @@
     </span>
   </footer>
 
-  <!-- Versions: every version of the map, for an owner to open, publish or
-       delete, and the way to save the map as a new one. main.js fills the rows
-       each time it opens. -->
+  <!-- Versions: this person's sandbox, then the shared versions, for a
+       contributor to open, share, copy, rename or delete — and a publisher to
+       publish — and the way to save the map as a new one. main.js fills the
+       rows each time it opens. -->
   <dialog class="dialog dialog--versions" id="versions-dialog" aria-labelledby="versions-title">
     <div class="dialog__body">
       <h2 class="dialog__title" id="versions-title">Versions</h2>
       <p class="versions__note" id="versions-note" hidden></p>
       <div class="versions__scroll">
+        <h3 class="versions__heading">My sandbox</h3>
         <table class="versions">
           <thead>
             <tr>
@@ -312,12 +315,24 @@
               <th scope="col" aria-label="Actions"></th>
             </tr>
           </thead>
-          <tbody id="versions-rows"></tbody>
+          <tbody id="drafts-rows"></tbody>
+        </table>
+        <h3 class="versions__heading">Shared</h3>
+        <table class="versions">
+          <thead>
+            <tr>
+              <th scope="col">Version</th>
+              <th scope="col">Shared</th>
+              <th scope="col">Shared by</th>
+              <th scope="col" aria-label="Actions"></th>
+            </tr>
+          </thead>
+          <tbody id="shared-rows"></tbody>
         </table>
       </div>
       <div class="dialog__foot">
         <button class="btn btn--chip" type="button" id="save-as-new"
-                title="Save the map as it is now as the next version">Save as new</button>
+                title="Save the map as it is now to your sandbox, as the next version">Save as new</button>
         <button class="btn btn--chip" type="button" id="versions-close">Close</button>
       </div>
     </div>
@@ -368,6 +383,7 @@
             <tr>
               <th scope="col">Person</th>
               <th scope="col">Role</th>
+              <th scope="col">Sandbox</th>
               <th scope="col">Last signed in</th>
               <th scope="col" aria-label="Actions"></th>
             </tr>

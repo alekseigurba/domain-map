@@ -8,7 +8,7 @@
 //   node tests/people.test.mjs
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +32,8 @@ const DAVE = { source: 'entra', subject: 'oid-dave', name: 'Dave Dunn', username
 const ERIN = { source: 'entra', subject: 'oid-erin', name: 'Erin Example', username: 'Erin@Contoso.example', method: 'microsoft' };
 /** A session from before sessions said which door someone came in by. */
 const OLD_SESSION = { name: 'Carol Chen', username: 'carol@contoso.example', method: 'microsoft' };
+
+const seedText = await readFile(new URL('../seed/data/versions/v1.json', import.meta.url), 'utf8');
 
 let failures = 0;
 const check = (label, condition, detail = '') => {
@@ -165,6 +167,11 @@ try {
   const bob = await as(app, BOB, 'GET', '/api/me');
   check('the second address signs in to the same row, matched on the email claim whatever its case',
     bob.body.role === 'contributor' && bob.body.id === bobRow.id && bob.body.name === 'Bob Builder', JSON.stringify(bob.body));
+  await as(app, BOB, 'POST', '/api/drafts', { document: seedText });
+  const counted = (await as(app, ALICE, 'GET', '/api/people')).body.people;
+  check('the list says how many versions a sandbox holds, and never what',
+    counted.find((person) => person.id === bob.body.id)?.drafts === 1 && counted.find((person) => person.id === alice.body.id)?.drafts === 0
+    && counted.every((person) => !('versions' in person)), JSON.stringify(counted.map((person) => [person.name, person.drafts])));
 
   // --- who a sign-in turns out to be ---
   const carol = await as(app, CAROL, 'GET', '/api/me');
@@ -245,8 +252,8 @@ try {
   // --- sign-in off ---
   const open = await startServer({ storage, databaseUrl: database.url, env: { AUTH_ENABLED: 'false' } });
   const local = await as(open, null, 'GET', '/api/me');
-  check('with sign-in off, whoever is there is the administrator, and nobody in particular',
-    local.body.role === 'administrator' && local.body.id === null, JSON.stringify(local.body));
+  check('with sign-in off, whoever is there is the administrator, with nobody to name and one sandbox between them',
+    local.body.role === 'administrator' && local.body.name === null && typeof local.body.id === 'string', JSON.stringify(local.body));
   check('and the list still reads', (await as(open, null, 'GET', '/api/people')).status === 200);
   await open.stop();
 
