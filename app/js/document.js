@@ -7,11 +7,12 @@
 // version 1 file still reads: everything in it lands on the base layer, which
 // is what it always meant.
 //
-// Version 3 added Product Areas: a third layer, the areas on it, and the area a
-// domain, a touchpoint or a loose capability names. The number moved because an
-// app from before it would read past all of that and write the map back without
-// it — better that it refuses the file. Versions 1 and 2 still read, as a map
-// with no areas. Writing is always version 3.
+// Version 3 added Areas (Product Areas, as 2.3.0 called them): a third layer,
+// the areas on it, and the area a domain, a touchpoint or a loose capability
+// names. The number moved because an app from before it would read past all
+// of that and write the map back without it — better that it refuses the
+// file. Versions 1 and 2 still read, as a map with no areas. Writing is
+// always version 3.
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';

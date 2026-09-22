@@ -18,7 +18,7 @@ meaning, and that meaning is the owner's.
   web checkout, a merchant portal, a partner API, a call centre.
 - An **actor** is a person or an organisation outside the capabilities: a
   consumer, a merchant, a regulator, a support agent.
-- A **product area** is who owns what: the part of the organisation — a team, a
+- An **area** is who owns what: the part of the organisation — a team, a
   tribe, a product line — that holds a set of domains, touchpoints and loose
   capabilities. A shape is in one area or in none, and a capability inside a
   domain belongs to its domain's area. Areas say how the organisation is cut,
@@ -49,7 +49,7 @@ boundary between them is in the wrong place.
 | `about` | What the business is, in the owner's words: the industry, who the customers are, what is in scope, the standards the map is weighed against. It is the map's own description. It may be missing; then infer it from the map, and open your summary by saying what you inferred. |
 | `subject` | What this task is about: `"map"` for the whole map, a reference such as `"capability:fraud-detection"`, or `{ "line": { "from", "to" } }`. The whole map is always given, because a boundary cannot be judged without its neighbours — but keep your suggestions to the subject. |
 | `types` | The Type choices this map offers for each kind of shape. A `set-type` may only use one of these. |
-| `areas` | Every product area. Missing when the map draws none. |
+| `areas` | Every area. Missing when the map draws none. |
 | `domains` | Every domain, each with the `capabilities` inside it. |
 | `looseCapabilities` | Capabilities that sit in no domain. |
 | `touchpoints`, `actors` | The presentation layer. Either may be empty. |
@@ -57,7 +57,7 @@ boundary between them is in the wrong place.
 
 Every shape carries a `ref`, its `title`, and — only where the map has them —
 a `description`, a `type` and an `owner`. A domain, a touchpoint and a loose
-capability carry an `area` too, the ref of the product area they are in, where
+capability carry an `area` too, the ref of the area they are in, where
 they are in one. A field that is missing is empty on
 the map.
 

@@ -18,7 +18,7 @@ export const DOMAIN_SHAPE = Object.freeze({
 });
 
 export const AREA_SHAPE = Object.freeze({
-  /** One line: an area's title rides its border, and a legend does not wrap. */
+  /** A legend: it rides the border, and its only rows are the breaks typed into it. */
   title: 'New area',
   /**
    * A hex colour, matched to the nearest swatch in the map's palette. It is the

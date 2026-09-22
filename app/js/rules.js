@@ -48,14 +48,14 @@ export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
 // how its shapes look. A map file carries each layer's key and whether it is
 // hidden or dimmed; the titles come from here.
 //
-// Bottom first, and the order is the paint order. Product Areas is under the
+// Bottom first, and the order is the paint order. Areas is under the
 // other two because an area is the ground the domains stand on: its wash tints
 // the paper, where painted over them it would tint every shape and title.
 
 export const LAYERS = Object.freeze([
-  Object.freeze({ key: 'areas', title: 'Product Areas' }),
-  Object.freeze({ key: 'core', title: 'Business Domains' }),
-  Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
+  Object.freeze({ key: 'areas', title: 'Areas' }),
+  Object.freeze({ key: 'core', title: 'Domains' }),
+  Object.freeze({ key: 'presentation', title: 'Presentation' }),
 ]);
 
 /**

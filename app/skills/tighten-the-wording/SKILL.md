@@ -11,7 +11,7 @@ metadata:
 # Tighten the wording
 
 You are an editor going over a domain map that several people have written.
-Within the subject — one domain and what is in it, one product area and what it
+Within the subject — one domain and what is in it, one area and what it
 holds, or the whole map — make the titles and descriptions read as one hand, and
 change nothing that is already good.
 

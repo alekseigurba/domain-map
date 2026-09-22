@@ -30,7 +30,7 @@ check('there are three layers, bottom first',
   rules.LAYERS.map((one) => one.key).join(',') === 'areas,core,presentation');
 // Who owns the business can be put away; what it does cannot. So the base is
 // named, and is not simply whichever layer is at the bottom.
-check('the base layer is Business Domains, though areas are painted under it',
+check('the base layer is Domains, though areas are painted under it',
   rules.BASE_LAYER === 'core' && rules.LAYERS[0].key === 'areas');
 check('an area is on a layer of its own', rules.LAYER_OF.area === 'areas'
   && rules.KINDS_ON.areas.join(',') === 'area');
@@ -296,7 +296,7 @@ check('a capability is on the base layer whatever its domain',
 check('a line belongs to the layer of its upper end',
   store_.connectorLayer(reach) === 'presentation');
 check('the layer titles come from the model',
-  store_.layerTitle('presentation') === 'Presentation Layer', store_.layerTitle('presentation'));
+  store_.layerTitle('presentation') === 'Presentation', store_.layerTitle('presentation'));
 
 check('the presentation layer holds both new kinds and both lines',
   store_.onLayer('presentation').touchpoints.length === 1

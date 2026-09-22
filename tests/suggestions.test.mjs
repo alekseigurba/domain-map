@@ -341,7 +341,7 @@ check('and a line names both ends', says(split, 2) === 'Connect Dunning and Frau
 
 // --- who owns what -------------------------------------------------------------
 
-// The example map draws three product areas, holding between them a domain, a
+// The example map draws three areas, holding between them a domain, a
 // touchpoint and a loose capability — every kind an area may hold.
 const money = titled('areas', 'Money Movement');
 const ledger = titled('domains', 'Core Ledger & Repayment');

@@ -843,8 +843,31 @@ check('a title nobody has moved rides the top of the band',
   team.title.angle === geo.DEFAULT_TITLE_ANGLE && onTheBand(team.title) < 0.01
   && Math.abs(team.title.y - Math.min(...team.band.map((p) => p.y))) < 0.01,
   `${team.title.x},${team.title.y}`);
-check('an area’s title is one line, whatever breaks were typed into it',
-  geo.layoutArea({ title: 'Money\nMovement' }, spread).title.lines.join('|') === 'Money Movement');
+// Rows are the breaks typed into the title and nothing more, and they stand
+// outside the band with the nearest one astride the line.
+const legend = { title: 'Money\nMovement', fontSize: 64, fontWeight: 'bold' };
+const stacked = geo.layoutArea(legend, spread);
+check('an area’s title keeps the rows typed into it, and nothing wraps',
+  stacked.title.lines.join('|') === 'Money|Movement'
+  && stacked.title.height === 2 * stacked.title.lineHeight
+  && geo.layoutArea({ ...legend, title: 'Money Movement Across Every Border There Is' }, spread).title.lines.length === 1);
+check('and the break in the border is as wide as the longest row',
+  stacked.title.width === geo.layoutArea({ ...legend, title: 'Movement' }, spread).title.width);
+check('at the top the rows stand above the line, the lowest astride it',
+  onTheBand({ x: stacked.title.x, y: stacked.title.y + stacked.title.lineHeight / 2 }) < 0.01
+  && stacked.title.y - stacked.title.height / 2 < Math.min(...stacked.band.map((p) => p.y)));
+const hung = geo.layoutArea({ ...legend, titleAngle: 90 }, spread);
+check('at the bottom they hang below it, the highest astride',
+  onTheBand({ x: hung.title.x, y: hung.title.y - hung.title.lineHeight / 2 }) < 0.01
+  && hung.title.y + hung.title.height / 2 > Math.max(...hung.band.map((p) => p.y)));
+const beside = geo.layoutArea({ ...legend, titleAngle: 0 }, spread);
+check('at a side the block sits astride the line, there being no outside to stand in',
+  onTheBand(beside.title) < 0.01);
+const slanting = geo.layoutArea({ ...legend, titleAngle: 315 }, spread);
+const slantingAt = geo.rimPoint(slanting.band, slanting.centre, 315);
+check('and between the two it shades with the angle rather than jumping a row',
+  slanting.title.y < slantingAt.y
+  && slanting.title.y > slantingAt.y - (slanting.title.height - slanting.title.lineHeight) / 2);
 check('Title size sizes the words themselves, there being no lobe round them',
   geo.layoutArea({ title: 'Payments', fontSize: 64, titleScale: 0.5 }, spread).title.fontSize === 32);
 

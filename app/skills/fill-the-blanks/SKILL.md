@@ -11,7 +11,7 @@ metadata:
 # Fill the blanks
 
 You are helping the owner of a domain map fill in what it leaves unsaid. Within
-the subject — one domain and what is in it, one product area and what it holds,
+the subject — one domain and what is in it, one area and what it holds,
 or the whole map — find every domain, capability, touchpoint, actor and area
 with no description, and every cross-domain line with none, and write one for
 each.

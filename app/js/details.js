@@ -639,7 +639,7 @@ function meta(lines) {
  * Headed by what the selection is, but opened and shut as one panel for both.
  */
 const HEADINGS = {
-  area: 'Product area',
+  area: 'Area',
   domain: 'Domain',
   capability: 'Capability',
   touchpoint: 'Touchpoint',

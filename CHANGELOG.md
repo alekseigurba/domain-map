@@ -7,6 +7,35 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.3.1 — 2026-09-22
+
+The layers are Presentation, Domains and Areas, and an area's title can break
+into rows. Nothing breaks and there is nothing to run. Full notes:
+[docs/releases/2.3.1.md](docs/releases/2.3.1.md).
+
+### Added
+
+- **Line breaks in an area's title.** Shift+Enter or Ctrl+Enter while renaming
+  an area on the map breaks its title into rows, as it does a domain's; Enter
+  still saves. The rows stand outside the band and rest on the border — above
+  the line when the title rides the top, below it at the bottom, astride it at
+  either side, and shading between as the title is slid round. Nothing wraps on
+  its own: a row is as long as its words, and the break in the border follows
+  the longest. A team name too long for its stretch of border no longer has to
+  be a smaller one. In the details panel the title reads as one line, and what
+  is typed there keeps the rows.
+
+### Changed
+
+- **The layers are Presentation, Domains and Areas** — in the layer control,
+  the menu and the heading of an area's details, where they were the
+  Presentation Layer, Business Domains and Product Areas. The plain word is the
+  more general one: a team, a tribe, a product line or a business unit is an
+  area. The Add button, the Area field and the map file are as they were, so
+  nothing needs saving again and a 2.3.0 deployment opens a map written here.
+- **The example map breaks a title**: Customer & Merchant rides the top of its
+  band as two rows. Only a fresh store is seeded from it.
+
 ## 2.3.0 — 2026-09-21
 
 The map gains a third layer, **Product Areas**: who owns what. **Breaking:** map

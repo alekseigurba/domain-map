@@ -412,7 +412,7 @@ on a wide screen means nothing here, where the sheet is as wide as the screen.
 `100dvh` rather than `100vh`, because a phone's toolbars slide in and out of the
 way and `vh` does not notice, which would leave the foot of the sheet under them.
 
-## Product areas
+## Areas
 
 An area is a boundary, not terrain, and is drawn to be told from a domain at a
 glance: a **band**, the tightest rounded line round everything it holds, where a
@@ -426,7 +426,7 @@ side overlap in the gap.
 | --- | --- |
 | Border | Solid, `--area-border-width` (**6px**, the weight of a capability's rim), round joins, in the area's swatch. Solid because dashes are chrome here — an empty slot, a lobe handle, a line being drawn. |
 | Wash | The swatch again at the area's own opacity, **10%** by default. An area's opacity runs 0–100, where every other shape stops at 10: 0 is a border and no wash. It is what still reads when the map is zoomed out and the line has gone thin. |
-| Title | One line riding the border like a legend, `--font-heading`, bold 64px by default, with the border broken behind it by 0.4em either side. It wears the border's colour **deepened** until it holds 4.5:1 against `--paper` — half the palette is too pale to read as type — so a blue line keeps a blue title and a yellow one gets an olive. |
+| Title | Rows riding the border like a legend, `--font-heading`, bold 64px by default, with the border broken behind the block by 0.4em either side. Its only rows are the breaks typed into it; nothing wraps, so a row is as long as its words. The rows stand outside the band with the nearest astride the line — above it at the top, below it at the bottom, astride at either side, shading between as the title slides. It wears the border's colour **deepened** until it holds 4.5:1 against `--paper` — half the palette is too pale to read as type — so a blue line keeps a blue title and a yellow one gets an olive. |
 | Hover and selection | A halo under the border, 8px wider than it: `--line-strong` at 90% on hover and for an area about to receive a dragged shape, `--selection` when picked. The border keeps its own colour inside the halo. |
 | Handles | The border, caught by an unseen 26px line, and the title's box. The wash takes no pointer at all: the inside of an area is open ground. |
 
@@ -538,9 +538,9 @@ directory does not shadow:
 
 ```js
 export const LAYERS = Object.freeze([
-  Object.freeze({ key: 'areas', title: 'Product Areas' }),
-  Object.freeze({ key: 'core', title: 'Business Domains' }),
-  Object.freeze({ key: 'presentation', title: 'Presentation Layer' }),
+  Object.freeze({ key: 'areas', title: 'Areas' }),
+  Object.freeze({ key: 'core', title: 'Domains' }),
+  Object.freeze({ key: 'presentation', title: 'Presentation' }),
 ]);
 
 /** Which layer each kind is on. No element carries a layer of its own. */
@@ -596,7 +596,7 @@ A shape stores a palette swatch, not a color. When a shape is created, its defau
   A capability that lands inside a domain, including one added with **Add lobe** from the domain's ⋮ menu, takes the domain's color instead of the default. This happens only when it is added, so you can change the color afterwards.
 - **Reset shapes** appears at the bottom of the details panel when a domain is selected. It sets the domain's color, opacity, font size, weight and title size back to `DOMAIN_SHAPE`. It sets the color, font size, weight, shape size and stretch of every capability in the domain back to `CAPABILITY_SHAPE`. Titles, icons, positions and a dragged title width don't change.
 - **Add a touchpoint** uses `TOUCHPOINT_SHAPE` and **Add an actor** uses `ACTOR_SHAPE`. Neither belongs to a domain, so both land on open ground beside the map. The Add buttons sit at the bottom of the diagram and offer only the kinds the selected layer takes, so a touchpoint can only ever be added to the Presentation layer.
-- **Add an area** uses `AREA_SHAPE`, and appears when Product Areas is the layer picked. The area lands empty on open ground beside the map, as a band just long enough for its title. The first wears the default color; each one after it takes the next swatch no other area wears, since two teams side by side in one color read as one.
+- **Add an area** uses `AREA_SHAPE`, and appears when Areas is the layer picked. The area lands empty on open ground beside the map, as a band just long enough for its title. The first wears the default color; each one after it takes the next swatch no other area wears, since two teams side by side in one color read as one.
 - **Reset colors**, below it, gives every capability in the domain the domain's color.
 - **Map files**: if a file leaves out a field, the field gets its default. The exception is color, which falls back to swatch 1.
 

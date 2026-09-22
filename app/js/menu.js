@@ -218,7 +218,7 @@ export function renderMenu() {
   // come last and flat as well: every shape keeps the one row it has above, and
   // what an area holds is read in its details rather than listed here twice.
   for (const [kind, heading] of [
-    ['touchpoint', 'Touchpoints'], ['actor', 'Actors'], ['area', 'Product Areas'],
+    ['touchpoint', 'Touchpoints'], ['actor', 'Actors'], ['area', 'Areas'],
   ]) {
     const list = kind === 'area' ? store.areas : stackedList(kind);
     if (list.length === 0) continue;

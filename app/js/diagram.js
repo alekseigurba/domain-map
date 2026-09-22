@@ -615,7 +615,7 @@ export function startRename(id, kind = 'domain') {
   const holder = el('foreignObject', { class: 'title-editor' });
   const input = document.createElement('textarea');
   input.className = 'title-editor__input';
-  input.value = kind === 'area' ? oneLine(record.title) : record.title;
+  input.value = record.title;
   input.spellcheck = false;
   input.id = 'domain-title-editor';
   input.name = 'domain-title-editor';
@@ -636,10 +636,9 @@ export function startRename(id, kind = 'domain') {
       return;
     }
     if (event.key !== 'Enter') return;
-    // Enter is "done"; Shift-Enter and Ctrl/Cmd-Enter break the line instead —
-    // except on an area, whose title rides a border and is one line for good.
+    // Enter is "done"; Shift-Enter and Ctrl/Cmd-Enter break the line instead.
     event.preventDefault();
-    if (kind === 'area' || (!event.ctrlKey && !event.metaKey && !event.shiftKey)) {
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
       commitRename();
       return;
     }
@@ -680,9 +679,7 @@ function commitRename() {
   const { kind, id, original } = closeRename();
 
   // Trailing blanks are an accident of pressing Ctrl-Enter one time too many.
-  const kept = typed.replace(/[ \t]+$/gm, '').replace(/\n+$/, '').trim();
-  // A break pasted into an area's title is a space: there is one line to put it on.
-  const title = kind === 'area' ? oneLine(kept) : kept;
+  const title = typed.replace(/[ \t]+$/gm, '').replace(/\n+$/, '').trim();
   if (!title || title === original) {
     render();
     return;

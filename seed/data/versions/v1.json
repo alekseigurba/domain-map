@@ -54,7 +54,7 @@
     },
     {
       "key": "customer-merchant",
-      "title": "Customer & Merchant",
+      "title": "Customer &\nMerchant",
       "description": "Who the business deals with, and the portal merchants reach it through.",
       "shape": { "position": "50,-21", "titleAngle": 267.4, "color": 15, "size": 48, "weight": "bold", "titleScale": 1, "opacity": 10 }
     }

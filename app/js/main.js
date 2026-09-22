@@ -1579,9 +1579,7 @@ const kebabMenu = document.getElementById('kebab-menu');
 /** Open a domain's title for editing, from the kebab or from a double-click. */
 function beginRename(id, kind = 'domain') {
   startRename(id, kind);
-  status(kind === 'area'
-    ? 'Enter saves, Esc cancels'
-    : 'Enter saves, Shift-Enter or Ctrl-Enter breaks the line, Esc cancels');
+  status('Enter saves, Shift-Enter or Ctrl-Enter breaks the line, Esc cancels');
 }
 
 function closeKebab() {

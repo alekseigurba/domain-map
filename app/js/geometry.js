@@ -1453,18 +1453,24 @@ const written = (value) => value.toFixed(2);
 export const pathThrough = (points, closed = false) =>
   (points.length === 0 ? '' : `M ${points.map((p) => `${written(p.x)} ${written(p.y)}`).join(' L ')}${closed ? ' Z' : ''}`);
 
-/** An area's title as it is drawn: one line, whatever breaks were typed into it. */
+/**
+ * An area's title as it is drawn: a row for every break typed into it, and
+ * nothing wrapped. A legend is as long as its words, so the break in the
+ * border follows the longest row.
+ */
 const legendOf = (area) => {
   const fontSize = (area.fontSize || AREA_SHAPE.fontSize) * (area.titleScale || 1);
   const fontWeight = area.fontWeight || AREA_SHAPE.fontWeight;
-  const line = String(area.title ?? '').replace(/\s*\n\s*/g, ' ').trim();
+  const rows = String(area.title ?? '').split('\n').map((row) => row.trim()).filter(Boolean);
+  const lines = rows.length === 0 ? [''] : rows;
+  const lineHeight = fontSize * 1.18;
   return {
-    lines: [line],
-    lineHeight: fontSize * 1.18,
+    lines,
+    lineHeight,
     fontSize,
     fontWeight,
-    width: Math.max(measure(line, fontSize, fontWeight), fontSize),
-    height: fontSize * 1.18,
+    width: Math.max(...lines.map((row) => measure(row, fontSize, fontWeight)), fontSize),
+    height: lines.length * lineHeight,
   };
 };
 
@@ -1502,8 +1508,15 @@ export function layoutArea(area, outlines, sliding = null) {
 
   const angle = sliding?.titleAngle ?? area.titleAngle ?? DEFAULT_TITLE_ANGLE;
   const at = rimPoint(band, centre, angle);
+  // The rows stand outside the band, the nearest of them astride the line:
+  // above it when the title rides the top, below it at the bottom. Rows stack
+  // upright, so at either side there is no outside for them to stand in and
+  // the block sits astride; between, it shades from one to the other with the
+  // angle rather than jumping a row as the title crosses the middle. One row
+  // is on the line wherever it rides, as it always was.
+  const outward = Math.sin((angle * Math.PI) / 180);
   title.x = at.x;
-  title.y = at.y;
+  title.y = at.y + ((title.height - title.lineHeight) / 2) * outward;
   title.angle = angle;
 
   const gap = {
