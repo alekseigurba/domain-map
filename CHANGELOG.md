@@ -7,6 +7,18 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+### Changed
+
+- **A repo from `create-domain-map-app` names its Docker stack after itself.**
+  Its `docker-compose.yml` sets the project name and both container names from
+  the repo's name — `acme-domain-map` and `acme-domain-map-postgres` — where
+  Compose used to take them from the folder it was checked out in. Two maps in
+  folders of one name, or one in a folder called `domain-map` beside this
+  package's own checkout, were one project, and a `docker compose down` in
+  either stopped both. A repo made before this carries its own copy of the
+  file: add `name:` at the top and a `container_name:` to each service to get
+  the same.
+
 ## 2.5.1 — 2026-09-22
 
 More than one administrator, people taken off the list, and a Versions dialog

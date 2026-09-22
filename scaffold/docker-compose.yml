@@ -1,5 +1,12 @@
+# The project is {{slug}} whatever folder the repo is checked out in, and so are
+# its containers. Left to Compose, both are named after the folder, so a map
+# checked out as `domain-map` shared the package's own stack: the same project,
+# and a `docker compose down` in one took the other's containers with it.
+name: {{slug}}
+
 services:
   {{slug}}:
+    container_name: {{slug}}
     build: .
     ports:
       - "8000:8000"
@@ -37,6 +44,7 @@ services:
   # Published on 5432 as well, so `npm run start:dev` on the host can use it:
   # `npm run db`, then `npm run start:dev`.
   postgres:
+    container_name: {{slug}}-postgres
     image: postgres:17-alpine
     ports:
       - "5432:5432"
