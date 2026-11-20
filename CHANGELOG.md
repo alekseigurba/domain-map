@@ -7,6 +7,8 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.6.0 — 2026-11-20
+
 Features inside a capability, lines between domains, capabilities and features
 in any combination, a level for how much of the lines is drawn, and a deep zoom
 that opens a capability onto what it holds; a marker to draw flows on the map
