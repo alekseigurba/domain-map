@@ -52,7 +52,15 @@ right, or rename a domain in place by double-clicking its title on the map.
 Each shape also carries a description and an owner, and a capability can carry
 an icon.
 
-**Arranging.** Drag a domain and everything inside it comes along. Drag a
+**Features.** What a capability does, named one by one. *Add a feature* puts
+one into the capability that is selected, after the ones it already holds. A
+feature is drawn inside its capability's oval, in rows, once you are close
+enough to read it. Drag one to move it about the oval, onto another to trade
+places, or into another capability to hand it over; `[` and `]` move it along
+the list.
+
+**Arranging.** Drag a domain and everything inside it comes along. Drag the
+boundary of a selected domain to give the lobe behind it more room, or less. Drag a
 capability to move it within its domain, onto another domain to hand it over,
 onto another capability to swap the two, or onto open ground to leave it loose.
 A domain's title has its own place: drag it around the blob, and while
@@ -69,20 +77,63 @@ Drag the border to move a whole team's territory at once, and the title to
 slide it round the border; Shift+Enter while renaming it breaks the title into
 rows, which stack outside the band.
 
-**Connectors.** Point at a capability and its connection points appear. Drag
-from one to a point on another capability — or click one, then the other — and
-a line joins them. Drag an end to move it, Shift-click a curved line to add a
-bend, double-click a bend to take it out. A line that stays inside one domain is
-drawn quietly, as internal plumbing; one that crosses a boundary is a public
-event, and reads louder.
+**Connectors.** Point at a domain, a capability or a feature and its connection
+points appear. Drag from one to a point on another shape — or click one, then
+the other — and a line joins them, in any combination of the three: a domain
+to a domain where that is all there is to say, a feature to a feature where
+the detail is known. Drag an end to move it, Shift-click a curved line to add a
+bend, double-click a bend to take it out. A line that stays inside one domain
+is drawn quietly, as internal plumbing; one that crosses a boundary is a public
+event, and reads louder. A curved line you have not shaped goes round a domain
+that lies in its way rather than across it.
 
 **Colour.** *Edit palette* opens the map's own 24 colours in the bottom corner,
 over an overlay that leaves the map in view. Every shape wears a swatch from
 it, so recolouring the palette recolours the map.
 
+**Light or dark.** The page follows your device, and **Theme** under the avatar
+sets it for this browser whatever the device says. A dark map is drawn from the
+same palette, each colour dimmed to sit on dark paper, so there is nothing to
+recolour for it — and *Edit palette* goes on showing the colours as the light
+theme draws them.
+
 **Getting around** — the button in the header — lists every shortcut and
 gesture there is: undo, bold, the size and shape steps, restacking, and the
 keys that apply while renaming.
+
+## Looking closer
+
+The map says more the closer you look, and nothing on it moves as you do. Zoom
+in on a capability and it **opens onto its features**; a row of pips along its
+foot says it holds some. Double-click a domain or a capability to glide in to
+it, and *Fit to screen* to glide back out. Browsing, a drag pans the map from
+wherever it starts.
+
+The slider over the zoom buttons sets the **level the lines are drawn at**,
+without moving the map. At **F** every line is where it really ends, which is
+how a map opens. At **C** a line that ends on a feature leaves from its
+capability. At **D** every line leaves from a domain, and the lines between two
+domains are one line, heavier the more it stands for — each domain keeping its
+two strongest, so what is left is the main roads. Point at a line there to read
+what it joins and how many it carries; pick a domain to see every line it has.
+
+The level is the same in **Edit** mode, so the map does not change when you
+leave it.
+
+## Drawing on the map
+
+**Draw**, in the header, is the marker the map was made to be drawn on with.
+While it is on the map is locked — nothing on it is selected or moved — and a
+drag draws: pick one of five markers from the tray on the stage, trace the flow,
+rub a stroke out with the eraser, take a step back with Ctrl+Z. The wheel and a
+pinch still zoom, and Space with a drag, the middle button or two fingers move
+the map under the marker. What you draw rides the terrain as you pan and zoom,
+and **Export SVG** carries it into the picture. It is a sketch for the
+conversation in front of it, not part of the map: it is saved in no version,
+nobody else sees it, a viewer can draw as freely as a contributor, and it lasts
+through a refresh but not past the tab — or past opening another version in its
+place. **Done**, Esc or Draw again puts the marker down and leaves the drawing
+where it is.
 
 ## Asking an AI about the map
 
@@ -159,7 +210,8 @@ start` work with no configuration at all.
 
 **Export** downloads the whole map as JSON — the file to keep in a repo, diff,
 or hand to someone else. **Import** replaces the map from one of those files.
-**Export SVG** downloads the diagram as a picture, for a slide or a wall.
+**Export SVG** downloads the diagram as a picture, for a slide or a wall — in
+the theme on screen, so switch to Light first for one to print.
 
 ## Make it your own
 

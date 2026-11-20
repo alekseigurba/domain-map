@@ -50,8 +50,8 @@ npm test
 
 Each test is a plain script that prints its checks and exits non-zero on the
 first failing run — no test runner, no framework. `npm test` runs them in order
-(defaults, geometry, layers, seed, links, suggestions, auth, versions, people,
-assistant), and any one of them also runs on its own:
+(defaults, geometry, viewport, zoom, strokes, layers, seed, links, suggestions,
+auth, versions, people, assistant, consumer), and any one of them also runs on its own:
 
 ```bash
 node tests/geometry.test.mjs
@@ -64,14 +64,20 @@ node tests/geometry.test.mjs
 | `app/` | The whole client: no build step, no framework, ES modules the browser loads as they are. |
 | `app/js/store.js` | The single source of truth. Menu, details and diagram all read from it, and every change to the map is a change here. |
 | `app/js/diagram.js` | The SVG: rendering, hit-testing, dragging, connectors. |
-| `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points, and the band an area draws round what it holds. |
+| `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points, the band an area draws round what it holds, how a capability's features are packed into its oval, the points a line hangs off round a domain's blob, and the bends that take a line round a shape in its way. Also the palette: `PALETTE` as the map holds it, `COLORS` as it is drawn, and the dark counterpart that makes the second from the first on a dark map. |
+| `app/js/theme.js` | Light or dark, and who decides: the choice the browser keeps, following the system as it turns, the three buttons in the profile popup, and telling `main.js` when the theme changes so the map is redrawn for the other paper. |
+| `app/js/theme-first.js` | The theme, said before the first paint: the one script loaded the old way, in the head of both pages, so a dark page does not open white. It writes `data-theme` on the root, which is all `tokens.css` reads. Served before sign-in, so it is listed with the sign-in screen's files in `scripts/auth.mjs`. |
+| `app/js/viewport.js` | The pan and zoom maths: where a view puts a point, zooming about the pointer, centring, and fitting a box to the stage. Pure, so `tests/viewport.test.mjs` runs it headless, and the one module under `app/js/` a consumer's own page is promised to be able to import. |
+| `app/js/zoom.js` | How much of the map's lines is spelt out: the three levels a line may be drawn at, where each end of a line is lifted to at a level, how lifted lines fold into one and which of those the domain level keeps, when a capability opens onto its features, how far in the map may go and where a glide stops. Pure, so `tests/zoom.test.mjs` runs it headless; `diagram.js` reads it after every layout and draws what it says. |
+| `app/js/strokes.js` | The maths of a drawing made over the map: the points a pointer reports thinned to what a line needs, the path drawn through them, what an eraser at a point touches, and a step taken back. Pure, so `tests/strokes.test.mjs` runs it headless. |
+| `app/js/draw.js` | Draw mode: the marker tray, the pointer while a marker or the eraser is in hand, and the drawing kept in the tab's session storage. It paints in a layer of its own and takes the stage from `diagram.js` through `holdStage`; the store never hears of a drawing, which is not part of the map. |
 | `app/js/icon-art.js` | An icon as the map draws it: the file with its lines weighed, and where in it the drawing is. It needs a fetch and a canvas, so it is here and not in `geometry.js`, which only keeps what was measured. |
 | `app/js/defaults.js` | How a new shape of each kind looks, and what *Reset shapes* puts back. `tests/defaults.test.mjs` checks the values. |
 | `app/js/suggestions.js` | What goes out to an AI chat and what is let back in: the brief of the map, the reply parser, and the checks every operation passes before it becomes a card. Pure, like `geometry.js`, so `tests/suggestions.test.mjs` runs it headless against the seed map and the shipped skills. |
 | `app/js/assistant.js` | The Assistant column: skills, the conversation or the prompt to copy, and the cards. It hands a checked card back to `main.js` to be applied, which is where a change is placed and recorded for undo. |
 | `scripts/assistant.mjs` | The model behind the Assistant, when `ASSISTANT_API_URL` and `ASSISTANT_API_KEY` name one: the two request shapes, one retry, and the API's own words when it says no. `tests/assistant.test.mjs` runs it against a stand-in model on a local port. |
 | `app/skills/` | One folder per skill, each a `SKILL.md` in the agent-skills form, with the two formats a prompt writes in. [Its README](../app/skills/README.md) says what a skill file holds. |
-| `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`. |
+| `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`, with `routes` for requests of the consumer's own. `tests/consumer.test.mjs` checks what BRANDING.md promises a consumer. |
 | `scripts/roles.mjs` | The four roles, lowest first, and what each may do. |
 | `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, someone taken off the list, never the last administrator, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
 | `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made an administrator from outside the app. |

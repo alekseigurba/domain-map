@@ -9,6 +9,10 @@
        which nothing serves, and the tab icon is wanted before any store request
        has finished. The header logo is still whatever the settings name. -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <!-- Light or dark, said before anything is drawn: the one script loaded the
+       old way, ahead of the stylesheets, since a module runs too late to stop
+       a dark page opening white. js/theme.js takes over once the page is up. -->
+  <script src="js/theme-first.js"></script>
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/layout.css">
@@ -51,6 +55,13 @@
         <span class="badge" id="version-published" hidden>Published</span>
         <span class="badge badge--quiet" id="version-shared" hidden>Shared</span>
       </button>
+      <!-- A switch, like Assistant: a marker in hand over a locked map. It is
+           everyone's, a viewer's included, since a drawing never leaves the
+           tab; and it stands down while Edit is on, when the map is not
+           holding still to be drawn on. -->
+      <button class="btn btn--chip" id="draw-toggle" aria-pressed="false"
+              aria-controls="marker-tray"
+              title="Draw on the map with a marker">Draw</button>
       <button class="btn btn--chip" id="export-map" title="Download the whole map as JSON">Export</button>
       <button class="btn btn--chip" id="export-svg" title="Download the diagram as an SVG picture">Export SVG</button>
       <button class="btn btn--chip" id="import-map" title="Replace the map from a JSON file" hidden>Import</button>
@@ -107,6 +118,10 @@
                groups per layer in here, so everything on an upper layer paints
                over everything on the layer below it. -->
           <g id="layer-stacks"></g>
+          <!-- What has been drawn over the map with a marker: above every layer
+               of it and never part of it. draw.js fills it, in the map's own
+               units, and Export SVG carries it into the picture. -->
+          <g id="layer-drawing"></g>
           <!-- Edit-mode chrome rides above the shapes so it can always be pressed. -->
           <g id="layer-edit"></g>
           <g id="layer-draft"></g>
@@ -117,6 +132,19 @@
         </g>
       </svg>
       <div class="zoom">
+        <!-- How much of the lines is spelt out, finest at the top as zooming in
+             is: where every line really ends, lifted to capabilities, or
+             lifted to domains. The letters are the three stops, and press as
+             the slider drags. -->
+        <div class="level" id="line-level-control" data-level="feature">
+          <span class="level__stops" aria-hidden="true">
+            <span class="level__stop" data-level="feature">F</span>
+            <span class="level__stop" data-level="capability">C</span>
+            <span class="level__stop" data-level="domain">D</span>
+          </span>
+          <input class="level__slider" id="line-level" type="range" min="0" max="2" step="1" value="2"
+                 aria-label="Connector detail" aria-orientation="vertical">
+        </div>
         <button class="btn btn--icon" id="zoom-in" title="Zoom in">+</button>
         <button class="btn btn--icon" id="zoom-out" title="Zoom out">&minus;</button>
         <button class="btn btn--icon" id="zoom-fit" title="Fit to screen">&#9723;</button>
@@ -129,6 +157,41 @@
            model's stack. -->
       <div class="add-shapes" id="add-shapes" role="group" aria-label="Add a shape" hidden></div>
       <div class="layers" id="layer-control" role="group" aria-label="Layers"></div>
+      <!-- The marker tray, on the stage while Draw is on. It has the corner the
+           Add buttons hold in Edit mode, which it is never on together with:
+           the markers, the eraser, and what is done to the drawing as a whole.
+           Done is the way out that needs no keyboard and no trip back along
+           the header, which on a phone is a swipe away. -->
+      <div class="tray" id="marker-tray" role="toolbar" aria-label="Drawing" hidden>
+        <button class="tray__marker" type="button" data-marker="red" aria-pressed="true"
+                title="Red marker" aria-label="Red marker"></button>
+        <button class="tray__marker" type="button" data-marker="orange" aria-pressed="false"
+                title="Orange marker" aria-label="Orange marker"></button>
+        <button class="tray__marker" type="button" data-marker="green" aria-pressed="false"
+                title="Green marker" aria-label="Green marker"></button>
+        <button class="tray__marker" type="button" data-marker="blue" aria-pressed="false"
+                title="Blue marker" aria-label="Blue marker"></button>
+        <button class="tray__marker" type="button" data-marker="ink" aria-pressed="false"
+                title="Black marker" aria-label="Black marker"></button>
+        <span class="tray__rule" aria-hidden="true"></span>
+        <button class="btn btn--chip btn--chip-icon" type="button" id="draw-eraser" aria-pressed="false"
+                title="Eraser: press a stroke, or drag across several, to take them off"
+                aria-label="Eraser">
+          <span class="icon" data-icon="icons/eraser.svg" aria-hidden="true"></span>
+        </button>
+        <button class="btn btn--chip btn--chip-icon" type="button" id="draw-undo"
+                title="Take back the last stroke, erasing or clear (Ctrl+Z)" aria-label="Undo">
+          <span class="icon" data-icon="icons/undo.svg" aria-hidden="true"></span>
+        </button>
+        <button class="btn btn--chip btn--chip-icon btn--danger" type="button" id="draw-clear"
+                title="Clear the drawing" aria-label="Clear the drawing">
+          <span class="icon" data-icon="icons/delete.svg" aria-hidden="true"></span>
+        </button>
+        <button class="btn btn--chip" type="button" id="draw-done"
+                title="Put the marker down (Esc). What is drawn stays on the map.">Done</button>
+      </div>
+      <!-- How far the eraser reaches, drawn round the pointer while it is in hand. -->
+      <div class="eraser-ring" id="eraser-ring" aria-hidden="true" hidden></div>
       <!-- Said over an empty stage when there is no map to show: a version this
            person may not open, or nothing published yet. -->
       <div class="notice" id="notice" role="status" hidden>
@@ -357,6 +420,20 @@
       </div>
       <p class="profile__role" id="profile-role"></p>
       <p class="profile__bypass" id="profile-bypass" hidden>Signed in through the development bypass.</p>
+      <!-- Light or dark is whoever is looking's to say, like which panels are
+           folded, so it is kept by the browser and sits with who they are. It
+           follows the system until one of the other two is pressed. -->
+      <div class="profile__theme">
+        <span class="profile__label" id="theme-label">Theme</span>
+        <span class="profile__choices" id="theme-choices" role="group" aria-labelledby="theme-label">
+          <button class="btn btn--chip theme-choice" type="button" data-theme-choice="system"
+                  title="Light or dark, whichever this device is set to">System</button>
+          <button class="btn btn--chip theme-choice" type="button" data-theme-choice="light"
+                  title="Light, whatever this device is set to">Light</button>
+          <button class="btn btn--chip theme-choice" type="button" data-theme-choice="dark"
+                  title="Dark, whatever this device is set to">Dark</button>
+        </span>
+      </div>
       <div class="dialog__foot">
         <!-- Who may do what belongs with who you are. people.js shows it to
              everyone who works on the map, and lets an administrator change it. -->
@@ -424,11 +501,14 @@
     <div class="dialog__body">
       <h2 class="dialog__title" id="getting-around-title">Getting around</h2>
       <div class="shortcuts">
-        <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right. In <strong>Edit</strong> mode, click a connection point on a shape to start a connector. Press <strong>Edit</strong> in the header to make changes.</p>
+        <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right. Browsing, a drag pans from wherever it starts, on a shape or off one; in <strong>Edit</strong> mode a drag on a shape moves the shape, and open ground or the middle button pans. In <strong>Edit</strong> mode, click a connection point on a domain, a capability or a feature to start a connector, and a point on another to finish it. Press <strong>Edit</strong> in the header to make changes.</p>
+        <p>The map says more the closer you look, and nothing on it moves as you do. Zoom in on a capability and it <strong>opens onto its features</strong> — a row of pips along its foot says it holds some. <strong>Double-click</strong> a domain or a capability to close in on it, and Fit to screen to come back out.</p>
+        <p>The <strong>slider over the zoom buttons</strong> sets the level the lines are drawn at, without moving the map. <strong>F</strong>, where a map opens: every line where it really ends, on a feature, a capability or a domain. <strong>C</strong>: a line that ends on a feature leaves from its capability. <strong>D</strong>: every line leaves from a domain, the lines between two domains are one line, heavier the more it stands for, and each domain keeps its two strongest — point at one to read what it joins and how many it carries, and pick a domain to see every line it has. The level is the same in <strong>Edit</strong> mode, and is your tab's alone. A line drawn short of its own ends cannot be reshaped until the level, or the zoom, draws it whole.</p>
         <p>The <strong>layer control</strong> in the bottom left corner lists the three layers, topmost first: Presentation, Domains, and Areas underneath them both. The eye hides Presentation or Areas; Domains, the base layer, cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
-        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds — domains and capabilities, touchpoints and actors, or areas. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
+        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds — domains, capabilities and features, touchpoints and actors, or areas. A feature goes into the capability that is selected, after the ones it already holds. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
         <p>An <strong>area</strong> is who owns what: a band drawn round the domains, touchpoints and loose capabilities one team holds. It has no size of its own — it follows what it holds. Its title rides the border like a legend; Shift+Enter while renaming it breaks the title into rows, which stack outside the band. Drag a shape in from outside the line to put it in the area; to take it out, set <strong>Area</strong> to — in its details. Dragging a shape clear of its team only stretches the band after it, so tidying the map never reorganises the company. A shape is in one area or in none.</p>
         <p><strong>Assistant</strong>, in the header, takes the place of the details panel: pick what to ask, and either send it to the model this map is connected to or, where there is none, copy the prompt into the AI chat you use and paste its reply back. What comes back is a list of cards. Nothing on one touches the map until you apply it in <strong>Edit</strong> mode, and each card is one Ctrl+Z. <strong>Ask your own</strong> opens a box for your question, and Ctrl+Enter there sends it.</p>
+        <p><strong>Draw</strong>, in the header, puts a marker in your hand and locks the map under it: nothing on it is selected or moved while you draw, so a flow can be traced across the terrain without disturbing it. The tray in the top left corner holds five markers, an eraser, undo and clear. What you draw belongs to this tab — it is in no version, nobody else sees it, and it survives a refresh but not the tab being closed — and it goes when another version is opened in its place. <strong>Export SVG</strong> carries it into the picture. Draw stands down while <strong>Edit</strong> is on.</p>
         <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
 
         <section class="shortcuts__group" aria-labelledby="shortcuts-shapes">
@@ -446,6 +526,8 @@
               <tr><td>Drag a domain's title</td><td>Move the title around its domain</td></tr>
               <tr><td>Drag the bars at either side of a domain's title, while renaming it or in an <strong>Edit</strong> session</td><td>Change the width the title wraps at</td></tr>
               <tr><td>Double-click a domain's title</td><td>Rename it in place (see below)</td></tr>
+              <tr><td>Double-click a domain or a capability</td><td>Close in on it: a domain until it fills the screen, a capability until its features can be read</td></tr>
+              <tr><td>Drag a feature</td><td>Move it about its capability. Drop it on another feature to swap the two, or in another capability to hand it over. <strong>Put back in its row</strong>, in its details, undoes a place given by hand.</td></tr>
               <tr><td>⋮ at the end of a selected domain's title</td><td><strong>Rename</strong>, or <strong>Edit</strong>: a session of changes that <strong>Cancel</strong> undoes all at once</td></tr>
               <tr><td>Drag an area's border</td><td>Move the area, with everything it holds. The inside of an area is open ground: it pans the map.</td></tr>
               <tr><td>Drag an area's title</td><td>Slide the title round the border</td></tr>
@@ -459,6 +541,8 @@
               <tr><td>Ctrl and &lt; / Ctrl and &gt;</td><td>Make the selected capability's oval narrower or wider, in five steps: tall, a little tall, round, a little wide, wide. New capabilities start wide. (Ctrl+, and Ctrl+. work too)</td></tr>
               <tr><td>] / [</td><td>Bring the selected capability to the front of its stack, or send it to the back. Its stack is the other capabilities in its domain, or the other loose ones.</td></tr>
               <tr><td>Ctrl+] / Ctrl+[</td><td>Move it forward or back one step</td></tr>
+              <tr><td>] / [ with a feature selected</td><td>Move the feature to the end of its capability's list, or to the start. With Ctrl, one place later or earlier.</td></tr>
+              <tr><td>Drag the boundary of a selected domain</td><td>Resize the lobe behind that stretch of it: out for more room round a capability, in for less. <strong>Reset shapes</strong> puts every lobe back.</td></tr>
             </tbody>
           </table>
         </section>
@@ -494,6 +578,23 @@
               <tr><td>Shift+click a curved connector</td><td>Add a bend where you click</td></tr>
               <tr><td>Drag a bend</td><td>Reshape the line</td></tr>
               <tr><td>Double-click a bend</td><td>Remove the bend</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="shortcuts__group" aria-labelledby="shortcuts-drawing">
+          <h3 class="shortcuts__heading" id="shortcuts-drawing">Drawing on the map</h3>
+          <table class="keys">
+            <thead>
+              <tr><th scope="col">Key or gesture</th><th scope="col">What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Drag, with a mouse or one finger</td><td>Draw a stroke in the marker in hand. A press without a drag leaves a dot.</td></tr>
+              <tr><td>Hold Space and drag, or drag with the middle button</td><td>Pan the map with the marker still in hand</td></tr>
+              <tr><td>Scroll, or pinch with two fingers</td><td>Zoom. Two fingers also pan, and a stroke the first of them had begun is dropped.</td></tr>
+              <tr><td>The eraser, then press a stroke or drag across several</td><td>Take off each stroke it touches, whole. Press the eraser again, or a marker, to go back to drawing.</td></tr>
+              <tr><td>Ctrl+Z</td><td>Take back the last stroke, the last erasing or the last clear</td></tr>
+              <tr><td>Esc</td><td>Drop the stroke you are in the middle of, or else put the marker down. <strong>Done</strong> and <strong>Draw</strong> put it down too, and what is drawn stays on the map.</td></tr>
             </tbody>
           </table>
         </section>

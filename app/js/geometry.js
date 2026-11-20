@@ -26,14 +26,24 @@ export const PALETTE_SIZES = [12, 18, 24];
 export const DEFAULT_PALETTE = Array.from({ length: 24 }, (_, i) => cssVar(`--c${i + 1}`) || '#86a27b');
 
 /**
- * The colours in play. The map carries its own palette once one has been
- * edited; until then these are the ones from the stylesheet.
+ * The palette in play, as the map holds it. The map carries its own once one
+ * has been edited; until then it is the stylesheet's. This is what the palette
+ * editor edits and what a default colour is matched to a swatch of, and it is
+ * the same list whichever theme the page is in.
  */
-export let COLORS = [...DEFAULT_PALETTE];
+export let PALETTE = [...DEFAULT_PALETTE];
+
+/**
+ * The colours the shapes are drawn in, swatch for swatch: the palette itself on
+ * a light map, and each swatch's dark counterpart on a dark one. Everything
+ * that paints a shape, or a swatch standing for one, reads this.
+ */
+export let COLORS = [...PALETTE];
 
 /** Point the shapes at a palette — the map's own, or back to the stylesheet's. */
 export function setPalette(colors) {
-  COLORS = colors?.length ? [...colors] : [...DEFAULT_PALETTE];
+  PALETTE = colors?.length ? [...colors] : [...DEFAULT_PALETTE];
+  COLORS = drawn();
 }
 
 /**
@@ -46,7 +56,9 @@ export function swatchFor(hex) {
   const wanted = channels(hex);
   let best = 0;
   let distance = Infinity;
-  COLORS.forEach((color, i) => {
+  // The palette, not what is drawn: a default is a colour of the map's, and on
+  // a dark map none of the swatches is drawn in the colour it holds.
+  PALETTE.forEach((color, i) => {
     const d = channels(color).reduce((sum, value, c) => sum + (value - wanted[c]) ** 2, 0);
     if (d < distance) {
       best = i;
@@ -247,23 +259,35 @@ function contrast(a, b) {
 /** What type needs against its ground to be read as type. */
 export const READABLE = 4.5;
 
+/** Three channels as the hex they are written as. */
+const asHex = (rgb) => `#${rgb.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+
+/* The page's two inks, as tokens.css has them: the dark one read on light
+   paper and the light one read on dark. */
+const INK_ON_LIGHT = '#282828';
+const INK_ON_DARK = '#e7eae4';
+
 /**
  * A colour as type: itself if it reads on `backdrop`, and otherwise mixed
  * towards `ink` by just as much as it takes. An area's title wears its border's
  * colour, and half the palette is too pale to be read as letters — so a blue
  * line keeps a blue title and a yellow one gets a dark olive, which still
  * belongs to its line and can still be read.
+ *
+ * Left unsaid, the ink is whichever of the page's two reads on that ground. On
+ * dark paper it is the dim colours that cannot be read, and they are lifted
+ * towards the light ink instead: mixed towards the dark one they would only
+ * sink further into the paper.
  */
-export function deepened(hex, backdrop = '#fffdfa', ink = '#282828') {
+export function deepened(hex, backdrop = '#fffdfa', ink = null) {
   const from = channels(hex);
-  const to = channels(ink);
+  const to = channels(ink ?? (inkOn(backdrop) === '#000' ? INK_ON_LIGHT : INK_ON_DARK));
   const back = channels(backdrop);
   const mixed = (share) => from.map((value, i) => Math.round(value + (to[i] - value) * share));
-  const written = (rgb) => `#${rgb.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 
-  if (contrast(from, back) >= READABLE) return written(from);
+  if (contrast(from, back) >= READABLE) return asHex(from);
   // An ink that cannot be read on this ground either is as far as mixing goes.
-  if (contrast(to, back) < READABLE) return written(to);
+  if (contrast(to, back) < READABLE) return asHex(to);
 
   let pale = 0;
   let dark = 1;
@@ -272,8 +296,101 @@ export function deepened(hex, backdrop = '#fffdfa', ink = '#282828') {
     if (contrast(mixed(middle), back) >= READABLE) dark = middle;
     else pale = middle;
   }
-  return written(mixed(dark));
+  return asHex(mixed(dark));
 }
+
+// --- the dark map ------------------------------------------------------------
+
+// A map has one palette and two ways of being drawn in it. On dark paper the
+// swatches as they stand are a row of lit windows: a pale pink or a yellow
+// that sat quietly on white is the brightest thing on the screen. So a dark map
+// draws each swatch's dark counterpart — and works it out from the swatch
+// rather than keeping a second palette, so that a map whose palette has been
+// edited, and a brand that recoloured the stock one before there was a dark
+// theme, come out dark without either of them having to say anything.
+
+/* How bright a fill may be on dark paper, as luminance. A colour keeps
+   DARK_SHARE of its own brightness on top of DARK_FLOOR, so the pale end of a
+   palette comes down by half and stays its pale end. The floor is where black
+   type starts to read at 4.5 to 1: nothing that carried black type on the
+   light map is taken below it, since a capability's title stays black. */
+const DARK_FLOOR = 0.18;
+const DARK_SHARE = 0.27;
+
+/** What large type needs against its ground. A title on the map is never small. */
+const READABLE_LARGE = 3;
+
+/** One channel as light, and light as a channel: the two ends of the sRGB curve. */
+const asLight = (value) => {
+  const channel = value / 255;
+  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+};
+const asChannel = (light) => Math.round(
+  255 * (light <= 0.0031308 ? light * 12.92 : 1.055 * light ** (1 / 2.4) - 0.055));
+
+/**
+ * A swatch as it is drawn on dark paper: the same colour in less light. Every
+ * channel is dimmed by the same share, as light rather than as the number
+ * written in the hex, so the hue and how saturated it is are exactly what they
+ * were — a yellow becomes the same yellow in a darker room, not a brown picked
+ * to stand in for it.
+ *
+ * It only ever dims. A swatch already deep enough for dark paper is left as it
+ * is: lifted to match the rest, a dark red would be drawn paler on the dark map
+ * than on the light one.
+ */
+export function darkCounterpart(hex) {
+  const light = channels(hex).map(asLight);
+  const brightness = 0.2126 * light[0] + 0.7152 * light[1] + 0.0722 * light[2];
+  const wanted = DARK_FLOOR + DARK_SHARE * brightness;
+  if (wanted >= brightness) return asHex(channels(hex));
+  return asHex(light.map((value) => asChannel(value * (wanted / brightness))));
+}
+
+/* A stylesheet may name a swatch's dark counterpart itself, as --c1-dark …
+   --c24-dark. None is named by the package: one that is, is a brand's choice. */
+const NAMED_DARK = DEFAULT_PALETTE.map((_, i) => cssVar(`--c${i + 1}-dark`));
+
+const sameColor = (a, b) => channels(a).join() === channels(b).join();
+
+/** Whether the map is being drawn on dark paper. */
+let darkMap = false;
+export const isDarkMap = () => darkMap;
+
+/**
+ * The palette as it is drawn right now. What the stylesheet says of a swatch
+ * holds for the stylesheet's swatch: once a map has made that swatch another
+ * colour, the counterpart named for the old one is no longer its counterpart.
+ */
+function drawn() {
+  if (!darkMap) return [...PALETTE];
+  return PALETTE.map((color, i) => (NAMED_DARK[i] && sameColor(color, DEFAULT_PALETTE[i])
+    ? NAMED_DARK[i]
+    : darkCounterpart(color)));
+}
+
+/** Draw the map for dark paper, or for light. The palette is the same either way. */
+export function setDarkMap(on) {
+  darkMap = Boolean(on);
+  COLORS = drawn();
+}
+
+/**
+ * The ink of a capability's title on a dark map. Black, as on the light one,
+ * for as long as black can be read: the dark counterparts are kept light enough
+ * for it, so a label is the same label on every swatch. What black cannot be
+ * read on is a shape made see-through, where the dark paper comes up through
+ * the fill — an actor starts at half — and there the title turns white.
+ */
+export function darkMapInk(fill, opacity = 1, backdrop = '#141613') {
+  const front = channels(fill);
+  const back = channels(backdrop);
+  const blended = front.map((value, i) => value * opacity + back[i] * (1 - opacity));
+  return contrast(blended, [0, 0, 0]) >= READABLE_LARGE ? '#000' : '#fff';
+}
+
+// theme-first.js has said which theme the page is in before any module runs.
+setDarkMap(document.documentElement.dataset?.theme === 'dark');
 
 // --- capabilities ----------------------------------------------------------
 
@@ -573,6 +690,239 @@ export function capabilitySize(capability) {
   return { rx, ry, ...block, ...stack };
 }
 
+// --- features ----------------------------------------------------------------
+
+// A capability holds its features inside its own oval, and shows them once the
+// map is zoomed in far enough to read them: the oval does not grow to make
+// room, because where a capability sits and how big it is are the map's
+// meaning, and a shape that swelled as it opened would push the terrain about.
+// So the features are set as small as the room makes them, and it is the zoom
+// that is asked to come closer — see zoom.js for when.
+
+/** How many rows a feature's name may wrap into inside its bubble. */
+export const MAX_FEATURE_LINES = 3;
+/** Past this many rows of bubbles the rows are slivers, and more columns serve better. */
+const MAX_FEATURE_ROWS = 7;
+/** Where the capability's own name sits once it is open: up in the crown of the oval, as a share of its height. */
+const HEADING_AT = -0.63;
+/** The band of the oval the bubbles are packed into, top and bottom, as shares of its height. */
+const FEATURES_TOP = -0.45;
+const FEATURES_BOTTOM = 0.84;
+/** The ground between two bubbles, as a share of a row's height. */
+const FEATURE_GAP = 0.14;
+/** How near the oval's rim a row of bubbles may come, as a share of the chord at that height. */
+const FEATURE_INSET = 0.94;
+/** A bubble is never more than this many times as wide as it is tall: past it, it reads as a bar. */
+const FEATURE_LONGEST = 2.6;
+/** Nor is a row of them taller than this share of the oval's shorter radius, however few there are. */
+const FEATURE_TALLEST = 0.44;
+/** The capability's name over its features, as a share of the oval's shorter radius. */
+const HEADING_SIZE = 0.125;
+/** The words keep this much of the box that fits inside a bubble. */
+const FEATURE_ROOM = 0.9;
+/** How many marks a closed capability wears for what it holds, at most. */
+const MAX_PIPS = 7;
+
+/** `total` shared out over rows by how wide each is, every row getting at least one. */
+function shareOut(total, widths) {
+  const sum = widths.reduce((a, b) => a + b, 0);
+  const exact = widths.map((width) => (total * width) / sum);
+  const counts = exact.map((value) => Math.max(1, Math.floor(value)));
+  // Hand out what rounding down left over, widest remainder first; and take
+  // back, from the fullest rows, what giving every row one overspent.
+  const byRemainder = exact.map((value, row) => ({ row, left: value - Math.floor(value) }))
+    .sort((a, b) => b.left - a.left || a.row - b.row);
+  let spare = total - counts.reduce((a, b) => a + b, 0);
+  for (let i = 0; spare > 0; i = (i + 1) % counts.length, spare--) counts[byRemainder[i].row]++;
+  while (spare < 0) {
+    const fullest = counts.indexOf(Math.max(...counts));
+    counts[fullest]--;
+    spare++;
+  }
+  return counts;
+}
+
+/** The rows of bubbles `count` features make in `rows` rows of an oval, or null where a row has no room. */
+function featureRows(rx, ry, count, rows) {
+  // A row is as tall as the band shared out allows, and no taller than suits
+  // the oval: one feature given the whole band is a second capability drawn
+  // inside the first, and its name would be set larger than its capability's.
+  // Rows that do not fill the band sit in the middle of it.
+  const band = (FEATURES_BOTTOM - FEATURES_TOP) * ry;
+  const height = Math.min(band / rows, Math.min(rx, ry) * FEATURE_TALLEST);
+  const top = FEATURES_TOP * ry + (band - height * rows) / 2;
+  const middles = Array.from({ length: rows }, (_, row) => top + (row + 0.5) * height);
+  // A bubble is round at its ends, so it is the chord a little short of the
+  // row's far edge that it has to fit, not the chord at the edge itself.
+  const chords = middles.map((y) => {
+    const far = Math.abs(y) + height * 0.36;
+    return far >= ry ? 0 : rx * Math.sqrt(1 - (far / ry) ** 2) * FEATURE_INSET;
+  });
+  if (chords.some((chord) => chord <= 0)) return null;
+
+  const gap = height * FEATURE_GAP;
+  const counts = shareOut(count, chords);
+  const laid = counts.map((inRow, row) => {
+    const cell = (chords[row] * 2) / inRow;
+    const tall = (height - gap) / 2;
+    const wide = Math.min((cell - gap) / 2, tall * FEATURE_LONGEST);
+    // A row whose bubbles were held short of their cells closes up round the
+    // middle rather than spreading them out with holes between.
+    const step = wide * 2 + gap < cell ? wide * 2 + gap : cell;
+    return { y: middles[row], inRow, rx: wide, ry: tall, step };
+  });
+  if (laid.some((row) => row.rx <= 0 || row.ry <= 0)) return null;
+  // What the tightest bubble could set its type at, near enough: a name is
+  // wider than it is tall, so width counts for less than height.
+  const room = Math.min(...laid.map((row) => Math.min(row.rx / 1.7, row.ry)));
+  return { laid, room };
+}
+
+/** A title on one row: the breaks typed into it are for the shape it was typed on. */
+const oneRow = (title) => String(title ?? '').replace(/\s*\n\s*/g, ' ');
+
+/**
+ * Where a feature that has been put somewhere by hand sits, or null for one
+ * left in its row. Its place is kept in hundredths of the oval's radii, so it
+ * holds through a resize of the capability, and is read back held inside the
+ * oval by the bubble's own size: a place at the very rim is the bubble
+ * touching the rim, not its middle on it.
+ */
+function featureSpot(size, bubble, feature) {
+  if (feature.x == null && feature.y == null) return null;
+  return heldInside(size, bubble, {
+    x: ((feature.x ?? 0) / 100) * size.rx,
+    y: ((feature.y ?? 0) / 100) * size.ry,
+  });
+}
+
+/** A point brought back inside an oval far enough for a bubble centred on it to stay within the rim. */
+function heldInside(size, bubble, point) {
+  const roomX = Math.max(1, size.rx - bubble.rx);
+  const roomY = Math.max(1, size.ry - bubble.ry);
+  const reach = Math.hypot(point.x / roomX, point.y / roomY);
+  return reach > 1 ? { x: point.x / reach, y: point.y / reach } : point;
+}
+
+/**
+ * The place to keep for a feature let go at `point`, measured from the middle
+ * of its capability's oval: whole hundredths of the radii, as the file writes
+ * them, for where the bubble actually comes to rest.
+ */
+export function featurePlace(size, bubble, point) {
+  const held = heldInside(size, bubble, point);
+  return { x: Math.round((held.x / size.rx) * 100), y: Math.round((held.y / size.ry) * 100) };
+}
+
+/** The largest type, from `start` down, at which a name wraps whole into a box. */
+function fitType(title, weight, width, height, start) {
+  let size = start;
+  for (let step = 0; step < 14; step++, size *= 0.9) {
+    const lines = wrapLines(title, size, width, 99, weight);
+    const fits = lines.length <= MAX_FEATURE_LINES
+      && lines.length * size * 1.18 <= height
+      && lines.every((line) => measure(line, size, weight) <= width);
+    if (fits) return size;
+  }
+  return size;
+}
+
+/**
+ * A capability opened onto its features: its own name small in the crown of
+ * the oval, and under it one bubble a feature, in the order the capability
+ * holds them, in rows that follow the oval — longer through its middle than at
+ * its top and foot. The number of rows is whichever leaves the tightest bubble
+ * the most room, so three features sit side by side and thirty make a honeycomb.
+ *
+ * Every name in one capability is set at one size, the size its hardest name
+ * to fit needs — one size is what makes them read as a list — though never
+ * less than seven tenths of what a typical name there could take: one very long
+ * name is cut with an ellipsis sooner than it shrinks all the others.
+ *
+ * @param size     the capability's oval, as capabilitySize gives it
+ * @param features what it holds, in order, each with a title
+ * @param title    the capability's own title
+ * @returns `{ heading, bubbles, fontSize }`, all measured from the middle of
+ *   the oval, or null for a capability that holds nothing
+ */
+export function layoutFeatures(size, features, title = '') {
+  if (!features?.length) return null;
+  const { rx, ry } = size;
+
+  let best = null;
+  for (let rows = 1; rows <= Math.min(features.length, MAX_FEATURE_ROWS); rows++) {
+    const tried = featureRows(rx, ry, features.length, rows);
+    if (tried && (!best || tried.room > best.room * 1.001)) best = tried;
+  }
+  if (!best) return null;
+
+  const weight = DEFAULT_CAPABILITY_FONT_WEIGHT;
+  const seats = best.laid.flatMap((row) => Array.from({ length: row.inRow }, (_, at) => ({
+    x: (at - (row.inRow - 1) / 2) * row.step,
+    y: row.y,
+    rx: row.rx,
+    ry: row.ry,
+    // The largest box that fits inside an ellipse has sides its radii over sqrt(2).
+    roomX: row.rx * Math.SQRT2 * FEATURE_ROOM,
+    roomY: row.ry * Math.SQRT2 * FEATURE_ROOM,
+  })));
+
+  const wanted = features.map((feature, at) =>
+    fitType(feature.title, weight, seats[at].roomX, seats[at].roomY, seats[at].ry * 0.62));
+  const typical = [...wanted].sort((a, b) => a - b)[Math.floor(wanted.length / 2)];
+  const fontSize = Math.max(Math.min(...wanted), typical * 0.7);
+
+  const bubbles = features.map((feature, at) => {
+    const seat = seats[at];
+    const rows = Math.max(1, Math.min(MAX_FEATURE_LINES, Math.floor(seat.roomY / (fontSize * 1.18))));
+    // In the seat its order gives it, unless it has been put somewhere by
+    // hand: then it is there, the size its seat would have made it.
+    const put = featureSpot(size, seat, feature);
+    return {
+      item: feature,
+      x: put?.x ?? seat.x,
+      y: put?.y ?? seat.y,
+      rx: seat.rx,
+      ry: seat.ry,
+      ...textBlock(feature.title, fontSize, weight, seat.roomX, rows),
+    };
+  });
+
+  // The capability's name, at a size that goes with the oval rather than with
+  // the type it was set in closed: up here it is a label on what is below it.
+  const headingSize = Math.min(rx, ry) * HEADING_SIZE;
+  const headingRoom = rx * Math.sqrt(1 - (Math.abs(HEADING_AT) + 0.12) ** 2) * 2 * FEATURE_INSET;
+  const heading = {
+    ...textBlock(oneRow(title), headingSize, 'bold', headingRoom, 2),
+    x: 0,
+    y: HEADING_AT * ry,
+  };
+
+  return { heading, bubbles, fontSize };
+}
+
+/**
+ * The marks a closed capability wears for the features inside it: a short row
+ * of pips along the foot of the oval, one a feature up to a handful. They are
+ * small enough to vanish from the helicopter view and to show as the map
+ * closes in, which is when "there is more in here" is worth saying. None are
+ * drawn where the title or its icon reaches down that far.
+ *
+ * @param size  the capability's oval and what is laid out in it
+ * @param count how many features it holds
+ */
+export function featurePips(size, count) {
+  if (!(count > 0)) return [];
+  const r = size.ry * 0.03;
+  const y = size.ry * 0.8;
+  const wordsEnd = (size.textY ?? 0) + (size.height ?? 0) / 2;
+  const iconEnd = size.iconSize > 0 ? size.iconY + size.iconHeight / 2 : -Infinity;
+  if (Math.max(wordsEnd, iconEnd) > y - r * 2.5) return [];
+
+  const shown = Math.min(count, MAX_PIPS);
+  return Array.from({ length: shown }, (_, at) => ({ x: (at - (shown - 1) / 2) * r * 3.4, y, r }));
+}
+
 // --- touchpoints and actors --------------------------------------------------
 
 /** How round a touchpoint's corners are, as a share of its shorter half-side. */
@@ -700,6 +1050,7 @@ export function snapPoints(rxOrSize, maybeRy) {
     ? rxOrSize
     : { rx: rxOrSize, ry: maybeRy };
   const { rx, ry, shape } = size;
+  if (shape === 'blob') return blobSnaps(size.outline);
 
   return Array.from({ length: SNAP_COUNT }, (_, i) => {
     const angle = (i * 2 * Math.PI) / SNAP_COUNT;
@@ -708,6 +1059,26 @@ export function snapPoints(rxOrSize, maybeRy) {
       : { x: rx * Math.cos(angle), y: ry * Math.sin(angle) };
     return { index: i, x: at.x, y: at.y };
   });
+}
+
+/** The snap points of each blob outline, kept for as long as the outline is: a line asks for them every frame. */
+const blobSnapsOf = new WeakMap();
+
+/**
+ * The points a line may be hung off round a domain: where the same twenty-four
+ * directions every shape uses leave its blob, seen from the middle of its body.
+ * A blob is no oval, so the points are found on its outline rather than worked
+ * out — and they keep the numbering, so a line moved from a capability to a
+ * domain lands on the point facing the same way.
+ */
+function blobSnaps(outline) {
+  if (!blobSnapsOf.has(outline)) {
+    blobSnapsOf.set(outline, Array.from({ length: SNAP_COUNT }, (_, i) => {
+      const at = rimPoint(outline, { x: 0, y: 0 }, (i * 360) / SNAP_COUNT);
+      return { index: i, x: at.x, y: at.y };
+    }));
+  }
+  return blobSnapsOf.get(outline);
 }
 
 /**
@@ -719,6 +1090,11 @@ export function snapPoints(rxOrSize, maybeRy) {
  */
 export function snapNormal(size, index) {
   const angle = (index * 2 * Math.PI) / SNAP_COUNT;
+
+  // A blob's edge wanders, and a line leaving square to each wobble of it
+  // would set off in directions nobody expects: it leaves the way it was
+  // reached, straight out from the middle.
+  if (size.shape === 'blob') return { x: Math.cos(angle), y: Math.sin(angle) };
 
   if (size.shape === 'rect') {
     const at = onRectangle(size.rx || 1, size.ry || 1, angle);
@@ -838,6 +1214,109 @@ export function connectorPath(from, to, style = 'straight', options = {}) {
   return d;
 }
 
+// --- going round what is in the way ------------------------------------------
+
+// A line says that two things are joined, and says it best over open ground.
+// One drawn straight across a third shape reads as joined to that as well, or
+// hides its name. So a line that would cross one is bent round it — a leaning,
+// not a law: a shape too large to go round, or a gap too narrow to thread,
+// and the line goes straight after all.
+
+/** How far along a→b the two segments cross, 0 to 1, or null where they do not. */
+function crossing(a, b, c, d) {
+  const rx = b.x - a.x;
+  const ry = b.y - a.y;
+  const sx = d.x - c.x;
+  const sy = d.y - c.y;
+  const across = rx * sy - ry * sx;
+  if (Math.abs(across) < 1e-9) return null;
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / across;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / across;
+  return t > 1e-6 && t < 1 - 1e-6 && u >= 0 && u <= 1 ? t : null;
+}
+
+/** The box that holds an outline, kept with it so a line is only tested against shapes near it. */
+const boxOf = new WeakMap();
+function boundsOf(outline) {
+  if (!boxOf.has(outline)) {
+    boxOf.set(outline, {
+      minX: Math.min(...outline.map((p) => p.x)),
+      maxX: Math.max(...outline.map((p) => p.x)),
+      minY: Math.min(...outline.map((p) => p.y)),
+      maxY: Math.max(...outline.map((p) => p.y)),
+    });
+  }
+  return boxOf.get(outline);
+}
+
+/** The first outline the run from a to b enters, and how far along it does. */
+function firstInTheWay(a, b, outlines) {
+  let first = null;
+  for (const outline of outlines) {
+    const box = boundsOf(outline);
+    if (Math.max(a.x, b.x) < box.minX || Math.min(a.x, b.x) > box.maxX
+      || Math.max(a.y, b.y) < box.minY || Math.min(a.y, b.y) > box.maxY) continue;
+    for (let i = 0; i < outline.length; i++) {
+      const t = crossing(a, b, outline[i], outline[(i + 1) % outline.length]);
+      if (t !== null && (!first || t < first.t)) first = { outline, t };
+    }
+  }
+  return first;
+}
+
+/**
+ * The point to go by, to pass an outline that the run from a to b crosses: out
+ * to one side of the run, clear of the outline's furthest reach on that side,
+ * level with where it reaches furthest. The nearer side is taken. Null where
+ * going round would take the line further out of its way than it is long —
+ * such a shape is not in the way so much as all around, and the line is better
+ * left straight.
+ */
+function besides(a, b, outline, clearance) {
+  const length = Math.hypot(b.x - a.x, b.y - a.y);
+  if (length === 0) return null;
+  const [ux, uy] = [(b.x - a.x) / length, (b.y - a.y) / length];
+  // Each point of the outline as how far along the run it is, and how far off it.
+  const seen = outline.map((p) => ({
+    along: (p.x - a.x) * ux + (p.y - a.y) * uy,
+    off: (p.y - a.y) * ux - (p.x - a.x) * uy,
+  }));
+  const left = seen.reduce((best, one) => (one.off > best.off ? one : best));
+  const right = seen.reduce((best, one) => (one.off < best.off ? one : best));
+  const by = Math.abs(left.off) <= Math.abs(right.off) ? left : right;
+  const off = by.off + Math.sign(by.off || 1) * clearance;
+  if (Math.abs(off) > length * 0.75) return null;
+  // Not hard against either end: a line that turns the moment it leaves a
+  // shape reads as leaving it sideways.
+  const along = Math.min(length * 0.8, Math.max(length * 0.2, by.along));
+  return { x: a.x + ux * along - uy * off, y: a.y + uy * along + ux * off };
+}
+
+/**
+ * The bends that take a line from one point to another round the shapes in
+ * its way, in order, or none where the straight run is clear. `outlines` are
+ * the shapes to keep off, each a closed run of points — not the two the line
+ * joins, nor anything that holds them, which it has to cross to get out.
+ *
+ * A bend is put beside the first shape crossed, and each half of the run is
+ * then looked at again, a few turns deep: enough to thread between two or
+ * three shapes, and few enough that a line never becomes a maze.
+ *
+ * @param options.clearance how far clear of a shape a bend is put
+ * @param options.turns     how many times a run may be split
+ */
+export function routeAround(from, to, outlines, { clearance = 60, turns = 3 } = {}) {
+  const route = (a, b, depth) => {
+    if (depth === 0) return [];
+    const blocked = firstInTheWay(a, b, outlines);
+    if (!blocked) return [];
+    const via = besides(a, b, blocked.outline, clearance);
+    if (!via) return [];
+    return [...route(a, via, depth - 1), via, ...route(via, b, depth - 1)];
+  };
+  return route(from, to, turns);
+}
+
 /**
  * Which segment of a line a point falls on, and how far along it — what a
  * shift-click needs to know to drop a new bend in the right place.
@@ -947,10 +1426,46 @@ function closedSpline(points) {
 
 // --- domain layout ---------------------------------------------------------
 
-/** One capability, one lobe: the oval it holds plus a ring of padding. */
+/** How much of the usual ring of blob a lobe may be given: from a sliver to room for a second capability beside the first. */
+export const MIN_LOBE_SCALE = 0.25;
+export const MAX_LOBE_SCALE = 12;
+
+/** A capability's own say over its ring: a multiple of the usual one, held to what a lobe may be. */
+export const lobeScaleOf = (capability) =>
+  Math.min(MAX_LOBE_SCALE, Math.max(MIN_LOBE_SCALE, capability.lobeScale || 1));
+
+/**
+ * One capability, one lobe: the oval it holds plus a ring of padding. The ring
+ * is the part a domain's boundary is made of, so it is the part that is
+ * resized when the boundary is dragged: the capability stays the size it is.
+ */
 export function lobeSizeFor(capability) {
   const { rx, ry } = capabilitySize(capability);
-  return { rx: rx + LOBE_PAD, ry: ry + LOBE_PAD };
+  const pad = LOBE_PAD * lobeScaleOf(capability);
+  return { rx: rx + pad, ry: ry + pad };
+}
+
+/**
+ * The ring a lobe needs for its edge to pass through a point, as the multiple
+ * `lobeScale` keeps: what dragging a domain's boundary sets. The point is
+ * measured from the middle of the lobe. An oval's edge is not the same distance
+ * out in every direction, so the ring is found on the ray the point lies on.
+ */
+export function lobeScaleThrough(capability, dx, dy) {
+  const { rx, ry } = capabilitySize(capability);
+  const distance = Math.hypot(dx, dy);
+  if (distance === 0) return MIN_LOBE_SCALE;
+  const [ux, uy] = [dx / distance, dy / distance];
+  // Where the ray leaves an oval of radii (rx + pad, ry + pad): solved for pad
+  // by closing in on it, since pad is in both radii at once.
+  let low = LOBE_PAD * MIN_LOBE_SCALE;
+  let high = LOBE_PAD * MAX_LOBE_SCALE;
+  for (let step = 0; step < 24; step++) {
+    const pad = (low + high) / 2;
+    const reach = 1 / Math.hypot(ux / (rx + pad), uy / (ry + pad));
+    if (reach < distance) low = pad; else high = pad;
+  }
+  return Math.round((((low + high) / 2) / LOBE_PAD) * 100) / 100;
 }
 
 /** What a lobe measures before anything is put in it. */
@@ -1232,7 +1747,10 @@ export function titleWidthOf(domain) {
  * *angle*, which is what the eye reads when a line end is dragged around.
  */
 export function nearestSnapIndex(size, dx, dy) {
-  const angle = Math.atan2(dy / (size.ry || 1), dx / (size.rx || 1));
+  // A blob's points are set out by direction alone, not round a stretched oval.
+  const angle = size.shape === 'blob'
+    ? Math.atan2(dy, dx)
+    : Math.atan2(dy / (size.ry || 1), dx / (size.rx || 1));
   const step = (2 * Math.PI) / SNAP_COUNT;
   return ((Math.round(angle / step) % SNAP_COUNT) + SNAP_COUNT) % SNAP_COUNT;
 }

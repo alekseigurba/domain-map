@@ -22,10 +22,12 @@ export const store = {
   areas: [],
   domains: [],
   capabilities: [],
+  /** What the capabilities hold, every capability's in one list: each names the one it is in. */
+  features: [],
   touchpoints: [],
   actors: [],
   connectors: [],
-  /** @type {{type: 'area'|'domain'|'capability'|'touchpoint'|'actor'|'connector'|null, id: string|null}} */
+  /** @type {{type: 'area'|'domain'|'capability'|'feature'|'touchpoint'|'actor'|'connector'|null, id: string|null}} */
   selection: { type: null, id: null },
 };
 
@@ -34,6 +36,7 @@ const LISTS = {
   area: 'areas',
   domain: 'domains',
   capability: 'capabilities',
+  feature: 'features',
   touchpoint: 'touchpoints',
   actor: 'actors',
   connector: 'connectors',
@@ -63,6 +66,7 @@ export function setMap(state) {
   store.areas = state.areas ?? [];
   store.domains = state.domains;
   store.capabilities = state.capabilities;
+  store.features = state.features ?? [];
   store.touchpoints = state.touchpoints ?? [];
   store.actors = state.actors ?? [];
   store.connectors = state.connectors;
@@ -117,6 +121,11 @@ export function stackingOrder() {
 
 export function capabilityById(id) {
   return store.capabilities.find((c) => c.id === id) ?? null;
+}
+
+/** The features a capability holds, in the order it holds them. */
+export function featuresOf(capabilityId) {
+  return store.features.filter((feature) => feature.capabilityId === capabilityId).sort(byStack);
 }
 
 /** Touchpoints and actors have no domain to be stacked inside, only each other. */
@@ -353,10 +362,68 @@ function dropLostSelection() {
 export function scopeOf(connector) {
   const [from, to] = endpointsOf(connector);
   if (!from || !to) return 'public';
-  // Only a capability has a domain to stay inside; a line touching a touchpoint
+  // Only the terrain has a domain to stay inside; a line touching a touchpoint
   // or an actor has left one by definition.
-  if (connector.fromKind !== 'capability' || connector.toKind !== 'capability') return 'public';
-  return from.domainId && from.domainId === to.domainId ? 'internal' : 'public';
+  if (![connector.fromKind, connector.toKind].every((kind) => rules.TERRAIN_KINDS.includes(kind)))
+    return 'public';
+  const home = domainOfEnd(connector.fromKind, connector.fromId);
+  return home && home === domainOfEnd(connector.toKind, connector.toId) ? 'internal' : 'public';
+}
+
+/**
+ * What holds a shape of the terrain, one step up: a feature's capability, a
+ * capability's domain. Null at the top — a domain, a loose capability — and
+ * for the kinds nothing holds.
+ */
+export function holderOf(kind, id) {
+  if (kind === 'feature') {
+    const holder = find('capability', find('feature', id)?.capabilityId);
+    return holder ? { kind: 'capability', id: holder.id } : null;
+  }
+  if (kind === 'capability') {
+    const holder = find('domain', find('capability', id)?.domainId);
+    return holder ? { kind: 'domain', id: holder.id } : null;
+  }
+  return null;
+}
+
+/** A shape and everything that holds it, innermost first. */
+export function chainOf(kind, id) {
+  const chain = [{ kind, id }];
+  for (let up = holderOf(kind, id); up; up = holderOf(up.kind, up.id)) chain.push(up);
+  return chain;
+}
+
+/** Whether one shape is the other or holds it. */
+const holds = (holder, held) =>
+  chainOf(held.kind, held.id).some((one) => one.kind === holder.kind && one.id === holder.id);
+
+/** The domain a line's end is in: the domain itself, a capability's, or a feature's capability's. */
+export const domainOfEnd = (kind, id) =>
+  chainOf(kind, id).find((one) => one.kind === 'domain')?.id ?? null;
+
+/**
+ * A line cannot run between a shape and one that holds it: a capability and
+ * its own domain, a feature and its own capability. Such a line says nothing —
+ * the one is already part of the other — and seen from any level above the
+ * smaller end it has no length at all.
+ */
+const NESTED = 'A connector cannot join a shape to the one that holds it.';
+
+/**
+ * Whether any line runs between one of `shapes` and one of `holders`, which
+ * are about to hold them: the move that would leave such a line is refused,
+ * with the line named as the thing to remove first.
+ */
+function refuseNesting(shapes, holders) {
+  const among = (list, kind, id) => list.some((one) => one.kind === kind && one.id === id);
+  const joined = store.connectors.some((line) =>
+    (among(shapes, line.fromKind, line.fromId) && among(holders, line.toKind, line.toId))
+    || (among(shapes, line.toKind, line.toId) && among(holders, line.fromKind, line.fromId)));
+  if (joined) {
+    throw new Error('It is connected to the shape it would go into, and a line cannot run '
+      + 'between a shape and what holds it. Remove the connector first.');
+  }
 }
 
 /** The two records a line joins, from end first — whatever kinds they are. */
@@ -581,14 +648,21 @@ export function deleteDomain(id) {
 
   const children = store.capabilities.filter((c) => c.domainId === id);
   const childIds = new Set(children.map((c) => c.id));
-  const lost = store.connectors.filter((c) => touches(c, 'capability', childIds));
+  const held = store.features.filter((feature) => childIds.has(feature.capabilityId));
+  // A line may end on the domain itself, on a capability in it, or on a
+  // feature in one of those: all of them go with it.
+  const lost = store.connectors.filter((c) => touches(c, 'domain', new Set([id]))
+    || touches(c, 'capability', childIds)
+    || touches(c, 'feature', new Set(held.map((feature) => feature.id))));
 
   const removed = {
     domains: store.domains.splice(index, 1),
     capabilities: children,
+    features: held,
     connectors: lost,
   };
   store.capabilities = store.capabilities.filter((c) => !childIds.has(c.id));
+  store.features = store.features.filter((feature) => !held.includes(feature));
   store.connectors = store.connectors.filter((c) => !lost.includes(c));
   for (const domain of removed.domains) rememberPlace({ ...domain, areaId: null }, domain.areaId);
 
@@ -630,6 +704,11 @@ export function updateCapability(id, changes = {}) {
   if (!capability) return null;
   const wasIn = capability.areaId;
 
+  if (changes.domainId && changes.domainId !== capability.domainId) {
+    refuseNesting(
+      [{ kind: 'capability', id }, ...featuresOf(id).map((one) => ({ kind: 'feature', id: one.id }))],
+      [{ kind: 'domain', id: changes.domainId }]);
+  }
   if (changes.domainId) capability.areaId = null;
   else if (changes.clearDomain && capability.domainId)
     capability.areaId = find('domain', capability.domainId)?.areaId ?? null;
@@ -654,9 +733,99 @@ const touches = (connector, kind, ids) =>
   (connector.fromKind === kind && ids.has(connector.fromId))
   || (connector.toKind === kind && ids.has(connector.toId));
 
-/** Deleting a capability takes the lines attached to it. */
+/** Deleting a capability takes the lines attached to it, and the features inside it. */
 export function deleteCapability(id) {
   return removeElement('capability', id);
+}
+
+// --- features ----------------------------------------------------------------
+
+// What a capability does, named one by one. A feature is made in a capability
+// and stays a part of it: it has no position to round and no line to lose, so
+// it is changed here by its words and by where it stands among the others.
+
+/** The capability a feature is to go into, which has to be on the map and have the room. */
+function roomIn(capabilityId, joining = true) {
+  if (!find('capability', capabilityId)) throw new Error('A feature belongs to a capability on this map.');
+  if (joining && featuresOf(capabilityId).length >= rules.MAX_FEATURES)
+    throw new Error(`A capability holds at most ${rules.MAX_FEATURES} features.`);
+}
+
+export function createFeature(fields = {}) {
+  roomIn(fields.capabilityId);
+  const feature = {
+    id: crypto.randomUUID(),
+    ...rules.withDefaults(rules.FEATURE_DEFAULTS, fields),
+  };
+  feature.title = titled(fields.title, rules.FEATURE_DEFAULTS.title);
+
+  // A new one goes after the last the capability holds.
+  if (fields.sortIndex == null) {
+    const peers = featuresOf(feature.capabilityId);
+    feature.sortIndex = peers.length ? Math.max(...peers.map((one) => one.sortIndex)) + 1 : 0;
+  }
+
+  store.features.push(feature);
+  emit('data');
+  return feature;
+}
+
+/**
+ * A `capabilityId` in the change hands the feature to another capability. `x`
+ * and `y` put it somewhere in the oval by hand, and `clearPosition` sends it
+ * back to the row its order gives it — null leaves a field alone, so it takes
+ * a flag to say. A place in one oval means nothing in another, so a feature
+ * handed over arrives in its row unless it is told where to go.
+ */
+export function updateFeature(id, changes = {}) {
+  const feature = find('feature', id);
+  if (!feature) return null;
+  const moving = changes.capabilityId && changes.capabilityId !== feature.capabilityId;
+  if (moving) {
+    roomIn(changes.capabilityId);
+    refuseNesting([{ kind: 'feature', id }],
+      chainOf('capability', changes.capabilityId));
+  }
+
+  // Taken before the change lands, so that a title of nothing but spaces
+  // leaves the name it had rather than becoming the name.
+  const was = feature.title;
+  assign(feature, changes, rules.FEATURE_DEFAULTS);
+  if (changes.title !== undefined) feature.title = titled(changes.title, was);
+  // An owner picked from the list can be un-picked, so here null is a value
+  // rather than an absence: a name typed over the pick carries no id.
+  if ('ownerId' in changes && !changes.ownerId) feature.ownerId = null;
+  if (changes.clearPosition || (moving && changes.x == null && changes.y == null)) {
+    feature.x = null;
+    feature.y = null;
+  }
+  // Handed over, it goes after the last the new capability holds, unless it
+  // is told where it stands — which is what undo does, to put it back.
+  if (moving && changes.sortIndex == null) {
+    const peers = featuresOf(feature.capabilityId).filter((one) => one.id !== id);
+    feature.sortIndex = peers.length ? Math.max(...peers.map((one) => one.sortIndex)) + 1 : 0;
+  }
+  for (const axis of ['x', 'y']) {
+    if (typeof feature[axis] !== 'number') continue;
+    feature[axis] = Math.round(Math.max(-rules.MAX_FEATURE_REACH,
+      Math.min(rules.MAX_FEATURE_REACH, feature[axis])));
+  }
+
+  emit('data');
+  return feature;
+}
+
+/** Deleting a feature takes the lines attached to it. */
+export function deleteFeature(id) {
+  const index = store.features.findIndex((feature) => feature.id === id);
+  if (index < 0) return null;
+
+  const lost = store.connectors.filter((c) => touches(c, 'feature', new Set([id])));
+  const removed = { features: store.features.splice(index, 1), connectors: lost };
+  store.connectors = store.connectors.filter((c) => !lost.includes(c));
+  dropLostSelection();
+  emit('data');
+  return removed;
 }
 
 // --- touchpoints and actors --------------------------------------------------
@@ -730,16 +899,24 @@ function removeElement(kind, id) {
   const index = list.findIndex((record) => record.id === id);
   if (index < 0) return null;
 
-  const lost = store.connectors.filter((c) => touches(c, kind, new Set([id])));
+  // Only a capability holds any; for the other kinds this is nothing.
+  const held = kind === 'capability'
+    ? store.features.filter((feature) => feature.capabilityId === id)
+    : [];
+  // Its own lines, and those of the features that go with it.
+  const lost = store.connectors.filter((c) => touches(c, kind, new Set([id]))
+    || touches(c, 'feature', new Set(held.map((feature) => feature.id))));
   const removed = {
     areas: [],
     domains: [],
     capabilities: [],
+    features: held,
     touchpoints: [],
     actors: [],
     connectors: lost,
     [LISTS[kind]]: list.splice(index, 1),
   };
+  store.features = store.features.filter((feature) => !held.includes(feature));
   store.connectors = store.connectors.filter((c) => !lost.includes(c));
   for (const gone of removed[LISTS[kind]]) rememberPlace({ ...gone, areaId: null }, gone.areaId);
 
@@ -799,6 +976,7 @@ function ordered(from, to, points) {
   const wrong = rules.connectorRule(from.kind, to.kind);
   if (wrong) throw new Error(wrong);
   if (from.id === to.id) throw new Error('A connector needs two different elements.');
+  if (holds(from, to) || holds(to, from)) throw new Error(NESTED);
 
   const ends = rules.orderEnds(from, to);
   const flipped = ends.upper !== from;
@@ -870,6 +1048,7 @@ export function restore(removed) {
   store.areas.push(...(removed.areas ?? []));
   store.domains.push(...(removed.domains ?? []));
   store.capabilities.push(...(removed.capabilities ?? []));
+  store.features.push(...(removed.features ?? []));
   store.touchpoints.push(...(removed.touchpoints ?? []));
   store.actors.push(...(removed.actors ?? []));
   store.connectors.push(...(removed.connectors ?? []));

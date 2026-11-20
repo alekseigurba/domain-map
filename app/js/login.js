@@ -60,6 +60,8 @@ async function applyBranding() {
     document.title = `Sign in — ${settings.title}`;
   }
   document.getElementById('footer-text').textContent = settings.footer ?? '';
+  // An app built on the package words its own sign-in page.
+  if (typeof settings.blurb === 'string') document.querySelector('.login__blurb').textContent = settings.blurb;
 }
 
 async function start() {

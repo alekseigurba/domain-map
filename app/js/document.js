@@ -17,12 +17,21 @@
 // the name was picked from, so the map still knows who it meant after they
 // are renamed. Same reason for the number: an app from before would drop it
 // on the next save. Versions 1 to 3 still read, with every owner a plain
-// name. Writing is always version 4.
+// name.
+//
+// Version 5 added features: what a capability does, written as a list under
+// the capability that holds them, in the order it holds them. It also let a
+// line at the top of the file end on a domain or a feature as well as on a
+// capability, said by a `fromKind` or `toKind` beside the key. The number moved
+// for the reason it always has — an app from before would read past the list
+// and write the map back without it, and would take a line to a domain for a
+// line to a capability it cannot find. Versions 1 to 4 still read, as a map
+// whose capabilities hold nothing. Writing is always version 5.
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';
 
-export const CURRENT_VERSION = 4;
+export const CURRENT_VERSION = 5;
 
 /** A position as the file writes it: two whole numbers, "x,y". */
 export const position = (x, y) => `${Math.round(x)},${Math.round(y)}`;
@@ -195,11 +204,36 @@ export function fromDocument(document_) {
   });
 
   const capabilityIds = new Map();
+  // Written under their capability; held as one list, each naming the
+  // capability it is in, in the order the file had them.
+  const features = [];
+  const featureIds = new Map();
   const capabilities = (document_.capabilities ?? []).map((node) => {
     const home = node.domain == null ? null : domainIds.get(node.domain) ?? null;
     const at = readPosition(node.shape?.position);
     const id = crypto.randomUUID();
     capabilityIds.set(node.key, id);
+
+    (node.features ?? []).forEach((feature, at_) => {
+      const featureId = crypto.randomUUID();
+      featureIds.set(feature.key, featureId);
+      // Where in the oval it was put by hand, if it was: hundredths of the radii.
+      const put = readPosition(feature.shape?.position);
+      features.push({
+        id: featureId,
+        ...rules.withDefaults(rules.FEATURE_DEFAULTS, {
+          capabilityId: id,
+          title: feature.title?.trim(),
+          description: feature.description,
+          owner: feature.owner,
+          ownerId: feature.ownerId,
+          type: feature.type,
+          sortIndex: at_,
+          x: put && Math.round(put.x),
+          y: put && Math.round(put.y),
+        }),
+      });
+    });
 
     // One position, read as the lobe when it has a domain and as its own spot
     // on the map when it has none — the same way it was written.
@@ -212,6 +246,7 @@ export function fromDocument(document_) {
         // it there means nothing and is not read.
         areaId: home === null ? areaNamed(node) : null,
         stretch: node.shape?.stretch,
+        lobeScale: node.shape?.lobe,
         x: home === null && at ? Math.round(at.x) : undefined,
         y: home === null && at ? Math.round(at.y) : undefined,
         lobeX: home !== null && at ? Math.round(at.x) : undefined,
@@ -257,9 +292,12 @@ export function fromDocument(document_) {
   });
 
   // An endpoint is a kind and a key. A version 1 file wrote the key alone,
-  // because a line could only ever join two capabilities.
+  // because a line could only ever join two capabilities, and a line between
+  // two capabilities is still written that way.
   const idsByKind = {
+    domain: domainIds,
     capability: capabilityIds,
+    feature: featureIds,
     touchpoint: touchpointIds,
     actor: actorIds,
   };
@@ -337,6 +375,7 @@ export function fromDocument(document_) {
     areas,
     domains,
     capabilities,
+    features,
     touchpoints,
     actors,
     connectors,
@@ -416,10 +455,35 @@ export function toDocument(state) {
 
   const capabilitySeen = new Map();
   const capabilityKeys = new Map();
+  // A feature's key is its own across the whole file, not only within its
+  // capability, so that it names one feature wherever it is read from.
+  const featureSeen = new Map();
+  const featureKeys = new Map();
+  const featuresIn = (capabilityId) => (state.features ?? [])
+    .filter((feature) => feature.capabilityId === capabilityId)
+    .sort((a, b) => a.sortIndex - b.sortIndex || a.id.localeCompare(b.id))
+    .map((feature) => {
+      const key = unique(featureSeen, slugify(feature.title));
+      featureKeys.set(feature.id, key);
+      return compact({
+        key,
+        title: feature.title,
+        description: blank(feature.description),
+        owner: blank(feature.owner),
+        ownerId: blank(feature.ownerId),
+        type: blank(feature.type),
+        // Only one that has been put somewhere by hand: left in its row, a
+        // feature has no shape to write.
+        shape: feature.x == null && feature.y == null
+          ? null
+          : { position: position(feature.x ?? 0, feature.y ?? 0) },
+      });
+    });
   const capabilities = state.capabilities.map((capability) => {
     const key = unique(capabilitySeen, slugify(capability.title));
     capabilityKeys.set(capability.id, key);
     const home = capability.domainId == null ? null : domainKeys.get(capability.domainId) ?? null;
+    const held = featuresIn(capability.id);
 
     return compact({
       key,
@@ -442,11 +506,16 @@ export function toDocument(state) {
         weight: capability.fontWeight,
         scale: capability.sizeScale,
         stretch: capability.stretch,
+        // Only one whose ring has been dragged, and only inside a domain: a
+        // loose capability has no lobe to speak of.
+        lobe: home !== null && capability.lobeScale && capability.lobeScale !== 1 ? capability.lobeScale : null,
         opacity: capability.opacity,
         order: capability.sortIndex,
         iconPlacement: placementOf(capability),
         iconWeight: weightOf(capability),
       }),
+      // Only when it holds any, and last: the capability first, then what is in it.
+      features: held.length === 0 ? null : held,
     });
   });
 
@@ -507,19 +576,26 @@ export function toDocument(state) {
   });
 
   const keysByKind = {
+    domain: domainKeys,
     capability: capabilityKeys,
+    feature: featureKeys,
     touchpoint: touchpointKeys,
     actor: actorKeys,
   };
   const known = (kind, id) => keysByKind[kind]?.has(id) === true;
+  /** A capability is what a line at the top of the file has always joined, so only another kind is said. */
+  const saidKind = (kind) => (kind === 'capability' ? null : kind);
 
   /**
    * A line as it is written under its owner: the far end and its own shape.
    * Neither end's kind is written — the owner is one, and what it reaches
    * follows from the stack — and the near end is the record it sits inside.
+   * A line at the top of the file has no owner to imply them, so there the
+   * kinds are `said`.
    */
-  const line = (connector) => compact({
+  const line = (connector, said = false) => compact({
     to: keysByKind[connector.toKind].get(connector.toId),
+    toKind: said ? saidKind(connector.toKind) : null,
     description: blank(connector.description),
     fromPoint: connector.fromPoint,
     toPoint: connector.toPoint,
@@ -547,12 +623,14 @@ export function toDocument(state) {
   }
 
   // What is left at the top of the file is what no element owns: the lines
-  // between two capabilities, which have no upper end to sit under.
+  // of the terrain — among domains, capabilities and features — which have no
+  // upper end to sit under.
   const connectors = drawn
-    .filter((connector) => connector.fromKind === 'capability')
+    .filter((connector) => rules.TERRAIN_KINDS.includes(connector.fromKind))
     .map((connector) => compact({
-      from: keysByKind.capability.get(connector.fromId),
-      ...line(connector),
+      from: keysByKind[connector.fromKind].get(connector.fromId),
+      fromKind: saidKind(connector.fromKind),
+      ...line(connector, true),
     }));
 
   const types = Object.fromEntries(
@@ -717,6 +795,9 @@ export function validate(document_) {
   }
 
   const capabilityKeys = new Set();
+  const featureKeys = new Set();
+  /** What holds what, by key, so that a line to its own holder can be told. */
+  const holderOf = { capability: new Map(), feature: new Map() };
   for (const capability of document_.capabilities ?? []) {
     if (!capability.key || capability.key.trim().length === 0)
       return 'Every capability needs a key.';
@@ -746,17 +827,55 @@ export function validate(document_) {
       fontWeight: shape?.weight,
       sizeScale: shape?.scale,
       stretch: shape?.stretch,
+      lobeScale: shape?.lobe,
       opacity: shape?.opacity,
       icon: capability.icon,
       iconPlacement: shape?.iconPlacement,
       iconWeight: shape?.iconWeight,
     });
     if (error) return `Capability '${capability.key}': ${error}`;
+
+    if (capability.features != null && !Array.isArray(capability.features))
+      return `Capability '${capability.key}': features must be a list.`;
+    if ((capability.features?.length ?? 0) > rules.MAX_FEATURES) {
+      return `Capability '${capability.key}' holds ${capability.features.length} features; `
+        + `a capability holds at most ${rules.MAX_FEATURES}.`;
+    }
+    for (const feature of capability.features ?? []) {
+      if (!feature?.key || feature.key.trim().length === 0)
+        return `Capability '${capability.key}': every feature needs a key.`;
+      if (featureKeys.has(feature.key)) return `Two features share the key '${feature.key}'.`;
+      featureKeys.add(feature.key);
+      holderOf.feature.set(feature.key, { kind: 'capability', key: capability.key });
+
+      if (unreadable(feature.shape?.position))
+        return `Feature '${feature.key}': a position must read as "x,y".`;
+      const put = readPosition(feature.shape?.position);
+      const wrong = rules.validateFeature({
+        title: feature.title,
+        description: feature.description,
+        owner: feature.owner,
+        ownerId: feature.ownerId,
+        type: feature.type,
+        x: put?.x,
+        y: put?.y,
+      });
+      if (wrong) return `Feature '${feature.key}': ${wrong}`;
+    }
+    if (capability.domain != null)
+      holderOf.capability.set(capability.key, { kind: 'domain', key: capability.domain });
   }
 
   // Touchpoints and actors are read the same way as each other: a position of
   // their own, no domain, and the validator their kind carries.
-  const keysByKind = { capability: capabilityKeys };
+  const keysByKind = { domain: domainKeys, capability: capabilityKeys, feature: featureKeys };
+  /** Whether `holder` is what `held` sits in, however many steps up. */
+  const holdsEnd = (holder, held) => {
+    for (let up = holderOf[held.kind]?.get(held.key); up; up = holderOf[up.kind]?.get(up.key)) {
+      if (up.kind === holder.kind && up.key === holder.key) return true;
+    }
+    return false;
+  };
   for (const [kind, list, label] of [
     ['touchpoint', document_.touchpoints ?? [], 'Touchpoint'],
     ['actor', document_.actors ?? [], 'Actor'],
@@ -817,6 +936,8 @@ export function validate(document_) {
     }
     if (from.key === to.key && from.kind === to.kind)
       return 'A connector needs two different elements.';
+    if (holdsEnd(from, to) || holdsEnd(to, from))
+      return `${named}: A connector cannot join a shape to the one that holds it.`;
 
     const error = rules.validateConnector(node);
     return error ? `${named}: ${error}` : null;

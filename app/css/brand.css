@@ -16,4 +16,10 @@
 
    Because the palette is read once when the module first runs, this has to stay
    a <link> in the head rather than a stylesheet injected later. BRANDING.md has
-   the rest, including the fonts. */
+   the rest, including the fonts.
+
+   The dark theme is the semantic tokens said again under
+   :root[data-theme="dark"], which outranks the plain :root above: a brand that
+   stops here is dark all the same, and one with something to say about the
+   dark page says it under that selector. The fills need nothing said — each is
+   drawn on a dark map as its own dark counterpart. */

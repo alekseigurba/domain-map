@@ -18,7 +18,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   background: var(--paper);
-  box-shadow: 0 1px 3px rgb(40 40 40 / 8%);
+  box-shadow: 0 1px 3px rgb(40 40 40 / calc(8% * var(--shadow-weight)));
 }
 
 .login__brand {
@@ -119,7 +119,7 @@
   color: var(--ink-soft);
 }
 
-.login__note[data-tone="error"] { color: var(--r-red-400); }
+.login__note[data-tone="error"] { color: var(--error); }
 
 /* The bypass is a door with no lock; say so where it is pressed. */
 .login__note[data-tone="warn"] { color: var(--r-orange-400); }

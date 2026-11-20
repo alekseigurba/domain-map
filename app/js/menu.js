@@ -4,7 +4,7 @@
 
 import {
   store, select, childrenOf, orphans, find, connectorLabel, connectorTarget,
-  stackedList, ownedBy, oneLine,
+  stackedList, ownedBy, oneLine, featuresOf,
 } from './store.js';
 import { COLORS } from './geometry.js';
 
@@ -127,6 +127,14 @@ function revealSelection() {
     if (record) opened.add(record.domainId ?? 'unassigned');
     return;
   }
+  if (type === 'feature') {
+    // A feature sits under its capability, which sits under its domain.
+    const holder = find('capability', find('feature', id)?.capabilityId);
+    if (!holder) return;
+    opened.add(holder.domainId ?? 'unassigned');
+    opened.add(holder.id);
+    return;
+  }
   if (type === 'touchpoint' || type === 'actor' || type === 'area') {
     opened.add(`${type}s`);
     return;
@@ -143,7 +151,13 @@ function revealSelection() {
     // opening that element — and whatever holds the element in turn.
     if (record.fromKind === 'capability') {
       opened.add(find('capability', record.fromId)?.domainId ?? 'unassigned');
-    } else {
+    } else if (record.fromKind === 'feature') {
+      const holder = find('capability', find('feature', record.fromId)?.capabilityId);
+      if (holder) {
+        opened.add(holder.domainId ?? 'unassigned');
+        opened.add(holder.id);
+      }
+    } else if (record.fromKind !== 'domain') {
       opened.add(`${record.fromKind}s`);
     }
     opened.add(record.fromId);
@@ -155,31 +169,44 @@ function revealSelection() {
  * for every kind: a line belongs to the end it starts from, so a domain
  * connector hangs under the capability it leaves and an interaction under the
  * actor. There is no heading in between and nothing lists a line twice.
+ *
+ * A capability's features come first under it, in the order it holds them:
+ * what it is made of before where it reaches. Each wears its capability's
+ * colour, as it does on the map, and is told from a line by its dot.
  */
-function branch(kind, record, depth = 0) {
+function branch(kind, record, depth = 0, color = colorOf(record.colorIndex)) {
   const own = ownedBy(kind, record.id);
+  const held = kind === 'capability' ? featuresOf(record.id) : [];
   const rows = [row(
-    item(kind, record, { depth, text: record.title, color: colorOf(record.colorIndex) }),
-    own.length === 0 ? null : toggleFor(record.id),
+    item(kind, record, { depth, text: oneLine(record.title), color }),
+    own.length + held.length === 0 ? null : toggleFor(record.id),
     depth,
   )];
 
-  if (own.length === 0 || !opened.has(record.id)) return rows;
-  for (const connector of own) {
-    // Where the line comes from is the row above it, so the row says only where
-    // it goes. Not a direction on the line — a line has none — but a direction
-    // read from where the eye already is.
-    const target = connectorTarget(connector);
-    rows.push(row(item('connector', connector, {
-      depth: depth + 1,
-      text: oneLine(target?.title ?? 'unknown'),
-      color: target ? colorOf(target.colorIndex) : null,
-      lead: 'to',
-      hint: oneLine(connectorLabel(connector)),
-      line: true,
-    }), null, depth + 1));
-  }
+  if (own.length + held.length === 0 || !opened.has(record.id)) return rows;
+  // A feature is a row like any other shape, and the lines it starts hang under it.
+  for (const feature of held) rows.push(...branch('feature', feature, depth + 1, color));
+  for (const connector of own) rows.push(lineRow(connector, depth + 1));
   return rows;
+}
+
+/**
+ * A line's row. Where the line comes from is the row above it, so the row says
+ * only where it goes. Not a direction on the line — a line has none — but a
+ * direction read from where the eye already is. A feature has no colour of
+ * its own, so a line to one wears its capability's.
+ */
+function lineRow(connector, depth) {
+  const target = connectorTarget(connector);
+  const worn = connector.toKind === 'feature' ? find('capability', target?.capabilityId) : target;
+  return row(item('connector', connector, {
+    depth,
+    text: oneLine(target?.title ?? 'unknown'),
+    color: worn ? colorOf(worn.colorIndex) : null,
+    lead: 'to',
+    hint: oneLine(connectorLabel(connector)),
+    line: true,
+  }), null, depth);
 }
 
 export function renderMenu() {
@@ -188,16 +215,20 @@ export function renderMenu() {
 
   for (const domain of store.domains) {
     const children = childrenOf(domain.id);
+    const own = ownedBy('domain', domain.id);
 
     const group = document.createElement('div');
     group.className = 'tree__group';
     group.appendChild(row(
       item('domain', domain, { text: domain.title, color: colorOf(domain.colorIndex) }),
-      children.length === 0 ? null : toggleFor(domain.id),
+      children.length + own.length === 0 ? null : toggleFor(domain.id),
     ));
 
     if (opened.has(domain.id)) {
       for (const capability of children) group.append(...branch('capability', capability, 1));
+      // The lines the domain itself starts, after what it holds: they are the
+      // domain's own, and the capabilities' are already under the capabilities.
+      for (const connector of own) group.append(lineRow(connector, 1));
     }
     nodes.push(group);
   }

@@ -208,8 +208,9 @@ try {
   check('so does a stored map', (await get(app, '/api/files/data/versions/v1.json')).status === 401);
   check('and the app\'s own scripts', (await get(app, '/js/main.js')).status === 302);
 
-  for (const path of ['/login.html', '/js/login.js', '/css/login.css', '/css/tokens.css', '/css/fonts.css',
-    '/fonts/poppins-400-latin.woff2', '/favicon.svg', '/api/files/data/settings.json']) {
+  // theme-first.js among them: without it the sign-in screen opens light on a dark desk.
+  for (const path of ['/login.html', '/js/login.js', '/js/theme-first.js', '/css/login.css', '/css/tokens.css',
+    '/css/fonts.css', '/fonts/poppins-400-latin.woff2', '/favicon.svg', '/api/files/data/settings.json']) {
     check(`${path} loads before signing in`, (await get(app, path)).status === 200);
   }
   check('the stored branding cannot be written without a session',

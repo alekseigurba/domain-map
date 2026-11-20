@@ -26,7 +26,13 @@ const OWNER_BY_EMAIL = { source: 'entra', subject: 'oid-oscar', name: 'Oscar', u
 // Not on the list at all: a contributor on arrival, and a viewer once the administrator says so.
 const VIEWER = { source: 'entra', subject: 'oid-victor', name: 'Victor Viewer', username: 'victor@contoso.example', method: 'microsoft' };
 
-const seedText = await readFile(new URL('../seed/data/versions/v1.json', import.meta.url), 'utf8');
+// A seed of the tests' own: one small version, `v1`. The examples the package
+// ships in `seed/` are for whoever starts it, and change — a second example
+// there is a second version imported and, being the newer file, the published
+// one — where every check below needs to know exactly what a fresh database
+// holds.
+const SEED_DIR = fileURLToPath(new URL('./support/seed', import.meta.url));
+const seedText = await readFile(join(SEED_DIR, 'data/versions/v1.json'), 'utf8');
 const seedMap = JSON.parse(seedText);
 /** A map the app would open, and a variation on it, so two saves differ. */
 const mapText = (title = 'A map') => `${JSON.stringify({ ...seedMap, title }, null, 2)}\n`;
@@ -53,6 +59,7 @@ async function startServer({ storage, databaseUrl, env = {} }) {
     env: {
       PATH: process.env.PATH,
       STORAGE_DIR: storage,
+      SEED_DIR,
       PORT: String(port),
       AUTH_SESSION_SECRET: SESSION_SECRET,
       OWNER_EMAILS: 'olivia@contoso.example, oscar@contoso.example',

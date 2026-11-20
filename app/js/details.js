@@ -4,7 +4,7 @@
 import {
   store, selected, find, patchLocal, connectorLabel, slugFor, oneLine, withBreaks,
   typesFor, layerOf, layerTitle, connectorScope, CONNECTOR_NAMES,
-  areaOf, membersOf, mayJoinArea,
+  areaOf, membersOf, mayJoinArea, featuresOf, domainOfEnd,
 } from './store.js';
 import { AREA_SHAPE } from './rules.js';
 import {
@@ -265,7 +265,7 @@ function personNamed(name) {
 /** Every element that can name an owner, with the list it is kept in. */
 const OWNED = () => [
   ['area', store.areas], ['domain', store.domains], ['capability', store.capabilities],
-  ['touchpoint', store.touchpoints], ['actor', store.actors],
+  ['feature', store.features], ['touchpoint', store.touchpoints], ['actor', store.actors],
 ];
 
 /**
@@ -780,6 +780,7 @@ const HEADINGS = {
   area: 'Area',
   domain: 'Domain',
   capability: 'Capability',
+  feature: 'Feature',
   touchpoint: 'Touchpoint',
   actor: 'Actor',
 };
@@ -841,12 +842,43 @@ export function renderDetails() {
 
   const nodes = [];
 
-  if (type === 'capability') {
+  if (type === 'feature') {
+    // A feature is its words and where it belongs. It has no shape of its own
+    // to set: it is drawn in the room its capability has for it, in the order
+    // the capability holds it — which the bracket keys change.
+    const capability = find('capability', record.capabilityId);
+    nodes.push(metadataSection(type, record, {
+      lead: [field('Capability', staticText(capability ? oneLine(capability.title) : '—'))],
+    }));
+    // Dragged somewhere in its capability, it stays there. This is the way
+    // back to the row its order gives it, and is only there once it has left.
+    if (editMode && (record.x != null || record.y != null)) {
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'btn btn--chip';
+      back.textContent = 'Put back in its row';
+      back.title = 'Let the capability place this feature again, in the order it holds it';
+      back.addEventListener('click', () => handlers.onUnplaceFeature?.(record.id));
+      // Open with the panel, as what a capability holds is: it is one button, and
+      // folded away nobody would know the way back was there.
+      nodes.push(section('Place', [field('Placed by hand', back, { inline: true })], 'Holds'));
+    }
+  } else if (type === 'capability') {
     const domain = record.domainId ? find('domain', record.domainId) : null;
+    const held = featuresOf(record.id);
     // Where it belongs comes straight after what it is called: it frames everything below.
     nodes.push(metadataSection(type, record, {
       lead: [field('Domain', staticText(domain ? domain.title : '—')), areaField(type, record)],
+      trail: held.length ? [`Features: ${held.length}`] : [],
     }));
+    // What it does, one by one. From any further out than reading distance the
+    // map does not draw them, so this is where they can always be read — and
+    // pressing one closes the map in on it.
+    if (held.length) {
+      nodes.push(section('Features', [
+        memberChips(held.map((feature) => ({ kind: 'feature', record: feature }))),
+      ], 'Holds'));
+    }
     nodes.push(section('Shape', [
       fontSizeField(type, record),
       weightField(type, record),
@@ -940,7 +972,7 @@ export function renderDetails() {
     // belongs to no one domain, and says so rather than leaving the row out:
     // the field is then in the same place whichever line is selected.
     const home = scope === 'internal'
-      ? find('domain', find('capability', record.fromId)?.domainId)
+      ? find('domain', domainOfEnd(record.fromKind, record.fromId))
       : null;
     // A presentation line hangs off the element that owns it, so that is what
     // it says it belongs to, where a terrain line names a domain.

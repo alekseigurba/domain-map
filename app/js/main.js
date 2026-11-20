@@ -6,13 +6,14 @@ import {
   connectorLabel, oneLine, withBreaks,
   createDomain, updateDomain, deleteDomain,
   createCapability, updateCapability, deleteCapability,
+  createFeature, updateFeature, deleteFeature, featuresOf,
   createTouchpoint, updateTouchpoint, deleteTouchpoint,
   createActor, updateActor, deleteActor,
   createArea, updateArea, deleteArea, mayJoinArea,
   createConnector as addConnector, updateConnector, deleteConnector,
   restore, updateMap,
   layerStack, layerState, setLayerState, resetLayerState, isVisible, layerOf, layerForKind,
-  selectLayer, selectedLayerKey, kindsAddableTo,
+  selectLayer, selectedLayerKey, kindsAddableTo, domainOfEnd,
   addTypeChoice, removeTypeChoice, setTypeChoices, typesFor,
 } from './store.js';
 import { fromDocument, toDocument, stringify, validate } from './document.js';
@@ -24,8 +25,13 @@ import { diagramSvg } from './svg-export.js';
 import {
   initDiagram, render, fitToScreen, zoomBy, centerOn, cancelDraft, viewportCenter, resolvedPoints,
   contentBounds, setEditing, isEditing, kebabAnchor, startRename, cancelRename,
-  setEditMode as setDiagramEditMode,
+  setEditMode as setDiagramEditMode, glideInto, glideToFit, setLineLevel, currentLineLevel,
 } from './diagram.js';
+import { LEVELS } from './zoom.js';
+import { initDrawing, allowDrawing, drawingTakesKey } from './draw.js';
+import { retheme } from './diagram.js';
+import { setDarkMap } from './geometry.js';
+import { initThemeChoice, onTheme } from './theme.js';
 import { renderMenu, collapseAll } from './menu.js';
 import {
   initDetails, renderDetails, fitAreas, setEditMode as setDetailsEditMode,
@@ -43,7 +49,7 @@ import {
   capabilitySize, sizeOf, layoutDomain, layoutArea, newLobeSpot, setPalette, swatchFor,
 } from './geometry.js';
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
-import { BASE_LAYER, AREA_SHAPE } from './rules.js';
+import { BASE_LAYER, AREA_SHAPE, MAX_FEATURES, TERRAIN_KINDS } from './rules.js';
 import * as undoStack from './history.js';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
@@ -62,7 +68,7 @@ let settings = {};
 
 function status(message, isError = false) {
   statusBar.textContent = message;
-  statusBar.style.color = isError ? '#8c2f18' : '';
+  statusBar.style.color = isError ? 'var(--error-ink)' : '';
   if (!isError && message) setTimeout(() => { if (statusBar.textContent === message) statusBar.textContent = ''; }, 1600);
 }
 
@@ -175,6 +181,8 @@ function applyEditMode() {
   // renderLayerControl builds it from the layer being worked on.
   document.getElementById('details-actions').hidden = !editMode;
   document.getElementById('import-map').disabled = !editMode;
+  // A marker is for a map that holds still: going into Edit puts it down.
+  allowDrawing(!editMode);
   renderLayerControl();
   showSaveState();
   showSelectionActions();
@@ -816,8 +824,10 @@ function keepSession() {
           palette: store.palette,
           layers: store.layers,
           types: store.types,
+          areas: store.areas,
           domains: store.domains,
           capabilities: store.capabilities,
+          features: store.features,
           touchpoints: store.touchpoints,
           actors: store.actors,
           connectors: store.connectors,
@@ -921,6 +931,7 @@ async function applySettings() {
 const writerFor = {
   area: updateArea,
   capability: updateCapability,
+  feature: updateFeature,
   domain: updateDomain,
   touchpoint: updateTouchpoint,
   actor: updateActor,
@@ -930,6 +941,7 @@ const writerFor = {
 const removerFor = {
   area: deleteArea,
   capability: deleteCapability,
+  feature: deleteFeature,
   domain: deleteDomain,
   touchpoint: deleteTouchpoint,
   actor: deleteActor,
@@ -1006,6 +1018,7 @@ const PLURALS = {
   area: 'areas',
   domain: 'domains',
   capability: 'capabilities',
+  feature: 'features',
   touchpoint: 'touchpoints',
   actor: 'actors',
 };
@@ -1124,6 +1137,7 @@ const ADD_LABELS = {
   area: 'Add an area',
   domain: 'Add a domain',
   capability: 'Add a capability',
+  feature: 'Add a feature',
   touchpoint: 'Add a touchpoint',
   actor: 'Add an actor',
 };
@@ -1132,6 +1146,7 @@ const ADD_ICONS = {
   area: 'icons/add-area.svg',
   domain: 'icons/add-domain.svg',
   capability: 'icons/add-capability.svg',
+  feature: 'icons/add-feature.svg',
   touchpoint: 'icons/add-touchpoint.svg',
   actor: 'icons/add-actor.svg',
 };
@@ -1160,6 +1175,12 @@ function renderAddButtons() {
 
     button.append(icon, label);
     button.addEventListener('click', () => addOfKind(kind));
+    // A feature goes into a capability, so until one is picked there is
+    // nowhere for it to go — and the button says so rather than failing.
+    if (kind === 'feature' && !capabilityForFeature()) {
+      button.disabled = true;
+      button.title = 'Pick the capability to add a feature to';
+    }
     return button;
   });
 
@@ -1190,6 +1211,7 @@ function addOfKind(kind) {
   if (kind === 'area') return addArea();
   if (kind === 'domain') return addDomain();
   if (kind === 'capability') return addCapabilityHere();
+  if (kind === 'feature') return addFeatureHere();
   return addElement(kind);
 }
 
@@ -1450,6 +1472,95 @@ function addCapabilityHere() {
   if (type === 'domain') return addCapability(id);
   if (type === 'capability') return addCapability(null, { over: find('capability', id) });
   return addCapability(null);
+}
+
+/**
+ * The capability a new feature would go into: the one picked, or the one that
+ * holds the feature that is.
+ */
+function capabilityForFeature() {
+  const { type, id } = store.selection;
+  if (type === 'capability') return find('capability', id);
+  if (type === 'feature') return find('capability', find('feature', id)?.capabilityId);
+  return null;
+}
+
+/**
+ * Add a feature follows the selection, as Add a capability does: into the
+ * capability picked, or beside the feature picked, in the capability it is in.
+ * It lands after the others and is picked, so the title can be typed at once;
+ * and the map closes in on its capability, since from any further out a
+ * feature is not drawn at all and there would be nothing to show for the press.
+ */
+async function addFeatureHere() {
+  const capability = capabilityForFeature();
+  if (!capability) return status('Pick a capability first.', true);
+  if (featuresOf(capability.id).length >= MAX_FEATURES)
+    return status(`A capability holds at most ${MAX_FEATURES} features.`, true);
+
+  const created = await run('Adding a feature', () => createFeature({ capabilityId: capability.id }));
+  if (created) {
+    undoStack.record('Adding a feature', [undoDelete('feature', created.id)]);
+    select('feature', created.id);
+    centerOn('feature', created.id);
+  }
+}
+
+// A feature is moved the way a capability is, by being dragged: about its own
+// capability, onto another feature to trade places, or into another
+// capability. Each is recorded for undo only once the store has agreed to it —
+// a feature is refused by a capability that is full, or that it is connected to.
+
+/** What puts a feature back where it was in its oval: its place, or the word that it had none. */
+const featureSpot = (feature) =>
+  (feature.x == null && feature.y == null ? { clearPosition: true } : { x: feature.x, y: feature.y });
+
+/** Everything about where a feature is: its capability, where it stands in the list, and its place. */
+const featureWhere = (feature) =>
+  ({ capabilityId: feature.capabilityId, sortIndex: feature.sortIndex, ...featureSpot(feature) });
+
+async function placeFeature(id, place) {
+  const feature = find('feature', id);
+  if (!feature || !place) return render();
+  const before = featureSpot(feature);
+  if (await run('Moving', () => updateFeature(id, place)))
+    undoStack.record('Moving', [undoUpdate('feature', id, before)]);
+  else render();
+}
+
+async function handFeature(id, capabilityId, place) {
+  const feature = find('feature', id);
+  if (!feature) return;
+  const before = featureWhere(feature);
+  if (await run('Moving', () => updateFeature(id, { capabilityId, ...(place ?? {}) })))
+    undoStack.record('Moving', [undoUpdate('feature', id, before)]);
+  else render();
+}
+
+async function swapFeatures(id, otherId) {
+  const one = find('feature', id);
+  const other = find('feature', otherId);
+  if (!one || !other) return render();
+  const [wasOne, wasOther] = [featureWhere(one), featureWhere(other)];
+  const done = await run('Swapping', () => {
+    updateFeature(one.id, wasOther);
+    return updateFeature(other.id, wasOne);
+  });
+  if (done) {
+    undoStack.record('Swapping', [undoUpdate('feature', one.id, wasOne), undoUpdate('feature', other.id, wasOther)]);
+  } else {
+    // Refused part-way: the first of the two is put back where it was.
+    updateFeature(one.id, wasOne);
+  }
+}
+
+/** Send a feature that was put somewhere by hand back to the row its order gives it. */
+async function unplaceFeature(id) {
+  const feature = find('feature', id);
+  if (!feature || (feature.x == null && feature.y == null)) return;
+  const before = featureSpot(feature);
+  if (await run('Moving', () => updateFeature(id, { clearPosition: true })))
+    undoStack.record('Moving', [undoUpdate('feature', id, before)]);
 }
 
 async function dropCapability(id, info) {
@@ -1713,7 +1824,12 @@ async function restyleDomain(label, domainId, { domain: domainChanges = null, ca
  * the map is rather than how it is drawn, so they stay.
  */
 const resetShapes = (domainId) =>
-  restyleDomain('Resetting shapes', domainId, { domain: domainLook(), capabilities: capabilityLook() });
+  restyleDomain('Resetting shapes', domainId, {
+    domain: domainLook(),
+    // The ring each lobe was dragged out to goes back with the rest: it is
+    // part of how the domain is drawn.
+    capabilities: { ...capabilityLook(), lobeScale: 1 },
+  });
 
 /** Reset colors: every capability in the domain in the domain's own colour. */
 const resetCapabilityColors = (domainId) =>
@@ -1800,7 +1916,7 @@ function openKebab(domainId) {
 
 /** `#/capability/payment-authorization` — the title, normalized, not the id. */
 function parseHash() {
-  const match = /^#\/(area|domain|capability|touchpoint|actor|connector)\/([a-z0-9-]+)$/
+  const match = /^#\/(area|domain|capability|feature|touchpoint|actor|connector)\/([a-z0-9-]+)$/
     .exec(location.hash);
   return match ? { type: match[1], slug: match[2] } : null;
 }
@@ -1842,6 +1958,7 @@ const DELETE_LABELS = {
   area: 'Delete area',
   domain: 'Delete domain',
   capability: 'Delete capability',
+  feature: 'Delete feature',
   touchpoint: 'Delete touchpoint',
   actor: 'Delete actor',
   connector: 'Delete connector',
@@ -1896,6 +2013,10 @@ function renderAll(reason) {
   }
   render();
   syncConnectors(); // render() resolved the positions this reads
+  // A feature picked in the menu may be inside a capability that is shut, where
+  // it is not drawn at all — so the map closes in on it. Picked on the map it
+  // was pressed, and is already in view.
+  if (reason === 'menu' && store.selection.type === 'feature') glideInto('feature', store.selection.id);
   renderMenu();
   if (reason !== 'live') renderDetails();
   renderAssistant(reason);
@@ -1905,6 +2026,7 @@ function renderAll(reason) {
     ...(store.areas.length ? [counted('area', store.areas.length)] : []),
     `${store.domains.length} domains`,
     `${store.capabilities.length} capabilities`,
+    ...(store.features.length ? [counted('feature', store.features.length)] : []),
     ...(store.touchpoints.length ? [`${store.touchpoints.length} touchpoints`] : []),
     ...(store.actors.length ? [`${store.actors.length} actors`] : []),
     `${store.connectors.length} connectors`,
@@ -2010,6 +2132,7 @@ initDetails({
   onPeople: listPeople,
   onArea: placeInArea,
   onShow: showOnMap,
+  onUnplaceFeature: unplaceFeature,
   onMapPatch: (changes) => patchMap(changes, 'Describing the map'),
   onLive: () => { render(); renderMenu(); },
   onStatus: status,
@@ -2073,6 +2196,18 @@ initTextDialog('profile');
 initTextDialog('versions');
 initTextDialog('people');
 
+// Light or dark is the browser's, not the map's: nothing is written and there
+// is nothing to undo. The stylesheet turns the page by itself; what is drawn
+// from script is turned here, geometry first as with the palette, since the
+// views redrawn after it read the colours geometry now draws in.
+initThemeChoice(document.getElementById('theme-choices'));
+onTheme((theme) => {
+  setDarkMap(theme === 'dark');
+  retheme();
+  renderMenu();
+  renderDetails();
+});
+
 /**
  * The colours live in two places: the map, and the geometry that draws it. The
  * geometry goes first. The map announces the change, and everything redrawn on
@@ -2095,6 +2230,15 @@ initDiagram({
   beginRename,
   renameDomain: (id, title) => patch('domain', id, { title }, 'Renaming'),
   setTitleWidth: (id, titleWidth) => patch('domain', id, { titleWidth }, 'Resizing the title'),
+  // The drag has already resized the lobe, so that the boundary could follow
+  // the pointer: what it was is handed over for undo to put back.
+  resizeLobe: (id, lobeScale, { from }) => {
+    undoStack.record('Resizing the lobe', [undoUpdate('capability', id, { lobeScale: from })]);
+    return run('Resizing the lobe', () => updateCapability(id, { lobeScale }));
+  },
+  placeFeature,
+  handFeature,
+  swapFeatures,
   // Moved by hand, so the line keeps the point it was put on.
   // An end carries its capability with it when it is dropped on another shape;
   // a null id leaves it on the one it was already on.
@@ -2123,11 +2267,12 @@ initDiagram({
   createConnector: async (from, to) => {
     // A line inside one domain is short and reads better straight; one that
     // crosses a boundary has ground to cover, so it bows out of the way. Only
-    // two capabilities in the same domain can be inside one.
-    const fromRecord = find(from.kind, from.id);
-    const toRecord = find(to.kind, to.id);
-    const internal = from.kind === 'capability' && to.kind === 'capability'
-      && fromRecord?.domainId && fromRecord.domainId === toRecord?.domainId;
+    // shapes of the terrain have a domain to be inside: capabilities, their
+    // features, and the domain itself.
+    const home = [from, to].every((end) => TERRAIN_KINDS.includes(end.kind))
+      ? domainOfEnd(from.kind, from.id)
+      : null;
+    const internal = home !== null && home === domainOfEnd(to.kind, to.id);
 
     const created = await run('Connecting', () => addConnector({
       fromId: from.id,
@@ -2141,6 +2286,10 @@ initDiagram({
     if (created) undoStack.record('Connecting', [undoDelete('connector', created.id)]);
   },
 });
+
+// Draw mode keeps to itself: its strokes are not the map's, so nothing it does
+// comes back through here but a word for the status line.
+initDrawing({ onStatus: status });
 
 subscribe(renderAll);
 subscribe((reason) => { if (reason === 'data') markDirty(); });
@@ -2165,7 +2314,43 @@ resetColorsButton.addEventListener('click', () => {
 });
 document.getElementById('zoom-in').addEventListener('click', () => zoomBy(1.2));
 document.getElementById('zoom-out').addEventListener('click', () => zoomBy(1 / 1.2));
-document.getElementById('zoom-fit').addEventListener('click', fitToScreen);
+// By hand it is a way back out, so it travels: a jump from inside a capability
+// to the whole map says nothing of where the capability was.
+document.getElementById('zoom-fit').addEventListener('click', glideToFit);
+
+// The level the lines are drawn at: the slider over the zoom buttons. It is
+// this tab's, like a layer hidden while browsing, and the same in Edit mode —
+// so what is on the stage does not change when Edit is left.
+const levelControl = document.getElementById('line-level-control');
+const levelSlider = document.getElementById('line-level');
+const LEVEL_SAYS = {
+  feature: 'Connectors drawn where they end: on features, capabilities and domains',
+  capability: 'Connectors drawn between capabilities: a feature\'s leaves from its capability',
+  domain: 'Connectors drawn between domains: each domain\'s two strongest, and all of one when it is picked',
+};
+
+function showLineLevel() {
+  const level = currentLineLevel();
+  levelControl.dataset.level = level;
+  levelControl.title = LEVEL_SAYS[level];
+  levelSlider.value = String(LEVELS.indexOf(level));
+  levelSlider.setAttribute('aria-valuetext', LEVEL_SAYS[level]);
+}
+
+/** What the footer says as the level changes: short, since the control's own title has the sentence. */
+const LEVEL_NAMES = { feature: 'features', capability: 'capabilities', domain: 'domains' };
+
+function chooseLineLevel(level) {
+  setLineLevel(level);
+  showLineLevel();
+  status(`Connectors drawn to ${LEVEL_NAMES[currentLineLevel()]}`);
+}
+
+levelSlider.addEventListener('input', () => chooseLineLevel(LEVELS[Number(levelSlider.value)]));
+for (const stop of levelControl.querySelectorAll('.level__stop')) {
+  stop.addEventListener('click', () => chooseLineLevel(stop.dataset.level));
+}
+showLineLevel();
 saveButton.addEventListener('click', () => save());
 editModeButton.addEventListener('click', () => {
   if (mayEdit()) setEditMode(true);
@@ -2280,6 +2465,9 @@ window.addEventListener('keydown', async (event) => {
     || event.target instanceof HTMLSelectElement
     || event.target instanceof HTMLTextAreaElement;
 
+  // While Draw is on, undo, Esc and Space are the marker's before they are the map's.
+  if (drawingTakesKey(event, typing)) return;
+
   // Ctrl-Z works even mid-sentence: the browser's own undo covers the caret,
   // ours covers the map, and only one of them owns a focused field.
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !typing) {
@@ -2374,10 +2562,42 @@ window.addEventListener('keydown', async (event) => {
   // AltGr arrives as Ctrl+Alt, which is a bracket being typed, not a modifier.
   if (bracket && !event.altKey) {
     event.preventDefault();
+    // On a feature the same keys move it along the list its capability holds.
+    if (type === 'feature') return reorderFeature(record, bracket === 'BracketRight', event.metaKey || event.ctrlKey);
     if (type !== 'capability') return status('Pick a capability first.', true);
     restack(record, bracket === 'BracketRight', event.metaKey || event.ctrlKey);
   }
 });
+
+/**
+ * Where a feature stands among the others its capability holds. They are drawn
+ * in that order, row by row, so moving one is renumbering the list and writing
+ * back only what changed — as restacking a capability is.
+ */
+function reorderFeature(feature, later, oneStep) {
+  const siblings = featuresOf(feature.capabilityId);
+  if (siblings.length < 2) return status('It is the only feature there.');
+
+  const from = siblings.findIndex((one) => one.id === feature.id);
+  const to = oneStep
+    ? Math.min(siblings.length - 1, Math.max(0, from + (later ? 1 : -1)))
+    : (later ? siblings.length - 1 : 0);
+  if (to === from) return status(later ? 'Already the last' : 'Already the first');
+
+  const order = [...siblings];
+  order.splice(to, 0, ...order.splice(from, 1));
+  const moved = order
+    .map((one, index) => ({ one, index }))
+    .filter(({ one, index }) => (one.sortIndex ?? 0) !== index);
+
+  const label = oneStep
+    ? (later ? 'Moving later' : 'Moving earlier')
+    : (later ? 'Moving to the end' : 'Moving to the start');
+  undoStack.record(label, moved.map(({ one }) => undoUpdate('feature', one.id, { sortIndex: one.sortIndex ?? 0 })));
+  return run(label, () => {
+    for (const { one, index } of moved) updateFeature(one.id, { sortIndex: index });
+  });
+}
 
 /** One step along the shape type scale, stopping at either end. */
 function stepFontSize(type, record, direction) {

@@ -2,7 +2,13 @@
 // the invariants that are painful to eyeball in a browser.
 //   node tests/geometry.test.mjs
 
-globalThis.getComputedStyle = () => ({ getPropertyValue: (name) => (name === '--font-heading' ? 'Georgia, serif' : '#527a42') });
+// Every swatch of the stylesheet's is the same green here. One of them has a
+// dark counterpart named for it, as a brand's stylesheet might name one; the
+// rest name none, as the package's own does not.
+const STYLED = { '--font-heading': 'Georgia, serif', '--c3-dark': '#203040' };
+globalThis.getComputedStyle = () => ({
+  getPropertyValue: (name) => STYLED[name] ?? (name.endsWith('-dark') ? '' : '#527a42'),
+});
 globalThis.document = {
   documentElement: {},
   createElement: () => ({
@@ -124,6 +130,113 @@ check('a tall oval wraps its words narrower', (() => {
 check('white ink on the darkest fills', geo.inkOn('#527a42') === '#fff' && geo.inkOn('#014bb3') === '#fff');
 check('black ink on the palest fills', geo.inkOn('#e5ebe3') === '#000' && geo.inkOn('#d6e6ff') === '#000');
 check('a see-through fill is judged after blending', geo.inkOn('#527a42', 0.2, '#ffffff') === '#000');
+
+// --- the dark map ---
+// A dark map draws each swatch's dark counterpart, worked out from the swatch.
+// What follows is what makes it a counterpart rather than merely a darker colour.
+const lightOf = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    .map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrastOf = (a, b) => {
+  const [light, dark] = [lightOf(a), lightOf(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+};
+const DARK_PAPER = '#141613';
+// The stock palette as tokens.css has it, written out: the stub above hands back one green for all of it.
+const STOCK = ['#86a27b', '#7fc6d8', '#e8bbd5', '#fede49', '#b06a46', '#f57a8c', '#51a45c', '#3c94a3',
+  '#a1a4ec', '#fee986', '#d36e3b', '#e08aac', '#77bc80', '#5985ab', '#a86cd1', '#d3b23b', '#f2c3aa', '#f66598',
+  '#0d9c08', '#aedbe6', '#a85bad', '#f1982b', '#9f4e4e', '#d86161'];
+
+check('no swatch is drawn lighter on dark paper than on light',
+  STOCK.every((color) => lightOf(geo.darkCounterpart(color)) <= lightOf(color)),
+  STOCK.filter((color) => lightOf(geo.darkCounterpart(color)) > lightOf(color)).join());
+check('the pale end of the palette comes down by half', (() => {
+  const kept = lightOf(geo.darkCounterpart('#fee986')) / lightOf('#fee986');
+  return kept > 0.45 && kept < 0.55;
+})(), geo.darkCounterpart('#fee986'));
+check('a swatch already deep enough for dark paper is left as it is',
+  geo.darkCounterpart('#9f4e4e') === '#9f4e4e' && geo.darkCounterpart('#a85bad') === '#a85bad',
+  `${geo.darkCounterpart('#9f4e4e')}, ${geo.darkCounterpart('#a85bad')}`);
+check('the pale end stays the pale end: the palette keeps its order of lightness', (() => {
+  const byLight = (colors) => colors.map((color, i) => [lightOf(color), i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const before = byLight(STOCK).map(([, i]) => i);
+  const after = STOCK.map((color) => lightOf(geo.darkCounterpart(color)));
+  // Rounded to whole channels, two swatches a hair apart may tie; none may swap.
+  return before.every((i, at) => at === 0 || after[i] >= after[before[at - 1]] - 0.004);
+})());
+check('black type reads at 4.5 on every counterpart of a swatch it read on at 4.5',
+  STOCK.filter((color) => contrastOf(color, '#000000') >= 4.5)
+    .every((color) => contrastOf(geo.darkCounterpart(color), '#000000') >= 4.5),
+  STOCK.map((color) => `${geo.darkCounterpart(color)} ${contrastOf(geo.darkCounterpart(color), '#000000').toFixed(2)}`).join(', '));
+check('the hue is kept: as light, a dimmed swatch has its channels in the proportions they were', (() => {
+  const asLight = (hex) => [1, 3, 5].map((at) => {
+    const v = parseInt(hex.slice(at, at + 2), 16) / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return ['#fede49', '#7fc6d8', '#e8bbd5', '#f2c3aa'].every((color) => {
+    const [r, g, b] = asLight(color);
+    const [dr, dg, db] = asLight(geo.darkCounterpart(color));
+    // Within what rounding to a whole channel moves a dim one.
+    return Math.abs(dr / dg - r / g) < 0.03 && Math.abs(db / dg - b / g) < 0.03;
+  });
+})());
+check('white comes down to a grey and black stays black', (() => {
+  const grey = geo.darkCounterpart('#ffffff');
+  return grey[1] === grey[3] && grey[3] === grey[5] && grey !== '#ffffff' && geo.darkCounterpart('#000000') === '#000000';
+})(), geo.darkCounterpart('#ffffff'));
+check('the short hex form has the long one\'s counterpart', geo.darkCounterpart('#fd4') === geo.darkCounterpart('#ffdd44'));
+
+// Which of the two a map is drawn in. The palette is the map's and does not
+// change with the theme; COLORS is what the shapes are painted with.
+geo.setPalette(['#fede49', '#9f4e4e', '#e8bbd5', '#7fc6d8']);
+check('a light map is drawn in its palette as it stands', geo.COLORS.join() === geo.PALETTE.join());
+geo.setDarkMap(true);
+check('a dark map is drawn in each swatch\'s counterpart',
+  geo.COLORS.join() === geo.PALETTE.map(geo.darkCounterpart).join(), geo.COLORS.join());
+check('and the palette itself is what it was', geo.PALETTE.join() === '#fede49,#9f4e4e,#e8bbd5,#7fc6d8');
+check('a default colour is matched against the palette, not against what is drawn',
+  geo.swatchFor('#fede49') === 1 && geo.swatchFor('#7fc6d8') === 4);
+geo.setPalette(['#fede49', '#9f4e4e', '#527a42', '#7fc6d8']);
+check('a counterpart the stylesheet names is used for the stylesheet\'s swatch', geo.COLORS[2] === '#203040', geo.COLORS[2]);
+check('and for no other: a swatch nobody named one for is worked out',
+  geo.COLORS[0] === geo.darkCounterpart('#fede49'));
+geo.setPalette(['#fede49', '#9f4e4e', '#e8bbd5', '#7fc6d8']);
+check('nor for that swatch once the map has made it another colour',
+  geo.COLORS[2] === geo.darkCounterpart('#e8bbd5'), geo.COLORS[2]);
+geo.setPalette([]);
+check('a map with no palette of its own is drawn in the stylesheet\'s, counterparts and all',
+  geo.COLORS.length === 24 && geo.COLORS[2] === '#203040' && geo.COLORS[0] === geo.darkCounterpart('#527a42'));
+geo.setDarkMap(false);
+check('back on light paper it is drawn in the palette again', geo.COLORS.join() === geo.PALETTE.join());
+
+check('a solid swatch keeps its black title on the dark map',
+  STOCK.every((color) => geo.darkMapInk(geo.darkCounterpart(color), 1, DARK_PAPER) === '#000'));
+check('a see-through one, where the dark paper comes up through the fill, turns white',
+  geo.darkMapInk(geo.darkCounterpart('#a1a4ec'), 0.5, DARK_PAPER) === '#fff'
+  && geo.darkMapInk(geo.darkCounterpart('#fede49'), 0.2, DARK_PAPER) === '#fff');
+check('and whichever it is can be read there', [1, 0.8, 0.6, 0.5, 0.3, 0.1].every((opacity) => STOCK.every((color) => {
+  const fill = geo.darkCounterpart(color);
+  const blended = `#${[1, 3, 5].map((at) => Math.round(parseInt(fill.slice(at, at + 2), 16) * opacity
+    + parseInt(DARK_PAPER.slice(at, at + 2), 16) * (1 - opacity)).toString(16).padStart(2, '0')).join('')}`;
+  return contrastOf(blended, geo.darkMapInk(fill, opacity, DARK_PAPER) === '#000' ? '#000000' : '#ffffff') >= 3;
+})));
+
+// An area's title wears its border's colour, made readable against the paper.
+// On dark paper it is the dim colours that are not, and they are lifted.
+for (const dim of ['#9f4e4e', '#5985ab', '#a85bad', '#b06a46']) {
+  const title = geo.deepened(geo.darkCounterpart(dim), DARK_PAPER);
+  check(`${dim} is lifted until it reads as type on dark paper`, contrastOf(title, DARK_PAPER) >= geo.READABLE,
+    `${title} at ${contrastOf(title, DARK_PAPER).toFixed(2)}`);
+}
+check('and by no more than it takes: a dark red line gets a lighter red title, not a white one', (() => {
+  const title = geo.deepened('#9f4e4e', DARK_PAPER);
+  return contrastOf(title, DARK_PAPER) < geo.READABLE + 0.4 && title !== '#e7eae4';
+})(), geo.deepened('#9f4e4e', DARK_PAPER));
+check('a colour that already reads on dark paper is left as it is',
+  geo.deepened('#fede49', DARK_PAPER) === '#fede49');
 
 // --- snap points ---
 const points = geo.snapPoints(80, 48);
@@ -938,6 +1051,217 @@ check('and by no more than it takes: a yellow line gets an olive title, not a bl
   ratio(geo.deepened('#fede49')) < geo.READABLE + 0.4 && geo.deepened('#fede49') !== '#282828',
   geo.deepened('#fede49'));
 check('the short hex form deepens as the long one does', geo.deepened('#fd4') === geo.deepened('#ffdd44'));
+
+// --- features inside a capability ---
+const NAMES = ['Refunds', 'Chargebacks', 'Partial capture', 'Payment authorisation', 'Three-D Secure',
+  'Tokenisation', 'Card vaulting', 'Dispute evidence', 'Settlement files', 'Currency conversion',
+  'Scheme fees', 'Retries', 'Account updater', 'Risk scoring hand-off', 'Payouts', 'Split payments',
+  'Recurring mandates', 'Network tokens', 'Receipts', 'Idempotency', 'Webhooks', 'Void',
+  'Incremental auth', 'Pre-auth', 'MOTO', 'Pay by link', 'Wallets', 'BIN lookup', 'Surcharging', 'Tips'];
+const featuresOf = (count) => NAMES.slice(0, count).map((title, at) => ({ id: `f${at}`, title }));
+const OVALS = [{}, { sizeScale: 1.6 }, { stretch: 0 }, { stretch: -2, sizeScale: 2 }, { sizeScale: 3 }];
+/** Every point round a bubble's rim is inside the oval that holds it. */
+const within = (oval, bubble) => rimOf(bubble).every((p) =>
+  (p.x / oval.rx) ** 2 + (p.y / oval.ry) ** 2 <= 1.0001);
+const apart = (a, b) => rimOf(a).every((p) => ((p.x - b.x) / b.rx) ** 2 + ((p.y - b.y) / b.ry) ** 2 >= 0.999);
+
+check('a capability that holds nothing has nothing to lay out',
+  geo.layoutFeatures(geo.capabilitySize({ title: 'Payments' }), []) === null
+  && geo.layoutFeatures(geo.capabilitySize({ title: 'Payments' }), undefined) === null);
+for (const look of OVALS) {
+  const oval = geo.capabilitySize({ title: 'Payment processing', ...look });
+  const named = JSON.stringify(look);
+  for (const count of [1, 2, 3, 5, 8, 12, 20, 30]) {
+    const laid = geo.layoutFeatures(oval, featuresOf(count), 'Payment processing');
+    check(`${count} feature(s) in ${named}: one bubble each, in the order they were given`,
+      laid.bubbles.length === count && laid.bubbles.every((bubble, at) => bubble.item.id === `f${at}`));
+    check(`${count} in ${named}: every bubble is inside the oval`,
+      laid.bubbles.every((bubble) => within(oval, bubble)));
+    check(`${count} in ${named}: no two bubbles touch`,
+      laid.bubbles.every((a, i) => laid.bubbles.every((b, j) => i === j || apart(a, b))));
+    check(`${count} in ${named}: every name is set at the one size`,
+      laid.bubbles.every((bubble) => bubble.fontSize === laid.fontSize) && laid.fontSize > 0);
+    check(`${count} in ${named}: no name is set larger than the capability's own over them`,
+      laid.fontSize <= laid.heading.fontSize, `${laid.fontSize} against ${laid.heading.fontSize}`);
+    check(`${count} in ${named}: the capability's name sits above every bubble`,
+      laid.bubbles.every((bubble) => laid.heading.y + laid.heading.height / 2 <= bubble.y - bubble.ry + 0.001),
+      `${laid.heading.y + laid.heading.height / 2} against ${Math.min(...laid.bubbles.map((b) => b.y - b.ry))}`);
+  }
+}
+const plainOval = geo.capabilitySize({ title: 'Payment processing' });
+const few = geo.layoutFeatures(plainOval, featuresOf(3), 'Payment processing');
+const many = geo.layoutFeatures(plainOval, featuresOf(30), 'Payment processing');
+check('more features are set smaller: the oval does not grow to hold them', many.fontSize < few.fontSize,
+  `${many.fontSize} against ${few.fontSize}`);
+check('a row through the middle of the oval holds more than the row at its foot', (() => {
+  const rows = new Map();
+  for (const bubble of many.bubbles) rows.set(Math.round(bubble.y), (rows.get(Math.round(bubble.y)) ?? 0) + 1);
+  const counts = [...rows.entries()].sort((a, b) => a[0] - b[0]).map(([, count]) => count);
+  return Math.max(...counts) > counts.at(-1);
+})());
+check('an oval twice the size sets the same features twice as large',
+  Math.abs(geo.layoutFeatures(geo.capabilitySize({ title: 'P', sizeScale: 2 }), featuresOf(8), 'P').fontSize
+    - geo.layoutFeatures(geo.capabilitySize({ title: 'P' }), featuresOf(8), 'P').fontSize * 2) < 0.01);
+const oneLong = geo.layoutFeatures(plainOval, [
+  ...featuresOf(5),
+  { id: 'long', title: 'Reconciliation of acquirer statements against the ledger and the scheme reports' },
+], 'Payment processing');
+const fiveShort = geo.layoutFeatures(plainOval, featuresOf(6), 'Payment processing');
+check('one very long name is cut sooner than it shrinks all the others',
+  oneLong.fontSize >= fiveShort.fontSize * 0.7 - 0.001
+  && oneLong.bubbles.at(-1).lines.at(-1).endsWith('…'),
+  `${oneLong.fontSize} against ${fiveShort.fontSize}: ${JSON.stringify(oneLong.bubbles.at(-1).lines)}`);
+check('the breaks typed into a capability\'s title are not carried up into its heading',
+  !geo.layoutFeatures(plainOval, featuresOf(2), 'Payment\nprocessing').heading.lines.join('|').includes('\n')
+  && geo.layoutFeatures(plainOval, featuresOf(2), 'Payment\nprocessing').heading.lines[0] === 'Payment processing');
+
+const closed = geo.capabilitySize({ title: 'Payments' });
+check('a closed capability wears one pip a feature', geo.featurePips(closed, 3).length === 3);
+check('up to a handful, however many it holds', geo.featurePips(closed, 40).length === geo.featurePips(closed, 400).length
+  && geo.featurePips(closed, 40).length < 10);
+check('and none when it holds nothing', geo.featurePips(closed, 0).length === 0);
+check('the pips sit inside the oval, along its foot',
+  geo.featurePips(closed, 40).every((pip) => pip.y > 0 && within(closed, { x: pip.x, y: pip.y, rx: pip.r, ry: pip.r })));
+check('they stand down where the title reaches the foot of the oval', (() => {
+  const full = geo.capabilitySize({
+    title: 'One\ntwo\nthree\nfour\nfive\nsix\nseven\neight', fontSize: 24,
+  });
+  return geo.featurePips(full, 5).length === 0;
+})());
+
+// The checks below share short names with the ones above — a blob, a pair — so they keep to a scope of their own.
+{
+// --- a feature put somewhere by hand ---
+const handOval = geo.capabilitySize({ title: 'Payment processing' });
+const inRows = geo.layoutFeatures(handOval, featuresOf(6), 'Payment processing');
+const moved = featuresOf(6);
+moved[2] = { ...moved[2], x: -50, y: 40 };
+const byHand = geo.layoutFeatures(handOval, moved, 'Payment processing');
+check('a feature put somewhere by hand sits at that share of its capability\'s radii',
+  Math.abs(byHand.bubbles[2].x - -0.5 * handOval.rx) < 0.01 && Math.abs(byHand.bubbles[2].y - 0.4 * handOval.ry) < 0.01,
+  `${byHand.bubbles[2].x},${byHand.bubbles[2].y}`);
+check('and the rest keep the rows their order gives them',
+  [0, 1, 3, 4, 5].every((at) => byHand.bubbles[at].x === inRows.bubbles[at].x && byHand.bubbles[at].y === inRows.bubbles[at].y));
+check('it is the size its seat would have made it, and set in the same type',
+  byHand.bubbles[2].rx === inRows.bubbles[2].rx && byHand.fontSize === inRows.fontSize);
+const atTheRim = featuresOf(6);
+atTheRim[0] = { ...atTheRim[0], x: 100, y: 0 };
+const rimmed = geo.layoutFeatures(handOval, atTheRim, 'Payment processing');
+check('a place at the very rim is the bubble touching the rim, not its middle on it',
+  within(handOval, rimmed.bubbles[0]) && rimmed.bubbles[0].x > handOval.rx * 0.5, `${rimmed.bubbles[0].x}`);
+const twice = geo.capabilitySize({ title: 'Payment processing', sizeScale: 2 });
+check('it keeps its place through a resize of the capability, being kept as a share of it',
+  Math.abs(geo.layoutFeatures(twice, moved, 'P').bubbles[2].x - -0.5 * twice.rx) < 0.01);
+const dropped = geo.featurePlace(handOval, inRows.bubbles[0], { x: 30, y: -20 });
+check('a feature let go is kept as whole hundredths of the radii',
+  Number.isInteger(dropped.x) && Number.isInteger(dropped.y)
+  && Math.abs((dropped.x / 100) * handOval.rx - 30) < handOval.rx / 100
+  && Math.abs((dropped.y / 100) * handOval.ry - -20) < handOval.ry / 100, JSON.stringify(dropped));
+const farOut = geo.featurePlace(handOval, inRows.bubbles[0], { x: 900, y: 0 });
+check('one let go outside the oval is kept where the bubble comes to rest, inside it',
+  farOut.x <= 100 && farOut.x > 50 && farOut.y === 0, JSON.stringify(farOut));
+
+// --- the points round a domain's blob ---
+const snapDomain = { title: 'Billing', x: 0, y: 0 };
+const snapChildren = [
+  { id: 'a', title: 'Invoicing', lobeX: -220, lobeY: 60 },
+  { id: 'b', title: 'Collections', lobeX: 200, lobeY: 90 },
+  { id: 'c', title: 'Dunning', lobeX: 0, lobeY: 260 },
+];
+const blob = geo.layoutDomain(snapDomain, snapChildren);
+const blobAt = {
+  x: blob.body.x, y: blob.body.y, shape: 'blob',
+  rx: (blob.bounds.maxX - blob.bounds.minX) / 2, ry: (blob.bounds.maxY - blob.bounds.minY) / 2,
+  outline: blob.outline.map((p) => ({ x: p.x - blob.body.x, y: p.y - blob.body.y })),
+};
+const blobSnaps = geo.snapPoints(blobAt);
+check('a domain carries the same twenty-four points every shape does', blobSnaps.length === geo.SNAP_COUNT);
+check('each is on its blob\'s outline: just inside it is in, just outside it is out',
+  blobSnaps.every((p) => geo.insideOutline(blobAt.outline, p.x * 0.98, p.y * 0.98)
+    && !geo.insideOutline(blobAt.outline, p.x * 1.02, p.y * 1.02)));
+check('and lies the way its number says, seen from the middle of the body',
+  blobSnaps.every((p) => {
+    const angle = (p.index * 2 * Math.PI) / geo.SNAP_COUNT;
+    return Math.abs(Math.atan2(p.y, p.x) - Math.atan2(Math.sin(angle), Math.cos(angle))) < 1e-6
+      || Math.abs(Math.abs(Math.atan2(p.y, p.x)) - Math.PI) < 1e-6;
+  }));
+check('a line leaves a blob the way it was reached, straight out from the middle',
+  Math.abs(geo.snapNormal(blobAt, 6).x) < 1e-9 && Math.abs(geo.snapNormal(blobAt, 6).y - 1) < 1e-9);
+check('the nearest point of a blob is the one facing the way asked, whatever shape the blob is',
+  geo.nearestSnapIndex(blobAt, 0, 500) === 6 && geo.nearestSnapIndex(blobAt, -500, 0) === 12
+  && geo.nearestSnapIndex(blobAt, 300, -300) === 21);
+const ovalAt = { x: 900, y: 0, rx: 130, ry: 84 };
+const pair = geo.closestSnapPair(blobAt, blobAt, ovalAt, ovalAt);
+check('a line between a blob and an oval hangs off the points that face each other',
+  blobSnaps[pair.fromPoint].x > 0 && pair.toPoint >= 10 && pair.toPoint <= 14, JSON.stringify(pair));
+
+// --- a lobe resized ---
+const plainLobe = geo.lobeSizeFor({ title: 'Invoicing' });
+const wideLobe = geo.lobeSizeFor({ title: 'Invoicing', lobeScale: 3 });
+const thinLobe = geo.lobeSizeFor({ title: 'Invoicing', lobeScale: 0.25 });
+const bareOval = geo.capabilitySize({ title: 'Invoicing' });
+check('a lobe is its capability and a ring round it', plainLobe.rx > bareOval.rx && plainLobe.ry > bareOval.ry);
+check('a larger lobe scale is a wider ring, the capability the size it was',
+  wideLobe.rx - bareOval.rx === 3 * (plainLobe.rx - bareOval.rx)
+  && geo.capabilitySize({ title: 'Invoicing', lobeScale: 3 }).rx === bareOval.rx);
+check('the ring never goes to nothing: the capability is always inside its lobe',
+  thinLobe.rx > bareOval.rx && geo.lobeSizeFor({ title: 'Invoicing', lobeScale: 0 }).rx === plainLobe.rx
+  && geo.lobeSizeFor({ title: 'Invoicing', lobeScale: 0.001 }).rx === thinLobe.rx);
+check('nor past what a lobe may be',
+  geo.lobeSizeFor({ title: 'Invoicing', lobeScale: 500 }).rx === geo.lobeSizeFor({ title: 'Invoicing', lobeScale: geo.MAX_LOBE_SCALE }).rx);
+for (const [dx, dy] of [[260, 0], [0, 180], [-170, 120], [140, -150]]) {
+  const scale = geo.lobeScaleThrough({ title: 'Invoicing' }, dx, dy);
+  const lobe = geo.lobeSizeFor({ title: 'Invoicing', lobeScale: scale });
+  check(`dragging the boundary to ${dx},${dy} gives the ring whose edge passes through there`,
+    Math.abs(Math.hypot(dx / lobe.rx, dy / lobe.ry) - 1) < 0.02, `scale ${scale}`);
+}
+check('dragged in past the capability, the ring is as thin as a ring gets',
+  geo.lobeScaleThrough({ title: 'Invoicing' }, 20, 10) === geo.MIN_LOBE_SCALE);
+check('and dragged out past all reason, as wide',
+  geo.lobeScaleThrough({ title: 'Invoicing' }, 9000, 0) === geo.MAX_LOBE_SCALE);
+const roomy = geo.layoutDomain(snapDomain, snapChildren.map((one) => ({ ...one, lobeScale: 3 })));
+check('a domain whose lobes are widened is a larger blob round the same capabilities',
+  roomy.bounds.maxX - roomy.bounds.minX > blob.bounds.maxX - blob.bounds.minX + 100
+  && roomy.slots.every((slot, at) => slot.x === blob.slots[at].x && slot.rx === blob.slots[at].rx));
+
+// --- going round what is in the way ---
+const square = (cx, cy, half) => [
+  { x: cx - half, y: cy - half }, { x: cx + half, y: cy - half },
+  { x: cx + half, y: cy + half }, { x: cx - half, y: cy + half },
+];
+/** Whether the run of straight pieces through these points stays out of an outline. */
+const clearOf = (points, outline) => points.slice(0, -1).every((p, i) => {
+  const q = points[i + 1];
+  return Array.from({ length: 41 }, (_, step) => step / 40)
+    .every((t) => !geo.insideOutline(outline, p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t));
+});
+const here = { x: 0, y: 0 };
+const there = { x: 1000, y: 0 };
+check('a line with nothing in its way is left straight',
+  geo.routeAround(here, there, [square(500, 400, 100)]).length === 0
+  && geo.routeAround(here, there, []).length === 0);
+const inTheWay = square(500, 20, 100);
+const round = geo.routeAround(here, there, [inTheWay], { clearance: 40 });
+check('a line with a shape in its way is bent round it', round.length >= 1, JSON.stringify(round));
+check('and then runs clear of the shape', clearOf([here, ...round, there], inTheWay), JSON.stringify(round));
+check('it goes round the nearer side: the shape sits a little below the line, so the line goes above',
+  round.every((bend) => bend.y < -80), JSON.stringify(round));
+check('by the clearance asked for, and no more than it takes',
+  Math.min(...round.map((bend) => bend.y)) > -80 - 40 - 1, JSON.stringify(round));
+const twoInTheWay = [square(300, 10, 80), square(700, -10, 80)];
+const threaded = geo.routeAround(here, there, twoInTheWay, { clearance: 30 });
+check('two shapes in a row are both gone round',
+  threaded.length >= 2 && twoInTheWay.every((outline) => clearOf([here, ...threaded, there], outline)),
+  JSON.stringify(threaded));
+check('the bends come in the order the line meets them',
+  threaded.every((bend, i) => i === 0 || bend.x > threaded[i - 1].x), JSON.stringify(threaded));
+check('a shape too large to go round is not gone round: the line is left straight',
+  geo.routeAround(here, there, [square(500, 0, 900)]).length === 0);
+check('nor does a line ever become a maze: a few bends at most, however crowded the ground',
+  geo.routeAround(here, there, Array.from({ length: 12 }, (_, i) => square(80 + i * 75, (i % 2 ? 30 : -30), 30)), { clearance: 10 }).length <= 7);
+check('the same line is routed the same way every time',
+  JSON.stringify(geo.routeAround(here, there, [inTheWay], { clearance: 40 })) === JSON.stringify(round));
+}
 
 console.log(failures === 0 ? '\nAll geometry checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

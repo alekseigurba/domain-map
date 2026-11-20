@@ -451,6 +451,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 .tree__item--depth-1 { padding-left: 22px; }
 .tree__item--depth-2 { padding-left: 40px; }
+.tree__item--depth-3 { padding-left: 58px; }
 
 /* A line's row. Smaller than the shapes, and a short step inside the element
    it belongs to rather than a full level out — it is already under the thing
@@ -458,6 +459,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .tree__item--line { font-size: 12px; }
 .tree__item--line.tree__item--depth-1 { padding-left: 16px; }
 .tree__item--line.tree__item--depth-2 { padding-left: 30px; }
+.tree__item--line.tree__item--depth-3 { padding-left: 48px; }
 
 /* "to", not part of the name beside it. */
 .tree__lead {
@@ -470,11 +472,20 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   flex: none;
   width: 11px;
   height: 11px;
-  border: 1px solid rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--swatch-edge);
 }
 
 .tree__swatch--domain { border-radius: 58% 42% 46% 54% / 50% 56% 44% 50%; }
 .tree__swatch--capability { height: 8px; border-radius: 50%; }
+
+/* A feature, as the map draws it: a small bubble in its capability's colour.
+   The margin keeps its name in line with the names of the rows round it. */
+.tree__swatch--feature {
+  width: 7px;
+  height: 5px;
+  margin: 0 2px;
+  border-radius: 50%;
+}
 
 /* The two Presentation-layer shapes, as the map draws them: a rounded box and
    a ring. */
@@ -575,7 +586,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 /* Edit mode: what is actually being typed reads in full black, a stronger cue
    than the enabled border alone that this value is live. */
-.details .field__input:not(:disabled, .field__input--quiet) { color: var(--r-charcoal-600); }
+.details .field__input:not(:disabled, .field__input--quiet) { color: var(--ink-strong); }
 
 /* View mode: the text fields stay live — a caret goes in them, words are
    selected, copied and scrolled — but nothing typed is kept, so they hold the
@@ -655,8 +666,8 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 
 .field__input--bad {
-  border-color: var(--r-red-400);
-  outline-color: var(--r-red-400);
+  border-color: var(--error);
+  outline-color: var(--error);
 }
 
 /* Sized in details.js to whatever it holds, up to eight lines: a handle of its
@@ -872,7 +883,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 
 .assistant__hint:empty { display: none; }
-.assistant__hint[data-error="true"] { color: #8c2f18; }
+.assistant__hint[data-error="true"] { color: var(--error-ink); }
 
 .assistant__summary {
   margin: 0 0 var(--gap-2);
@@ -907,7 +918,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .assistant .skill[aria-pressed="true"] {
   background: var(--selection);
   border-color: var(--selection);
-  color: var(--ink-invert);
+  color: var(--selection-ink);
   font-weight: var(--fw-semibold);
 }
 
@@ -963,8 +974,8 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   font-variant-numeric: tabular-nums;
 }
 
-.exchange[data-state="failed"] { border-color: var(--r-red-400); }
-.exchange[data-state="failed"] .exchange__answer { color: #8c2f18; }
+.exchange[data-state="failed"] { border-color: var(--error); }
+.exchange[data-state="failed"] .exchange__answer { color: var(--error-ink); }
 
 /* What the model remembers and the page does not show. Small and soft: it is a
    fact to be aware of, not a thing to read each time. */
@@ -990,8 +1001,8 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   background: var(--paper);
 }
 
-.card[data-state="note"] { border-left-color: var(--r-charcoal-200); }
-.card[data-state="refused"] { border-left-color: var(--r-red-400); }
+.card[data-state="note"] { border-left-color: var(--line-quiet); }
+.card[data-state="refused"] { border-left-color: var(--error); }
 
 .card__title {
   margin: 0 0 var(--space-025);
@@ -1037,7 +1048,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--ink-soft);
 }
 
-.card__problem { color: #8c2f18; }
+.card__problem { color: var(--error-ink); }
 
 .card__about,
 .card__actions {
@@ -1075,7 +1086,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-m);
   background: var(--paper);
-  box-shadow: 0 2px 8px rgb(40 40 40 / 12%);
+  box-shadow: 0 2px 8px rgb(40 40 40 / calc(12% * var(--shadow-weight)));
 }
 
 /* --- the palette editor ---------------------------------------------------- */
@@ -1101,7 +1112,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   border-radius: var(--radius-l);
   background: var(--paper);
   color: var(--ink);
-  box-shadow: 0 16px 48px rgb(0 0 0 / 24%);
+  box-shadow: 0 16px 48px rgb(0 0 0 / calc(24% * var(--shadow-weight)));
 }
 
 .dialog[open] {
@@ -1109,7 +1120,9 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   flex-direction: column;
 }
 
-.dialog::backdrop { background: rgb(20 20 20 / 8%); }
+/* Said with a fallback: a browser from before `::backdrop` inherited from its
+   dialog finds no --scrim there, and would otherwise draw no scrim at all. */
+.dialog::backdrop { background: var(--scrim, rgb(20 20 20 / 8%)); }
 
 /* About is the same modal, pinned instead to the top right corner under the
    button that opens it, and wider: it holds a few paragraphs of prose rather
@@ -1187,6 +1200,32 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--ink-invert);
 }
 
+/* Light or dark: a label and three chips on one row, the chips sharing what
+   the label leaves, as the palette's sizes do. The one in force is filled in
+   with the selection for the same reason theirs is — among identical chips a
+   border alone does not say which you are on. */
+.profile__theme {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-3);
+}
+
+.profile__label { color: var(--ink-soft); }
+
+.profile__choices {
+  display: flex;
+  flex: 1;
+  gap: var(--gap-1);
+}
+
+.theme-choice { flex: 1 1 0; }
+
+.theme-choice[aria-pressed="true"] {
+  background: var(--selection);
+  border-color: var(--selection);
+  color: var(--selection-ink);
+}
+
 /* Close keeps the right-hand end whether or not Sign out is there. */
 .dialog--profile .dialog__foot > :last-child { margin-left: auto; }
 
@@ -1207,7 +1246,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--ink-soft);
 }
 
-.versions__note[data-error="true"] { color: #8c2f18; }
+.versions__note[data-error="true"] { color: var(--error-ink); }
 
 /* The two lists, My sandbox and Shared, each under a small heading in the
    dialog title's own style, so the dialog reads as one thing with two parts. */
@@ -1422,7 +1461,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-l);
   background: var(--paper);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / calc(12% * var(--shadow-weight)));
 }
 
 .notice[hidden] { display: none; }
@@ -1551,6 +1590,17 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   white-space: nowrap;
 }
 
+/* Why the swatches here and the shapes behind them are not the same colours:
+   said only where they are not. This is the one rule outside tokens.css that
+   names the theme, and it does so because the sentence is only true in one. */
+.palette-editor__note {
+  display: none;
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .palette-editor__note { display: block; }
+
 .palette-editor__sizes {
   display: flex;
   gap: var(--gap-1);
@@ -1564,7 +1614,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .palette-size--on {
   background: var(--selection);
   border-color: var(--selection);
-  color: var(--ink-invert);
+  color: var(--selection-ink);
   font-weight: var(--fw-semibold);
 }
 
@@ -1710,6 +1760,15 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
      the other on a narrow screen — they only have to clear the header. */
   .add-shapes { top: var(--gap-2); left: var(--gap-2); }
 
+  /* The marker tray has the same corner, and its controls step up to a size a
+     finger lands on: here it is pressed by the bluntest pointer there is. */
+  .tray {
+    --chip-h: 32px;
+    top: var(--gap-2);
+    left: var(--gap-2);
+    max-width: calc(100% - 2 * var(--gap-2));
+  }
+
   /* The sheet is a row of the layout rather than something floating over it, so
      the map keeps a stage of its own to be fitted to and the zoom stack never
      ends up underneath it. The row snaps between its two heights, as the panels
@@ -1732,7 +1791,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
     border-left: none;
     border-top: 1px solid var(--line);
     border-radius: var(--radius-l) var(--radius-l) 0 0;
-    box-shadow: 0 -2px 12px rgb(0 0 0 / 10%);
+    box-shadow: 0 -2px 12px rgb(0 0 0 / calc(10% * var(--shadow-weight)));
   }
 
   /* The bar is the switch here, so the foot's toggle stands down. */

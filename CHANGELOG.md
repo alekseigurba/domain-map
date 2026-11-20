@@ -7,8 +7,125 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+Features inside a capability, lines between domains, capabilities and features
+in any combination, a level for how much of the lines is drawn, and a deep zoom
+that opens a capability onto what it holds; a marker to draw flows on the map
+with; and a dark theme. No migration; map files move to version 5. Full notes:
+[docs/releases/2.6.0.md](docs/releases/2.6.0.md).
+
+### Added
+
+- **Features, inside a capability.** A capability can hold features: what it
+  does, named one by one, each with a description, an owner and a Type as every
+  shape has. *Add a feature*, on the Domains layer, puts one into the
+  capability that is selected; the menu lists them under their capability and
+  the details panel as chips. A feature has no size or colour of its own — it
+  is drawn inside its capability's oval, in rows, in the order the capability
+  holds it — and in Edit mode it is dragged like a capability is: about its
+  oval, onto another feature to trade places, or into another capability.
+  `[` and `]` move it along the list, and *Put back in its row* undoes a place
+  given by hand.
+- **Lines between domains, capabilities and features, in any combination.** A
+  connector may end on a domain or a feature as well as on a capability, so one
+  part of a map can be drawn down to its features while another is left as a
+  domain that talks to a domain. Point at any of the three in Edit mode and its
+  connection points appear — round a domain's blob, round a feature's bubble —
+  and a line is drawn between them as it always was. The one line refused is
+  from a shape to the one that holds it, which says nothing.
+- **A level for the lines.** A slider over the zoom buttons says how much of
+  the lines is spelt out: **F**, where every line really ends; **C**, where a
+  line to a feature leaves from its capability; **D**, where every line leaves
+  from a domain and the lines between two domains are one, heavier the more it
+  stands for, each domain keeping its two strongest. Pick a domain there and
+  every line it has is drawn; pick a capability and its own lines leave from
+  it. The map opens at F, and the level is the same browsing and editing, so
+  what is on the stage does not change when Edit is left. It is your tab's,
+  like a layer hidden while browsing.
+- **A domain's lobes are resized by its boundary.** In Edit mode the boundary
+  of a selected domain is a handle: drag it out and the lobe behind that
+  stretch grows, drag it in and it shrinks, the capability staying the size it
+  is. A roomier domain is one a capability can be moved about in without
+  slipping out of it. *Reset shapes* puts every lobe back.
+- **Deep zoom.** The map says more the closer you look, and nothing on it moves
+  as you do. Zoom in on a capability and it opens onto its features, its own
+  name moved up into the crown of the oval; pull back and it shuts, wearing a
+  row of pips along its foot for what it holds, and a line that ended on one of
+  its features leaves from the capability instead. Three features open sooner
+  than thirty, and a map whose features are set small zooms in past where it
+  used to stop. Double-click a domain or a capability to glide in to it; Fit to
+  screen glides back out.
+- **Draw**, in the header, puts a marker in your hand and locks the map under
+  it, so a flow can be traced across the terrain — which teams a payment passes
+  through, where an order waits — without anything on the map being picked up
+  or moved. A tray on the stage holds five markers, an eraser that takes a
+  whole stroke, undo and clear. What you draw stays where it was drawn as the
+  map is panned and zoomed, and it is yours alone: it is in no version, nobody
+  else sees it, and anyone can draw, a viewer included. It survives a refresh
+  and goes with the tab, or when another version is opened in its place. Hold
+  Space, or use two fingers, to move the map with the marker in hand. Draw
+  stands down while Edit is on.
+- **Export SVG carries the drawing.** A picture exported with a flow drawn on
+  the map has the flow in it, over the map, in the colours it was drawn in.
+- **Pages and routes of your own.** A repo built on the package can put a page
+  beside the map — `pipelines.html` and its scripts in the brand directory — and
+  answer requests of its own with `routes` on `createDomainMapServer`. Both sit
+  behind the same sign-in as the map, and a route is told who is asking and what
+  their role lets them do, so the people who work on the map can work on the new
+  page without a second list of who may. BRANDING.md has the contract.
+- **`domain-map/auth` and `domain-map/roles`** can be imported by name, for a
+  server that wants the package's sign-in and roles without the rest of it.
+- **The pan and zoom maths as a module of its own**, `app/js/viewport.js`, with
+  a zoom to fit any box of the world as well as the whole map. A page of your
+  own imports it from `/js/viewport.js` and pans and zooms the way the map does,
+  the glide between two views included. Fit to screen, the wheel and the pinch
+  land exactly where they did.
+- **A dark theme.** The page is dark when the device is and light when it is
+  not, until you say otherwise: **Theme**, under the avatar, offers System,
+  Light and Dark. The choice is the browser's own, like which panels are
+  folded, and the sign-in screen follows it. Everything turns — the chrome, the
+  dialogs, the Assistant, the paper the map is drawn on — and the page opens in
+  its theme rather than flashing white first.
+- **The map's colours on dark paper.** A map still has one palette. On a dark
+  map each swatch is drawn as its dark counterpart, the same colour in less
+  light, so the pale end of a palette stops being the brightest thing on the
+  screen and a capability's title is still black on its oval. Nothing is kept
+  for it: the counterpart is worked out from the swatch, so a map with a
+  palette of its own and a brand that recoloured the stock one are dark without
+  a change to either. **Edit palette** goes on editing the colours as the light
+  theme draws them, and says so while the page is dark. A shape made
+  see-through shows the dark paper through it, and there its title turns white.
+- **Export SVG draws the theme on screen.** From the dark theme the picture is
+  the dark map on its dark paper; switch to Light first for one to print.
+- **A brand in the dark.** A brand written before there was a dark theme comes
+  out dark all the same, with its own colour where the brand colour goes.
+  BRANDING.md says how one restates its tokens for it, and how a page of your
+  own wears the theme.
+
 ### Changed
 
+- **A line goes round what is in its way.** A curved line nobody has shaped,
+  and every line drawn at a coarser level, is bent round a domain or a loose
+  capability that lies between its ends rather than drawn across it. It is a
+  leaning and not a law: a shape too large to go round, or a gap too narrow to
+  thread, and the line goes straight. A line you have bent yourself keeps its
+  bends, and a straight one stays straight.
+- **A line keeps a width you can see.** A line's weight is in map units, so
+  from the helicopter view it thinned to a hair. It is now never drawn under
+  about two pixels on screen, nor over fourteen zoomed far in. The band round
+  a line that takes the pointer is held to a width on screen as well, twice as
+  wide under a finger, so a line can be picked on a phone from any zoom.
+- **Browsing, a drag pans from wherever it starts.** Outside Edit mode nothing
+  on the map can be moved, so a drag that starts on a domain or a capability
+  now moves the map, as one on open ground does; a click still picks the
+  shape. In Edit mode a drag on a shape moves the shape, as it did.
+- **Export SVG draws what the stage draws**, as it always has — which now
+  means the lines at the level the slider is on, and a capability's features
+  when it is open.
+- **Map files are version 5**: a capability's features are written under it, a
+  line at the top of the file says when an end is a domain or a feature, and a
+  capability may carry the size of its lobe. Versions 1 to 4 still read, as a
+  map whose capabilities hold nothing, and a deployment from before this
+  refuses a version 5 file.
 - **A repo from `create-domain-map-app` names its Docker stack after itself.**
   Its `docker-compose.yml` sets the project name and both container names from
   the repo's name — `acme-domain-map` and `acme-domain-map-postgres` — where
@@ -18,6 +135,13 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
   either stopped both. A repo made before this carries its own copy of the
   file: add `name:` at the top and a `container_name:` to each service to get
   the same.
+
+### Fixed
+
+- **A refresh no longer drops the areas from unsaved changes.** The tab keeps
+  unsaved work across a refresh, and what it kept left out the areas: the map
+  came back with every shape out of its team, and saving it then wrote the
+  areas out of the file for good. They are kept now, with everything else.
 
 ## 2.5.1 — 2026-09-22
 

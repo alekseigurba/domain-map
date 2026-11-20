@@ -1,6 +1,11 @@
 /* Design system: the raw tokens, with a semantic layer on top naming what each
    one does here. The prose version lives in design-system.md at the repo root — keep the two in
-   step. */
+   step.
+
+   There are two themes, and the semantic layer is where they part: the raw
+   scales are the same in both, and the dark theme is the block further down
+   that says again what each semantic token is. A colour that is written
+   anywhere but in this file is a colour the dark theme cannot reach. */
 
 :root {
   /* --- raw colours --------------------------------------------------------- */
@@ -31,6 +36,17 @@
   --r-charcoal-400: #282828;
   --r-charcoal-500: #141414;
   --r-charcoal-600: #000000;
+
+  /* what sage and charcoal are to the light theme, for the dark one: the
+     chrome's surfaces and lines from 700 up to 300, tinted toward the brand
+     green as sage is, and the two inks that are read on them */
+  --r-night-100: #e7eae4;
+  --r-night-200: #a0a69c;
+  --r-night-300: #4b5247;
+  --r-night-400: #333831;
+  --r-night-500: #2a2e28;
+  --r-night-600: #1c1f1b;
+  --r-night-700: #141613;
 
   --r-neutral-white: #ffffff;
   --r-azure-400: #014bb3;
@@ -90,17 +106,32 @@
   --icon-l: 32px;
 
   /* --- what they mean here -------------------------------------------------- */
+  /* Native controls, scroll bars and the browser's own dialogs are drawn by
+     the browser, and this is how it is told which theme to draw them in. */
+  color-scheme: light;
+
   --ink: var(--r-charcoal-400);
   --ink-soft: var(--r-charcoal-300);
-  --ink-invert: var(--r-neutral-white);
+  --ink-strong: var(--r-charcoal-600); /* what is being typed into a field */
+  --ink-invert: var(--r-neutral-white); /* on a control filled with the brand colour or the orange */
   --paper: var(--r-neutral-white);   /* the stage — the lightest surface */
   --chrome: var(--r-sage-200);       /* header, footer, sidebars — a shade darker */
   --chrome-hover: var(--r-sage-400);
   --line: var(--r-sage-500);
   --line-strong: var(--r-sage-600);
+  --line-quiet: var(--r-charcoal-200); /* an edge that says "only a note" */
   --selection: var(--r-focused-400);
+  --selection-ink: var(--r-neutral-white); /* on a control filled with the selection */
   --selected-row: var(--r-brand-200); /* a step past the hover, which is sage too */
   --danger: var(--r-red-100);
+  --error: var(--r-red-400);         /* a border or an edge on what went wrong */
+  --error-ink: #8c2f18;              /* the sentence that says what did */
+  --swatch-edge: rgb(0 0 0 / 25%);   /* round a swatch, so a pale one still has an outline */
+  --scrim: rgb(20 20 20 / 8%);       /* over the page behind a dialog */
+  /* A shadow is cast in black whatever the theme, and what changes is how much
+     of it is needed: next to nothing shows against a page that is already
+     dark, so the dark theme lays it on three times as thick. */
+  --shadow-weight: 1;
 
   /* Chrome runs on the text face at the two smallest steps. */
   --fs-xs: var(--fs-200);
@@ -166,6 +197,36 @@
      heavier than either of them, so it is unmistakable among the lines it
      crosses. */
   --connector-selected-width: 11px;
+  /* The widths above are in map units, so they scale with the zoom. These hold
+     what is drawn between two widths on screen: zoomed out, a line never thins
+     past the first — a picked one past its own, so it still reads as picked —
+     and zoomed far in it never swells past the second. */
+  --connector-least: 2.25px;
+  --connector-selected-least: 4.5px;
+  --connector-most: 14px;
+  /* How near a line the pointer has to come to take it, on screen: wider under
+     a finger, which is not as fine as a cursor. */
+  --connector-reach: 20px;
+  --connector-reach-touch: 40px;
+  /* How much white a feature's bubble lays over its capability: enough that it
+     reads as a thing in the oval, not so much that the oval's colour is lost
+     under it. */
+  --feature-fill-opacity: 0.62;
+  /* The markers Draw mode draws with. A flow traced over the map has to read
+     against every fill in the palette and against the greys the lines are drawn
+     in, so these are the saturated ends of the raw scales, where the palette is
+     pale; and ink, the black every whiteboard has, for a word written beside a
+     route. A stroke names its marker rather than carrying a colour, so
+     restating one of these recolours what has already been drawn. */
+  --marker-red: var(--r-red-400);
+  --marker-orange: var(--r-orange-400);
+  --marker-green: var(--r-green-400);
+  --marker-blue: var(--r-azure-400);
+  --marker-ink: var(--r-charcoal-400);
+  /* How wide a marker is on screen as a stroke is made, at any zoom. The stroke
+     keeps that width in the map's own units, and from then on thins and
+     thickens with the terrain it was drawn on. */
+  --marker-width: 6px;
   --snap-r: 3.2px;
   /* Domain opacity is per domain, set on the shape itself — not a token. */
 
@@ -184,6 +245,75 @@
      card's reasoning are sentences, and the width the fields live in sets them
      five words to the line. Capped, for the same small laptop. */
   --assistant-w: min(420px, 40vw);
+}
+
+/* --- the dark theme ------------------------------------------------------------ */
+
+/* The same tokens, said again. Everything the page draws itself with is one of
+   them, so this block is the whole of the dark theme: nothing in layout.css,
+   diagram.css or login.css knows there are two.
+
+   `data-theme` is on the root before the first paint: js/theme-first.js puts
+   it there from what this browser chose, or from what the system prefers when
+   it has not chosen. One selector, then, rather than this block written twice —
+   once here and once under a media query — which without a build step is two
+   lists to keep in step, and two a brand would have to restate.
+
+   The attribute selector also outranks a plain `:root`. A brand.css written
+   before there was a dark theme says what its light tokens are and nothing
+   else, and loads last; were this block no stronger than that, its light paper
+   would win here too and the page would come out half of each. A brand that
+   wants a say in the dark theme says it under this same selector.
+
+   What is not here is the map's palette. --c1 … --c24 are a map's colours, not
+   the chrome's: they are copied into a map file when its palette is edited, so
+   they mean the same thing whatever the theme. How a swatch is drawn on dark
+   paper is worked out from the swatch itself — `darkCounterpart` in
+   geometry.js — unless the stylesheet names it, as --c1-dark … --c24-dark. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: var(--r-night-100);
+  --ink-soft: var(--r-night-200);
+  --ink-strong: var(--r-neutral-white);
+  /* --ink-invert stays white: the fills it is read on — the brand colour, the
+     orange of unsaved work — are the same fills in both themes. */
+  --paper: var(--r-night-700);       /* the stage — here the darkest surface */
+  --chrome: var(--r-night-600);      /* header, footer, sidebars — a shade lighter */
+  --chrome-hover: var(--r-night-500);
+  --line: var(--r-night-400);
+  --line-strong: var(--r-night-300);
+  --line-quiet: var(--r-charcoal-300);
+  /* The light theme's blue is as bright as a blue can be and still carry white
+     type. Against dark paper it is a dull line, so the selection steps up to a
+     blue that reads there, and what is written on it turns dark instead. */
+  --selection: #4a9bff;
+  --selection-ink: var(--r-night-700);
+  /* Mixed from the brand colour rather than named: the light theme's row is
+     brand-200, a tint a brand restates by hand, and this way a brand that has
+     never heard of the dark theme still gets a selected row in its own colour. */
+  --selected-row: color-mix(in srgb, var(--r-brand-400) 38%, var(--r-night-600));
+  --danger: #3a1c1c;
+  --error: #f1857c;
+  --error-ink: #f3a092;
+  --swatch-edge: rgb(255 255 255 / 30%);
+  --scrim: rgb(0 0 0 / 30%);
+  --shadow-weight: 3;
+
+  /* A capability's rim was a darker edge on a light map; here it is the same
+     edge, a shade darker than the fill it runs round. Lightened instead, it
+     glows, and every shape on the map looks switched on. */
+  --capability-border: rgba(0, 0, 0, 0.3);
+  /* The lines swap ends of the scale and keep their meaning: a public line is
+     still the one that stands out from the paper, now by being light, and an
+     internal one still sinks towards it. */
+  --connector-public: #b4b8b1;
+  --connector-internal: #71766e;
+  --connector-presentation: #57b5c5;
+  /* The marker every whiteboard has is the one the page's own type is written
+     in: black on light paper, and here the light ink, or a word written beside
+     a route would be dark on dark. The four colours read on either paper. */
+  --marker-ink: var(--r-night-100);
 }
 
 * { box-sizing: border-box; }

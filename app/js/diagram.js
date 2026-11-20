@@ -4,16 +4,16 @@
 import {
   store, select, childrenOf, stackingOrder, stackedList, patchLocal, find, connectorScope,
   connectorEnds, oneLine, layerStack, layerOf, layerForKind, connectorLayer, isHidden,
-  membersOf, areaOf, mayJoinArea,
+  membersOf, areaOf, mayJoinArea, holderOf, chainOf,
 } from './store.js';
 import * as geo from './geometry.js';
 import { iconArt } from './icon-art.js';
+import * as vp from './viewport.js';
+import * as zoom from './zoom.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SNAP_RADIUS = 3.6;
 const SNAP_HIT_RADIUS = 11;
-const MIN_ZOOM = 0.05;
-const MAX_ZOOM = 4;
 const CLICK_SLOP = 4;  // screen px that still counts as a click, not a drag
 /**
  * A press pair close enough in time and place to be one double-click. Counted
@@ -54,7 +54,7 @@ const zOrder = {
 };
 
 let actions = {};
-let view = { k: 1, x: 0, y: 0 };
+let view = { ...vp.IDENTITY };
 /** View mode by default: shapes can be picked and inspected, not moved. */
 let editMode = false;
 let drag = null;
@@ -74,6 +74,35 @@ let areaViews = [];
 const pointers = new Map();
 let pinch = null;
 
+// What this zoom shows of the map. Worked out afresh in every render from where
+// the view is — zoom.js makes the decisions — and none of it is the map's: it
+// is what the map looks like from here.
+
+/**
+ * The level the lines are drawn at: domains, capabilities or features. Chosen
+ * by whoever is looking, with the control over the zoom buttons, and the same
+ * browsing or editing — what was on the stage a moment ago is what is on it
+ * after Save. It is this tab's, like a layer hidden while browsing: no part of
+ * the map, and back at the finest level the next time the page is opened.
+ */
+let lineLevel = zoom.DEFAULT_LEVEL;
+/** The lines as this level draws them: the ids of those drawn as they are, and the folded ones. */
+let shownLines = { drawn: new Set(), folded: [] };
+/** What a line is kept off where it can be: every domain's outline, and every loose capability's, by id. */
+let outlines = new Map();
+/** How far clear of a shape a line is bent round it, in map units: about half the ground between two domains. */
+const ROUTE_CLEARANCE = 36;
+/** How each capability that holds features lays them out, kept until its oval or their names change. */
+const featureLayouts = new Map();
+/** The capabilities open onto their features at this zoom. */
+let openCapabilities = new Set();
+/** How far this map zooms: past the usual limit, where its features are set small. */
+let zoomLimits = { ...vp.ZOOM_LIMITS };
+let hoveredFoldKey = null; // the folded line under the cursor, which names itself as a real one does
+let gliding = 0;           // the frame a glide is waiting on, while one is under way
+/** How long a glide takes, however far it goes. */
+const GLIDE_MS = 450;
+
 // --- element helpers -------------------------------------------------------
 
 function el(tag, attrs = {}, children = []) {
@@ -89,13 +118,28 @@ const colorOf = (index) => geo.COLORS[(index || 1) - 1] ?? geo.COLORS[0];
 /** The one ink a capability's title is ever drawn in. Its icon keeps its own colours. */
 const CAPABILITY_INK = '#000';
 /**
+ * That ink, for a shape of this fill and this solid. On the light map it is
+ * black whatever they are. On the dark one it is black too wherever black
+ * reads, which is every swatch drawn solid — and white on a shape see-through
+ * enough for the dark paper to show, where black would be type nobody can read.
+ */
+const labelInk = (fill, opacity) => (geo.isDarkMap() ? geo.darkMapInk(fill, opacity, paper) : CAPABILITY_INK);
+/**
  * The silhouette an actor wears is drawn on a 24-unit grid and fills only the
  * middle of it. This is the square its ink covers, stroke included: the figure
  * is drawn cropped to it, so the size the geometry hands over is the size of
  * what is seen, and the air round the figure is air the layout chose.
  */
 const FIGURE_INK = { x: 3.5, y: 4.75, size: 17 };
-const paper = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fffdfa';
+const paperNow = () => getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fffdfa';
+/** What the stage is the colour of. A title on a see-through shape is inked for it, so a change of theme re-reads it. */
+let paper = paperNow();
+
+/** The theme has changed: the paper is another colour, and so is every ink that was chosen against it. */
+export function retheme() {
+  paper = paperNow();
+  render();
+}
 /** How solid a shape is drawn, as a share. Every kind carries one now. */
 const opacityOf = (record, fallback = geo.DEFAULT_OPACITY) =>
   (record.opacity ?? fallback) / 100;
@@ -107,10 +151,12 @@ export function initDiagram(handlers) {
   svg.addEventListener('pointerup', onPointerUp);
   svg.addEventListener('pointercancel', onPointerUp);
   svg.addEventListener('pointerleave', () => {
-    if (hoveredDomainId === null && hoveredConnectorId === null && hoveredAreaId === null) return;
+    if (hoveredDomainId === null && hoveredConnectorId === null && hoveredAreaId === null
+      && hoveredFoldKey === null) return;
     hoveredDomainId = null;
     hoveredConnectorId = null;
     hoveredAreaId = null;
+    hoveredFoldKey = null;
     render();
   });
   svg.addEventListener('wheel', onWheel, { passive: false });
@@ -256,6 +302,116 @@ function layoutAreas(views, map) {
   });
 }
 
+/** The middle of a place a line may end on: every shape a line reaches is in `positions`. */
+const middleOf = (place) => positions.get(place.id) ?? null;
+
+/**
+ * The outlines a line between two shapes is kept off: every one but the two
+ * themselves and whatever holds them, which it has to cross to get out.
+ */
+function inTheWayOf(...ends) {
+  const own = new Set(ends.flatMap((end) => chainOf(end.kind, end.id).map((one) => one.id)));
+  return [...outlines].filter(([id]) => !own.has(id)).map(([, outline]) => outline);
+}
+
+/** Where a feature in hand is drawn: wherever the pointer has it, measured from its capability's middle. */
+const heldFeature = (id) => (drag?.kind === 'feature' && drag.id === id && drag.moved ? drag : null);
+
+/**
+ * What the stage shows of the map as it has just been laid out: which
+ * capabilities are open onto their features, where a line may end besides a
+ * capability, how the lines are drawn at the level chosen, and how far in the
+ * view may go. Read off the layout, so it is right for the shapes as they
+ * stand this frame.
+ */
+function readZoom(views) {
+  const held = new Map();
+  for (const feature of store.features) {
+    if (!held.has(feature.capabilityId)) held.set(feature.capabilityId, []);
+    held.get(feature.capabilityId).push(feature);
+  }
+  const sizes = [];
+  const open = new Set();
+  for (const capability of store.capabilities) {
+    const features = held.get(capability.id);
+    if (!features) continue;
+    features.sort((a, b) => a.sortIndex - b.sortIndex || a.id.localeCompare(b.id));
+
+    // Laid out again only when the oval or a name has changed: the layout
+    // tries a type size for every name, and a zoom renders every frame.
+    const size = geo.capabilitySize(capability);
+    const key = [size.rx, size.ry, capability.title,
+      ...features.map((one) => `${one.id}:${one.title}:${one.x},${one.y}`)].join('\u0001');
+    if (featureLayouts.get(capability.id)?.key !== key) {
+      featureLayouts.set(capability.id, { key, laid: geo.layoutFeatures(size, features, capability.title) });
+    }
+    const { laid } = featureLayouts.get(capability.id);
+    if (!laid) continue;
+    sizes.push(laid.fontSize);
+    if (zoom.opensAt(laid.fontSize, view.k)) open.add(capability.id);
+  }
+  for (const id of [...featureLayouts.keys()]) if (!held.has(id)) featureLayouts.delete(id);
+  openCapabilities = open;
+  zoomLimits = zoom.limitsFor(sizes, vp.ZOOM_LIMITS);
+
+  // Where a line may end besides a capability. A domain is its blob, set out
+  // from the middle of its body: the points a line hangs off are found round
+  // the outline, which is no oval. A feature is its bubble, and is there to
+  // end a line on only while its capability is open.
+  outlines = new Map();
+  for (const { domain, layout } of views) {
+    const { body, bounds } = layout;
+    positions.set(domain.id, {
+      x: domain.x + body.x,
+      y: domain.y + body.y,
+      rx: (bounds.maxX - bounds.minX) / 2,
+      ry: (bounds.maxY - bounds.minY) / 2,
+      shape: 'blob',
+      outline: layout.outline.map((p) => ({ x: p.x - body.x, y: p.y - body.y })),
+    });
+    outlines.set(domain.id, layout.outline.map((p) => ({ x: domain.x + p.x, y: domain.y + p.y })));
+  }
+  for (const capability of store.capabilities) {
+    const at = positions.get(capability.id);
+    if (!at) continue;
+    if (!find('domain', capability.domainId)) outlines.set(capability.id, ovalRim(at, 24));
+    if (!open.has(capability.id)) continue;
+    for (const bubble of featureLayouts.get(capability.id).laid.bubbles) {
+      const inHand = heldFeature(bubble.item.id);
+      positions.set(bubble.item.id, {
+        x: at.x + (inHand?.x ?? bubble.x),
+        y: at.y + (inHand?.y ?? bubble.y),
+        rx: bubble.rx,
+        ry: bubble.ry,
+      });
+    }
+  }
+
+  const lines = zoom.foldLines(store.connectors, {
+    level: lineLevel,
+    holderOf,
+    // Everything is on the stage to end a line on but a feature of a shut capability.
+    drawn: (kind, id) => kind !== 'feature' || positions.has(id),
+    selection: store.selection,
+    lengthOf: (line) => {
+      const a = middleOf(line.from);
+      const b = middleOf(line.to);
+      return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+    },
+  });
+  shownLines = { drawn: new Set(lines.drawn.map((one) => one.id)), folded: lines.folded };
+}
+
+/** The level the lines are drawn at. */
+export const currentLineLevel = () => lineLevel;
+
+/** Draw the lines at another level: one of zoom.LEVELS. */
+export function setLineLevel(level) {
+  if (!zoom.LEVELS.includes(level) || level === lineLevel) return;
+  lineLevel = level;
+  render();
+}
+
 /** Where an element sits and how big it is — the layout, resolved. */
 export function capabilityPosition(id) {
   return positions.get(id) ?? null;
@@ -283,6 +439,8 @@ export function resolvedPoints(connector) {
  */
 function renderView() {
   viewport.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.k})`);
+  // The stylesheet holds a line to a width on screen, and needs the zoom to do it.
+  svg.style.setProperty('--k', view.k);
 }
 
 let pendingFrame = 0;
@@ -306,6 +464,7 @@ export function render() {
   positions = map;
   domainViews = views;
   areaViews = areas;
+  readZoom(views);
 
   renderView();
 
@@ -346,18 +505,41 @@ function renderLayer(layer, views) {
     el('g', { class: 'stack stack--domains' }, has('domain') ? views.map(renderDomain) : []),
     // Paint order is the stack, so a shape sent to the back lands at the back.
     el('g', { class: 'stack stack--capabilities' },
-      has('capability') ? stackingOrder().map(renderCapability) : []),
+      has('capability') ? paintOrder().map(renderCapability) : []),
     el('g', { class: 'stack stack--touchpoints' },
       has('touchpoint') ? stackedList('touchpoint').map(renderTouchpoint) : []),
     el('g', { class: 'stack stack--actors' },
       has('actor') ? stackedList('actor').map(renderActor) : []),
-    el('g', { class: 'stack stack--connectors' },
-      store.connectors
-        .filter((connector) => connectorLayer(connector) === layer.key)
+    el('g', { class: 'stack stack--connectors' }, [
+      // A folded line stands for lines between capabilities, so it is drawn
+      // where theirs are, and under them: a line picked out of a fold is drawn
+      // for real, and has to show over the fold it came from.
+      ...(has('capability') ? shownLines.folded.map(renderFold).filter(Boolean) : []),
+      ...store.connectors
+        .filter((connector) => connectorLayer(connector) === layer.key
+          && shownLines.drawn.has(connector.id))
         .map(renderConnector)
-        .filter(Boolean)),
+        .filter(Boolean),
+    ]),
+    el('g', { class: 'stack stack--features' }, has('capability') ? renderFeatures() : []),
   );
   return group;
+}
+
+/**
+ * The capabilities in the order they are painted: the stack, with one
+ * exception. A capability that is open and picked — itself, or a feature in it
+ * — is painted last. Capabilities overlap, a platform in the middle of a domain
+ * most of all, and one that has been opened to be read is no use with its
+ * neighbours lying across what it holds. Nothing is restacked: let go of it
+ * and it is back where the map has it.
+ */
+function paintOrder() {
+  const order = stackingOrder();
+  const { type, id } = store.selection;
+  const picked = type === 'feature' ? find('feature', id)?.capabilityId : type === 'capability' ? id : null;
+  if (!picked || !openCapabilities.has(picked)) return order;
+  return [...order.filter((one) => one.id !== picked), ...order.filter((one) => one.id === picked)];
 }
 
 /**
@@ -450,6 +632,28 @@ function renderDomain({ domain, layout }) {
   // While renaming, the editor shows the text — drawing it too would double it.
   if (!isRenaming(domain.id)) {
     group.appendChild(textNode('domain__title', layout.title, layout.title.x, layout.title.y, ink));
+  }
+
+  if (editMode) {
+    // The boundary of a picked domain is a handle: drag it out or in and the
+    // lobe behind that stretch of it grows or shrinks. Only once picked, so a
+    // domain is not resized by a press that was meant to move it.
+    if (selected && layout.lobes.length > 0) {
+      group.appendChild(el('path', {
+        class: 'domain__edge',
+        'data-type': 'domain-edge',
+        'data-id': domain.id,
+        d: layout.path,
+      }));
+    }
+    // The points a line may be hung off, round the blob. They are set out
+    // from the middle of the body, which is not the domain's own point.
+    const at = positions.get(domain.id);
+    const snaps = at ? renderSnaps(domain.id, 'domain', at) : null;
+    if (snaps) {
+      snaps.setAttribute('transform', `translate(${layout.body.x} ${layout.body.y})`);
+      group.appendChild(snaps);
+    }
   }
 
   return group;
@@ -558,7 +762,9 @@ function renderTitleWidth({ domain, layout }) {
 function renderConnectorEnds() {
   if (!editMode || store.selection.type !== 'connector') return [];
   const connector = find('connector', store.selection.id);
-  if (!connector) return [];
+  // A line drawn short of its own ends, at a coarser level or beside a shut
+  // capability, has no ends on the stage to take hold of.
+  if (!connector || !shownLines.drawn.has(connector.id)) return [];
   const line = lineGeometry(connector);
   if (!line) return [];
 
@@ -784,9 +990,11 @@ function renderCapability(capability) {
   const dragging = drag?.kind === 'capability' && drag.id === capability.id;
 
   const swapping = dropTarget?.swapWith === capability.id;
+  const held = featureLayouts.get(capability.id)?.laid ?? null;
+  const open = held && openCapabilities.has(capability.id) ? held : null;
   const group = el('g', {
     class: `cap${selected ? ' cap--selected' : ''}${dragging ? ' cap--dragging' : ''}`
-      + `${swapping ? ' cap--swap' : ''}`,
+      + `${swapping ? ' cap--swap' : ''}${open ? ' cap--open' : ''}`,
     'data-type': 'capability',
     'data-id': capability.id,
     transform: `translate(${position.x} ${position.y})`,
@@ -796,7 +1004,7 @@ function renderCapability(capability) {
   // Capability titles are always black here. The palette is a light one, and a
   // label that flips to white on the darker swatches reads as a different kind
   // of thing rather than the same label on another colour.
-  const ink = CAPABILITY_INK;
+  const ink = labelInk(fill, opacityOf(capability, 100));
   group.appendChild(el('ellipse', {
     class: 'cap__oval',
     rx: size.rx,
@@ -805,13 +1013,80 @@ function renderCapability(capability) {
     'fill-opacity': opacityOf(capability, 100),
   }));
 
-  const icon = iconNode(capability, size);
-  if (icon) group.appendChild(icon);
+  if (open) {
+    // Open, the oval is a frame for what it holds: its name moves up into the
+    // crown, set small, and its icon stands down — the features have the room.
+    // Its features are drawn in a stack of their own, over the lines: see renderFeatures.
+    group.appendChild(textNode('cap__text cap__heading', open.heading, open.heading.x, open.heading.y, ink));
+  } else {
+    const icon = iconNode(capability, size);
+    if (icon) group.appendChild(icon);
 
-  group.appendChild(textNode('cap__text', size, size.textX, size.textY, ink));
+    group.appendChild(textNode('cap__text', size, size.textX, size.textY, ink));
+    // Shut, it says only that there is more inside, and roughly how much.
+    for (const pip of geo.featurePips(size, held?.bubbles.length ?? 0)) {
+      group.appendChild(el('circle', { class: 'cap__pip', cx: pip.x, cy: pip.y, r: pip.r, fill: ink }));
+    }
+  }
   const snaps = renderSnaps(capability.id, 'capability', size);
   if (snaps) group.appendChild(snaps);
 
+  return group;
+}
+
+/**
+ * The features of every open capability, as a stack of their own over the
+ * lines. A line to a feature in the middle of its capability has to cross the
+ * ones beside it to get out, and drawn over them it struck through their
+ * names; drawn under them it passes behind, and a press on a bubble lands on
+ * the bubble. One in hand is drawn where the pointer has it, and last.
+ */
+function renderFeatures() {
+  const nodes = [];
+  const inHand = [];
+  for (const capability of paintOrder()) {
+    const laid = openCapabilities.has(capability.id) ? featureLayouts.get(capability.id)?.laid : null;
+    const at = positions.get(capability.id);
+    if (!laid || !at) continue;
+    const ink = labelInk(colorOf(capability.colorIndex), opacityOf(capability, 100));
+    for (const bubble of laid.bubbles) {
+      const held = heldFeature(bubble.item.id);
+      const node = renderFeature({
+        ...bubble,
+        x: at.x + (held?.x ?? bubble.x),
+        y: at.y + (held?.y ?? bubble.y),
+      }, ink, Boolean(held));
+      (held ? inHand : nodes).push(node);
+    }
+  }
+  return [...nodes, ...inHand];
+}
+
+/**
+ * One feature of an open capability: a bubble with its name in it, placed by
+ * the capability's layout — in its row, or where it has been put by hand — so
+ * it goes wherever the capability goes. It is picked like any shape, carries
+ * points a line may be hung off, and in Edit mode is dragged about its
+ * capability or into another.
+ */
+function renderFeature(bubble, ink, dragging = false) {
+  const selected = store.selection.type === 'feature' && store.selection.id === bubble.item.id;
+  const swapping = drag?.kind === 'feature' && drag.swapWith === bubble.item.id;
+  // The bubble is laid over the capability to lift its name off the fill, so
+  // it is the opposite of the ink the name is in: white under black, and under
+  // the white a see-through shape turns to on the dark map, the dark paper.
+  const inverted = ink !== CAPABILITY_INK;
+  const group = el('g', {
+    class: `feature${selected ? ' feature--selected' : ''}${inverted ? ' feature--inverted' : ''}`
+      + `${dragging ? ' feature--dragging' : ''}${swapping ? ' feature--swap' : ''}`,
+    'data-type': 'feature',
+    'data-id': bubble.item.id,
+    transform: `translate(${bubble.x} ${bubble.y})`,
+  });
+  group.appendChild(el('ellipse', { class: 'feature__bubble', rx: bubble.rx, ry: bubble.ry }));
+  group.appendChild(textNode('cap__text feature__text', bubble, 0, 0, ink));
+  const snaps = dragging ? null : renderSnaps(bubble.item.id, 'feature', bubble);
+  if (snaps) group.appendChild(snaps);
   return group;
 }
 
@@ -823,8 +1098,15 @@ function renderCapability(capability) {
 function renderSnaps(id, kind, size) {
   if (!editMode) return null;
   const snaps = el('g', { class: 'snaps' });
+  // A feature's bubble is too small for twenty-four: it shows every other
+  // point, and smaller, so that they do not run into one another. The
+  // numbering is the same, and a line still lands on the point facing its way.
+  const small = kind === 'feature';
+  const dot = small ? Math.min(SNAP_RADIUS, size.ry * 0.14) : SNAP_RADIUS;
+  const reach = small ? dot * 2.4 : SNAP_HIT_RADIUS;
 
   for (const point of geo.snapPoints(size)) {
+    if (small && point.index % 2 === 1) continue;
     const isActive = draft && draft.fromId === id && draft.fromPoint === point.index;
     const snap = el('g', {
       class: 'snap-point',
@@ -833,12 +1115,12 @@ function renderSnaps(id, kind, size) {
       'data-kind': kind,
       'data-index': point.index,
     });
-    snap.appendChild(el('circle', { class: 'snap-hit', cx: point.x, cy: point.y, r: SNAP_HIT_RADIUS }));
+    snap.appendChild(el('circle', { class: 'snap-hit', cx: point.x, cy: point.y, r: reach }));
     snap.appendChild(el('circle', {
       class: `snap${isActive ? ' snap--active' : ''}`,
       cx: point.x,
       cy: point.y,
-      r: SNAP_RADIUS,
+      r: dot,
     }));
     snaps.appendChild(snap);
   }
@@ -875,7 +1157,8 @@ function renderTouchpoint(touchpoint) {
   const icon = iconNode(touchpoint, size);
   if (icon) group.appendChild(icon);
 
-  group.appendChild(textNode('cap__text', size, size.textX, size.textY, CAPABILITY_INK));
+  group.appendChild(textNode('cap__text', size, size.textX, size.textY,
+    labelInk(colorOf(touchpoint.colorIndex), opacityOf(touchpoint, 100))));
   const snaps = renderSnaps(touchpoint.id, 'touchpoint', size);
   if (snaps) group.appendChild(snaps);
 
@@ -920,7 +1203,12 @@ function renderActor(actor) {
   figure.appendChild(el('path', { d: 'M4.5 20.5c1.4-3.6 4.2-5.5 7.5-5.5s6.1 1.9 7.5 5.5' }));
   group.appendChild(figure);
 
-  group.appendChild(textNode('cap__text', size, size.textX, size.textY, CAPABILITY_INK));
+  const ink = labelInk(colorOf(actor.colorIndex), opacityOf(actor, 50));
+  // On the light map the figure is the page's ink whatever ring it stands in.
+  // On the dark one that ink is light and a ring drawn solid is light too, so
+  // the figure goes with the name under it instead.
+  if (geo.isDarkMap()) figure.style.setProperty('--figure-ink', ink);
+  group.appendChild(textNode('cap__text', size, size.textX, size.textY, ink));
   const snaps = renderSnaps(actor.id, 'actor', size);
   if (snaps) group.appendChild(snaps);
 
@@ -981,8 +1269,15 @@ function lineGeometry(connector) {
 
   const shaping = drag?.kind === 'bend' && drag.id === connector.id ? drag.points : null;
   const stored = shaping ?? bendPairs(connector.bendPoints);
+  // A curved line nobody has shaped is bent round the shapes in its way, where
+  // there are any, and otherwise takes the one easy bend it always took. A
+  // straight line was asked to be straight, and a shaped one keeps its shape.
+  const around = connector.lineStyle === 'curved' && stored.length === 0
+    ? geo.routeAround(from, to, inTheWayOf(ends.from, ends.to), { clearance: ROUTE_CLEARANCE })
+    : [];
   const bendPoints = connector.lineStyle === 'curved'
-    ? (stored.length ? stored : geo.autoBendPoints(from, to, fromNormal, toNormal))
+    ? (stored.length ? stored
+      : around.length ? around : geo.autoBendPoints(from, to, fromNormal, toNormal))
     : [];
 
   return {
@@ -1022,6 +1317,64 @@ function renderConnector(connector) {
   return group;
 }
 
+/** Where a folded line ends: on the rim of the place it was lifted to, facing the way the line leaves. */
+function foldEnd(place, towards) {
+  const at = positions.get(place.id);
+  return at ? pointOn(at, geo.nearestSnapIndex(at, towards.x - at.x, towards.y - at.y)) : null;
+}
+
+/**
+ * A folded line: every line lifted to the same two places, drawn as one from
+ * rim to rim — straight over open ground, and bent round a shape that lies
+ * between. It wears the cross-domain colour; its weight is its own, set in
+ * screen pixels by how many lines it stands for, since it is read at whatever
+ * zoom it is seen from.
+ *
+ * Standing for one line, it is that line drawn short of an end the stage has
+ * nowhere to put, and is picked as the line it is. Standing for several, there
+ * is no one line in it to pick: it names itself under the pointer, and how
+ * many it carries.
+ */
+function renderFold(line) {
+  const a = middleOf(line.from);
+  const b = middleOf(line.to);
+  if (!a || !b) return null;
+  const around = geo.routeAround(a, b, inTheWayOf(line.from, line.to), { clearance: ROUTE_CLEARANCE });
+  const from = foldEnd(line.from, around[0] ?? b);
+  const to = foldEnd(line.to, around.at(-1) ?? a);
+  if (!from || !to) return null;
+
+  const only = line.parts.length === 1 ? line.parts[0] : null;
+  const selected = line.picked || (only && store.selection.type === 'connector' && store.selection.id === only.id);
+  const hovered = only ? hoveredConnectorId === only.id : hoveredFoldKey === line.key;
+  const group = el('g', {
+    class: `connector-group connector--public connector--folded`
+      + `${selected ? ' connector--selected' : ''}${hovered ? ' connector--hover' : ''}`,
+    'data-type': only ? 'connector' : 'fold',
+    'data-id': only?.id,
+    'data-key': line.key,
+    style: `--fold-width: ${zoom.foldedWidth(line.weight)}px`,
+  });
+  const leaving = (point, next) => {
+    const length = Math.hypot(next.x - point.x, next.y - point.y) || 1;
+    return { x: (next.x - point.x) / length, y: (next.y - point.y) / length };
+  };
+  const d = around.length === 0
+    ? geo.connectorPath(from, to, 'straight')
+    : geo.connectorPath(from, to, 'curved', {
+      bendPoints: around,
+      fromNormal: leaving(from, around[0]),
+      toNormal: leaving(to, around.at(-1)),
+    });
+  group.appendChild(el('path', { class: 'connector__hit', d }));
+  group.appendChild(el('path', { class: 'connector__rim', d }));
+  group.appendChild(el('path', { class: 'connector', d }));
+  return group;
+}
+
+/** What a place a line was folded onto is called. */
+const placeTitle = (place) => find(place.kind, place.id)?.title ?? '?';
+
 /**
  * The line under the pointer says what it joins: a chip at its middle, lifted
  * clear of the line itself. It is read off the path that was just drawn, so a
@@ -1030,16 +1383,23 @@ function renderConnector(connector) {
  * chrome stays the size it was written at.
  */
 function renderConnectorLabel() {
-  if (!hoveredConnectorId) return [];
-  const connector = find('connector', hoveredConnectorId);
-  const path = connector
-    && zOrder.stacks.querySelector(`.connector-group[data-id="${connector.id}"] .connector`);
+  // A folded line is named the same way, by the two places it was folded onto,
+  // with a third row for how many lines it stands for when that is more than one.
+  const fold = hoveredFoldKey ? shownLines.folded.find((line) => line.key === hoveredFoldKey) : null;
+  const connector = !fold && hoveredConnectorId ? find('connector', hoveredConnectorId) : null;
+  if (!fold && !connector) return [];
+  const path = fold
+    ? [...zOrder.stacks.querySelectorAll('.connector--folded')]
+      .find((node) => node.dataset.key === fold.key)?.querySelector('.connector')
+    : zOrder.stacks.querySelector(`.connector-group[data-id="${connector.id}"] .connector`);
   if (!path) return [];
 
   const at = path.getPointAtLength(path.getTotalLength() / 2);
   // A row for each end, from over to, each cut to fit on its own.
-  const rows = connectorEnds(connector)
+  const rows = (fold ? [placeTitle(fold.from), placeTitle(fold.to)] : connectorEnds(connector))
     .map((title) => geo.wrapLines(oneLine(title), LABEL_SIZE, LABEL_MAX, 1, 'bold')[0]);
+  const count = fold && fold.weight > 1 ? `${fold.weight} lines` : null;
+  if (count) rows.push(count);
   const width = Math.max(...rows.map((row) => geo.measure(row, LABEL_SIZE, 'bold'))) + LABEL_PAD * 2;
   const height = rows.length * LABEL_ROW + LABEL_PAD_Y * 2;
   const centre = -(LABEL_LIFT + height / 2);
@@ -1058,7 +1418,7 @@ function renderConnectorLabel() {
     rx: LABEL_RADIUS,
   }));
   rows.forEach((row, i) => group.appendChild(el('text', {
-    class: 'connector-label__text',
+    class: `connector-label__text${row === count ? ' connector-label__text--count' : ''}`,
     x: 0,
     y: top + i * LABEL_ROW,
     'font-size': LABEL_SIZE,
@@ -1085,19 +1445,23 @@ function endpointOf(elementId, pointIndex) {
  * Kinds are searched from the top of the stack down, and anything on a hidden
  * layer is not there to be landed on — it is not drawn either.
  */
-function elementAt(x, y) {
-  for (const kind of ['actor', 'touchpoint', 'capability']) {
-    const list = kind === 'capability' ? store.capabilities : stackedList(kind);
+function elementAt(x, y, except = null) {
+  const within = (at, reach) => Math.hypot((x - at.x) / at.rx, (y - at.y) / at.ry) <= reach;
+  for (const kind of ['actor', 'touchpoint', 'feature', 'capability']) {
+    const list = kind === 'capability' ? paintOrder()
+      : kind === 'feature' ? store.features : stackedList(kind);
     for (let i = list.length - 1; i >= 0; i--) {
       const record = list[i];
+      // A feature of a shut capability has no place on the stage, and is skipped here.
       const at = positions.get(record.id);
-      if (!at || isHidden(layerOf(kind, record))) continue;
-      if (Math.hypot((x - at.x) / at.rx, (y - at.y) / at.ry) <= 1.25) {
-        return { id: record.id, kind };
-      }
+      if (!at || record.id === except || isHidden(layerOf(kind, record))) continue;
+      // A feature has no ground round it to spare: its neighbours are right beside it.
+      if (within(at, kind === 'feature' ? 1.05 : 1.25)) return { id: record.id, kind };
     }
   }
-  return null;
+  // Under everything else, the domain whose blob the point is in.
+  const domainId = domainAt({ x, y });
+  return domainId ? { id: domainId, kind: 'domain' } : null;
 }
 
 const text = (value) => document.createTextNode(value ?? '');
@@ -1106,10 +1470,7 @@ const text = (value) => document.createTextNode(value ?? '');
 
 function toWorld(event) {
   const rect = svg.getBoundingClientRect();
-  return {
-    x: (event.clientX - rect.left - view.x) / view.k,
-    y: (event.clientY - rect.top - view.y) / view.k,
-  };
+  return vp.screenToWorld(view, { x: event.clientX - rect.left, y: event.clientY - rect.top });
 }
 
 function targetOf(event) {
@@ -1123,6 +1484,7 @@ function targetOf(event) {
       lobe: node.dataset.lobe,
       end: node.dataset.end,
       side: node.dataset.side,
+      key: node.dataset.key,
     }
     : null;
 }
@@ -1152,9 +1514,87 @@ function domainAt(world) {
   return null;
 }
 
+/**
+ * Take hold of the map itself from a press that landed on a shape. Browsing,
+ * nothing on the map can be moved, so a drag that starts on a shape moves the
+ * view as one that starts on open ground does — zoomed into a capability there
+ * is no open ground left to start one on. It waits for the pointer to travel
+ * before it moves anything, so that picking a shape does not nudge the map.
+ */
+function panFromShape(event) {
+  drag = {
+    kind: 'pan',
+    pointerId: event.pointerId,
+    screen: { x: event.clientX, y: event.clientY },
+    origin: { ...view },
+    waiting: true,
+  };
+}
+
+/**
+ * Who has the stage to themselves, if anyone: the marker, while Draw is on. A
+ * press is theirs before it is the map's, so nothing under it is picked, moved
+ * or named, and one they turn down pans the map wherever it landed — on a
+ * locked map there is nothing else a drag could mean. The middle button, the
+ * wheel and a pinch are the stage's own, and carry on as they were.
+ */
+let holder = null;
+
+/**
+ * A press while someone has the stage. What the stage still does for itself is
+ * said again here rather than shared with the map's own press — the middle
+ * button's pan, a second finger's pinch — so that no way through it ends on a
+ * shape, however the map's own handling of a press comes to change.
+ */
+function pressWhileHeld(event) {
+  const pan = () => {
+    drag = { kind: 'pan', pointerId: event.pointerId, screen: { x: event.clientX, y: event.clientY }, origin: { ...view } };
+    svg.dataset.panning = 'true';
+  };
+
+  if (event.button === 1) {
+    event.preventDefault();
+    svg.setPointerCapture(event.pointerId);
+    pan();
+    return;
+  }
+  if (event.button !== 0) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  svg.setPointerCapture(event.pointerId);
+
+  if (pointers.size === 2) {
+    startPinch();
+    drag = null;
+    return;
+  }
+  if (!holder.press(event)) pan();
+}
+
+/** Hand the stage over as `{ press(event) }`, which answers whether it took the press; null hands it back. */
+export function holdStage(next) {
+  holder = next;
+  // Whatever the pointer was naming, it is not naming it to someone drawing.
+  hoveredDomainId = null;
+  hoveredConnectorId = null;
+  hoveredAreaId = null;
+  hoveredFoldKey = null;
+  render();
+}
+
+/** Where the stage is looking, as a view of viewport.js: for whoever draws on it in a layer of their own. */
+export const currentView = () => ({ ...view });
+
 function onPointerDown(event) {
   // The in-place editor is HTML sitting inside the SVG: its clicks are its own.
   if (renaming?.node.contains(event.target)) return;
+  // Whoever takes hold of the map has taken it from the glide.
+  stopGlide();
+
+  // Someone has the stage: the press is theirs, and the map never sees it.
+  if (holder) {
+    pressWhileHeld(event);
+    return;
+  }
 
   // The middle button always pans, whatever it lands on.
   if (event.button === 1) {
@@ -1310,7 +1750,7 @@ function onPointerDown(event) {
     }
     const domain = find('domain', target.id);
     select('domain', target.id);
-    if (!editMode) { render(); return; }
+    if (!editMode) { panFromShape(event); render(); return; }
     drag = {
       kind: 'title',
       id: target.id,
@@ -1336,7 +1776,7 @@ function onPointerDown(event) {
       return;
     }
     select('area', target.id);
-    if (!editMode) { render(); return; }
+    if (!editMode) { panFromShape(event); render(); return; }
     const laid = areaViews.find(({ area }) => area.id === target.id);
     drag = {
       kind: 'area-title',
@@ -1353,7 +1793,7 @@ function onPointerDown(event) {
   if (target?.type === 'area') {
     const area = find('area', target.id);
     select('area', target.id);
-    if (!editMode) { render(); return; }
+    if (!editMode) { panFromShape(event); render(); return; }
     // The border is the handle for the whole team's territory: everything the
     // area holds is picked up with it, from where each one stands now.
     drag = {
@@ -1384,6 +1824,79 @@ function onPointerDown(event) {
     return;
   }
 
+  if (target?.type === 'fold') {
+    // Not a thing to pick — there is no one line in it — so a press on it is a
+    // press on the map, and what was picked stays picked: with a domain picked
+    // these are its lines, and reaching for one must not put them away.
+    panFromShape(event);
+    return;
+  }
+
+  if (target?.type === 'feature') {
+    select('feature', target.id);
+    // Twice on a feature closes in on the capability it is in.
+    if (doubled) {
+      lastPress = null;
+      glideInto('feature', target.id);
+      return;
+    }
+    // Browsing, nothing on the map moves and a drag from it pans.
+    if (!editMode) {
+      panFromShape(event);
+      render();
+      return;
+    }
+    // In Edit mode it is picked up: about its capability, or into another.
+    const feature = find('feature', target.id);
+    const home = positions.get(feature.capabilityId);
+    const at = positions.get(target.id);
+    if (!home || !at) { render(); return; }
+    drag = {
+      kind: 'feature',
+      id: target.id,
+      capabilityId: feature.capabilityId,
+      pointerId: event.pointerId,
+      world,
+      // Measured from the middle of its capability, as its place is kept.
+      origin: { x: at.x - home.x, y: at.y - home.y },
+      x: at.x - home.x,
+      y: at.y - home.y,
+      swapWith: null,
+      over: feature.capabilityId,
+      moved: false,
+    };
+    render();
+    return;
+  }
+
+  if (target?.type === 'domain-edge') {
+    // The boundary of a picked domain, in Edit mode: the lobe behind the
+    // stretch that was pressed is the one resized. Nearest by the lobe's own
+    // measure, so a small lobe beside a large one is still found under its
+    // own piece of the boundary.
+    const laid = domainViews.find(({ domain }) => domain.id === target.id);
+    const lobe = laid?.layout.lobes
+      .map((one) => ({
+        one,
+        reach: Math.hypot((world.x - laid.domain.x - one.x) / one.rx, (world.y - laid.domain.y - one.y) / one.ry),
+      }))
+      .sort((p, q) => p.reach - q.reach)[0]?.one;
+    if (!lobe) return;
+    drag = {
+      kind: 'lobe-size',
+      id: lobe.item.id,
+      domainId: target.id,
+      pointerId: event.pointerId,
+      world,
+      origin: geo.lobeScaleOf(lobe.item),
+      scale: geo.lobeScaleOf(lobe.item),
+      moved: false,
+    };
+    svg.dataset.resizing = 'true';
+    render();
+    return;
+  }
+
   if (target?.type === 'connector') {
     select('connector', target.id);
     // Shift and a click puts a new bend where you pressed, in the run of the
@@ -1407,7 +1920,13 @@ function onPointerDown(event) {
   if (target?.type === 'capability') {
     const capability = find('capability', target.id);
     select('capability', target.id);
-    if (!editMode) { render(); return; }
+    // Twice on a capability closes in on it: the way in to its features.
+    if (doubled) {
+      lastPress = null;
+      glideInto('capability', target.id);
+      return;
+    }
+    if (!editMode) { panFromShape(event); render(); return; }
     drag = {
       kind: 'capability',
       id: target.id,
@@ -1426,7 +1945,7 @@ function onPointerDown(event) {
   if (target?.type === 'touchpoint' || target?.type === 'actor') {
     const record = find(target.type, target.id);
     select(target.type, target.id);
-    if (!editMode) { render(); return; }
+    if (!editMode) { panFromShape(event); render(); return; }
     // Neither kind belongs to a domain, so there is no drop target to look for:
     // it simply goes where it is put.
     drag = {
@@ -1446,7 +1965,14 @@ function onPointerDown(event) {
   if (target?.type === 'domain') {
     const domain = find('domain', target.id);
     select('domain', target.id);
-    if (!editMode) { render(); return; }
+    // Twice on a domain closes in on it, which is where its capabilities'
+    // own lines are drawn again. Twice on its title is still how it is renamed.
+    if (doubled) {
+      lastPress = null;
+      glideInto('domain', target.id);
+      return;
+    }
+    if (!editMode) { panFromShape(event); render(); return; }
     drag = {
       kind: 'domain',
       id: target.id,
@@ -1478,8 +2004,9 @@ function onPointerMove(event) {
 
   // Nothing names itself while something is in hand: the map is moving under
   // the pointer, and the name would be pointing at where the line used to be.
-  if ((drag || draft) && hoveredConnectorId !== null) {
+  if ((drag || draft) && (hoveredConnectorId !== null || hoveredFoldKey !== null)) {
     hoveredConnectorId = null;
+    hoveredFoldKey = null;
     scheduleRender();
   }
 
@@ -1492,16 +2019,21 @@ function onPointerMove(event) {
   }
 
   if (!drag) {
+    // The map names nothing to someone drawing on it.
+    if (holder) return;
     // Nothing in hand: track which domain is in focus, so its "+" can appear,
     // and which line is under the pointer, so it can say what it joins.
     const id = domainAt(toWorld(event));
     const target = targetOf(event);
     const lineId = target?.type === 'connector' ? target.id : null;
+    const foldKey = target?.type === 'fold' ? target.key : null;
     const areaId = target?.type === 'area' || target?.type === 'area-title' ? target.id : null;
-    if (id !== hoveredDomainId || lineId !== hoveredConnectorId || areaId !== hoveredAreaId) {
+    if (id !== hoveredDomainId || lineId !== hoveredConnectorId || areaId !== hoveredAreaId
+      || foldKey !== hoveredFoldKey) {
       hoveredDomainId = id;
       hoveredConnectorId = lineId;
       hoveredAreaId = areaId;
+      hoveredFoldKey = foldKey;
       scheduleRender();
     }
     return;
@@ -1510,8 +2042,16 @@ function onPointerMove(event) {
   if (drag.pointerId !== event.pointerId) return;
 
   if (drag.kind === 'pan') {
-    view.x = drag.origin.x + (event.clientX - drag.screen.x);
-    view.y = drag.origin.y + (event.clientY - drag.screen.y);
+    const dx = event.clientX - drag.screen.x;
+    const dy = event.clientY - drag.screen.y;
+    // Started on a shape, it is a pick until the pointer has gone further than
+    // a click's worth: only then is it the map that is being moved.
+    if (drag.waiting && Math.hypot(dx, dy) <= CLICK_SLOP) return;
+    drag.waiting = false;
+    svg.dataset.panning = 'true';
+    // From where the pan started, at whatever zoom the view has now: a wheel
+    // turned mid-drag zooms, and letting go must not undo it.
+    view = vp.panBy({ ...drag.origin, k: view.k }, dx, dy);
     drag.moved = true;
     renderView();
     return;
@@ -1602,6 +2142,32 @@ function onPointerMove(event) {
     return;
   }
 
+  if (drag.kind === 'feature') {
+    drag.x = drag.origin.x + dx;
+    drag.y = drag.origin.y + dy;
+    // What it is over says what letting go would do: another feature of an
+    // open capability trades places with it, a capability takes it in.
+    // The one in hand is under the pointer wherever the pointer goes, so it is
+    // looked past.
+    const under = elementAt(world.x, world.y, drag.id);
+    const other = under?.kind === 'feature' ? find('feature', under.id) : null;
+    drag.swapWith = other?.id ?? null;
+    drag.over = other?.capabilityId ?? (under?.kind === 'capability' ? under.id : null);
+    scheduleRender();
+    return;
+  }
+
+  if (drag.kind === 'lobe-size') {
+    const laid = domainViews.find(({ domain }) => domain.id === drag.domainId);
+    const lobe = laid?.layout.lobes.find((one) => one.item.id === drag.id);
+    if (!lobe) return;
+    drag.scale = geo.lobeScaleThrough(lobe.item,
+      world.x - laid.domain.x - lobe.x, world.y - laid.domain.y - lobe.y);
+    patchLocal('capability', drag.id, { lobeScale: drag.scale });
+    scheduleRender();
+    return;
+  }
+
   // capability: follow the cursor, and look for a domain underneath
   const x = drag.origin.x + dx;
   const y = drag.origin.y + dy;
@@ -1621,6 +2187,7 @@ function onPointerUp(event) {
     /* the browser released it for us */
   }
   svg.dataset.panning = 'false';
+  svg.dataset.resizing = 'false';
 
   // Releasing on a second snap point completes the connector in one gesture.
   if (draft && draft.pointerId === event.pointerId) {
@@ -1684,6 +2251,10 @@ function onPointerUp(event) {
     actions.shapeConnector?.(finished.id, bendFlat(finished.points));
   } else if (finished.kind === 'title-width') {
     actions.setTitleWidth?.(finished.id, finished.width);
+  } else if (finished.kind === 'lobe-size') {
+    actions.resizeLobe?.(finished.id, finished.scale, { from: finished.origin });
+  } else if (finished.kind === 'feature') {
+    dropFeature(finished);
   } else if (finished.kind === 'capability') {
     // The rim followed the drop target; leave it there. The pointer is still
     // over wherever that was, and the next move re-reads it anyway.
@@ -1702,6 +2273,36 @@ function onPointerUp(event) {
   }
 
   render();
+}
+
+/**
+ * A feature let go. On another feature the two trade places; in its own
+ * capability it stays where it was put; in another capability it is handed
+ * over, to where it was dropped if that one is open and to the end of its list
+ * if it is shut. Anywhere else there is nowhere for it to be — a feature is
+ * always in a capability — and it goes back where it came from.
+ */
+function dropFeature(finished) {
+  if (finished.swapWith) {
+    actions.swapFeatures?.(finished.id, finished.swapWith);
+    return;
+  }
+  const into = finished.over;
+  const at = into ? positions.get(into) : null;
+  if (!at) {
+    render();
+    return;
+  }
+  const laid = featureLayouts.get(finished.capabilityId)?.laid;
+  const bubble = laid?.bubbles.find((one) => one.item.id === finished.id);
+  // Where the pointer left it, measured from the middle of the capability it is going into.
+  const home = positions.get(finished.capabilityId);
+  const point = { x: home.x + finished.x - at.x, y: home.y + finished.y - at.y };
+  const place = bubble && openCapabilities.has(into)
+    ? geo.featurePlace(geo.capabilitySize(find('capability', into)), bubble, point)
+    : null;
+  if (into === finished.capabilityId) actions.placeFeature?.(finished.id, place);
+  else actions.handFeature?.(finished.id, into, place);
 }
 
 function finishDraft(target) {
@@ -1803,16 +2404,92 @@ export function cancelDraft() {
 function onWheel(event) {
   event.preventDefault();
   const rect = svg.getBoundingClientRect();
-  zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-event.deltaY * 0.0016));
+  zoomAt(event.clientX - rect.left, event.clientY - rect.top, vp.wheelFactor(event.deltaY));
 }
 
 function zoomAt(screenX, screenY, factor) {
-  const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.k * factor));
-  const applied = k / view.k;
-  view.x = screenX - (screenX - view.x) * applied;
-  view.y = screenY - (screenY - view.y) * applied;
-  view.k = k;
+  stopGlide();
+  view = vp.zoomAt(view, { x: screenX, y: screenY }, factor, zoomLimits);
   scheduleRender();
+}
+
+/** Whoever is looking has asked for less motion: a glide then arrives at once. */
+const prefersStill = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+function stopGlide() {
+  if (!gliding) return;
+  cancelAnimationFrame(gliding);
+  gliding = 0;
+}
+
+/**
+ * Move the view to another, in one even motion rather than a jump: a deep zoom
+ * that cut straight to its target would leave nobody knowing where on the map
+ * they had landed. Every frame is a render, because what a zoom shows changes
+ * on the way — lines unfold, capabilities open.
+ */
+function glideTo(target) {
+  stopGlide();
+  if (prefersStill()) {
+    view = target;
+    render();
+    return;
+  }
+  const size = svg.getBoundingClientRect();
+  const from = { ...view };
+  const started = performance.now();
+  const frame = (now) => {
+    const t = Math.min(1, (now - started) / GLIDE_MS);
+    view = vp.between(from, target, vp.eased(t), size);
+    gliding = t < 1 ? requestAnimationFrame(frame) : 0;
+    render();
+  };
+  gliding = requestAnimationFrame(frame);
+}
+
+/**
+ * Close in on a shape: the double-click, and what showing a feature on the map
+ * comes to. A domain is fitted to the stage, which is past where it is seen
+ * whole, so its capabilities' own lines are drawn. A capability is brought to
+ * where it can be taken in as one thing — and, where it holds features, at
+ * least as close as it takes to read them, however small they are set. A
+ * feature is shown by closing in on the capability it is in.
+ */
+export function glideInto(type, id) {
+  const size = svg.getBoundingClientRect();
+
+  if (type === 'feature') {
+    const feature = find('feature', id);
+    if (feature) glideInto('capability', feature.capabilityId);
+    return;
+  }
+  if (type === 'domain') {
+    const laid = domainViews.find(({ domain }) => domain.id === id);
+    if (!laid) return;
+    const { domain, layout } = laid;
+    glideTo(vp.fitBox({
+      minX: domain.x + layout.bounds.minX,
+      minY: domain.y + layout.bounds.minY,
+      maxX: domain.x + layout.bounds.maxX,
+      maxY: domain.y + layout.bounds.maxY,
+    }, size, { padding: 32, max: zoomLimits.max }));
+    return;
+  }
+  if (type !== 'capability') return;
+
+  const at = positions.get(id);
+  if (!at) return;
+  // Half the stage or so: close enough to read, with enough of what is round
+  // it left in view to say where on the map this is.
+  const taken = vp.fitBox(
+    { minX: at.x - at.rx, minY: at.y - at.ry, maxX: at.x + at.rx, maxY: at.y + at.ry },
+    size,
+    { padding: Math.min(size.width, size.height) * 0.22, max: zoomLimits.max },
+  );
+  const box = { minX: at.x - at.rx, minY: at.y - at.ry, maxX: at.x + at.rx, maxY: at.y + at.ry };
+  const whole = vp.fitBox(box, size, { padding: 16, max: zoomLimits.max });
+  const k = zoom.zoomInto(featureLayouts.get(id)?.laid?.fontSize ?? 0, { taken: taken.k, whole: whole.k });
+  glideTo(vp.centerOn({ k: vp.clampZoom(k, zoomLimits) }, at, size));
 }
 
 export function zoomBy(factor) {
@@ -1834,8 +2511,7 @@ function updatePinch() {
   const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const rect = svg.getBoundingClientRect();
 
-  view.x += center.x - pinch.center.x;
-  view.y += center.y - pinch.center.y;
+  view = vp.panBy(view, center.x - pinch.center.x, center.y - pinch.center.y);
   pinch.center = center;
 
   if (pinch.distance > 0) {
@@ -1879,34 +2555,32 @@ export function contentBounds() {
       });
     }
   }
-  if (boxes.length === 0) return { minX: -400, minY: -300, maxX: 400, maxY: 300 };
-
-  return boxes.reduce((a, b) => ({
-    minX: Math.min(a.minX, b.minX),
-    minY: Math.min(a.minY, b.minY),
-    maxX: Math.max(a.maxX, b.maxX),
-    maxY: Math.max(a.maxY, b.maxY),
-  }));
+  return vp.unionBox(boxes) ?? { minX: -400, minY: -300, maxX: 400, maxY: 300 };
 }
 
 export function fitToScreen() {
+  stopGlide();
   const rect = svg.getBoundingClientRect();
-  const bounds = contentBounds();
-  const padding = 32;
-  const width = Math.max(1, bounds.maxX - bounds.minX);
-  const height = Math.max(1, bounds.maxY - bounds.minY);
-
-  const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM,
-    Math.min((rect.width - padding * 2) / width, (rect.height - padding * 2) / height)));
-
-  view.k = k;
-  view.x = rect.width / 2 - ((bounds.minX + bounds.maxX) / 2) * k;
-  view.y = rect.height / 2 - ((bounds.minY + bounds.maxY) / 2) * k;
+  view = vp.fitBox(contentBounds(), rect, { padding: 32 });
   render();
 }
 
-/** Bring a shape into view without changing the zoom level. */
+/** The same view, arrived at in one motion: the way back out to the helicopter view. */
+export function glideToFit() {
+  glideTo(vp.fitBox(contentBounds(), svg.getBoundingClientRect(), { padding: 32 }));
+}
+
+/**
+ * Bring a shape into view without changing the zoom level. A feature is the
+ * exception: it is only drawn once its capability is open, so showing one
+ * means closing in.
+ */
 export function centerOn(type, id) {
+  if (type === 'feature') {
+    glideInto('feature', id);
+    return;
+  }
+  stopGlide();
   const rect = svg.getBoundingClientRect();
   let point = null;
 
@@ -1926,8 +2600,7 @@ export function centerOn(type, id) {
   }
   if (!point) return;
 
-  view.x = rect.width / 2 - point.x * view.k;
-  view.y = rect.height / 2 - point.y * view.k;
+  view = vp.centerOn(view, point, rect);
   render();
 }
 
@@ -1937,17 +2610,14 @@ export function kebabAnchor(domainId) {
   if (!view_) return null;
   const rect = svg.getBoundingClientRect();
   const { domain, layout } = view_;
-  return {
-    x: rect.left + view.x + (domain.x + layout.kebab.x) * view.k,
-    y: rect.top + view.y + (domain.y + layout.kebab.y + layout.kebab.r * 1.8) * view.k,
-  };
+  const at = vp.worldToScreen(view, {
+    x: domain.x + layout.kebab.x,
+    y: domain.y + layout.kebab.y + layout.kebab.r * 1.8,
+  });
+  return { x: rect.left + at.x, y: rect.top + at.y };
 }
 
 /** Where a new shape should land: the middle of what the user is looking at. */
 export function viewportCenter() {
-  const rect = svg.getBoundingClientRect();
-  return {
-    x: (rect.width / 2 - view.x) / view.k,
-    y: (rect.height / 2 - view.y) / view.k,
-  };
+  return vp.viewportCenter(view, svg.getBoundingClientRect());
 }

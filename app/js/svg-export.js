@@ -14,12 +14,16 @@ const MARGIN = 10;
  * layer is not drawn on the stage, so it is not in here either, and a dimmed
  * one carries its opacity on the group — the picture is what is on screen.
  * Edit chrome, a line being drawn and the rename editor are not the map.
+ *
+ * What has been drawn over the map with a marker is not the map either, but it
+ * is on screen, and a flow traced over the terrain is as often as not the
+ * reason the picture is wanted: it goes in after the stacks, so over them.
  */
-const TERRAIN = ['layer-stacks'];
+const TERRAIN = ['layer-stacks', 'layer-drawing'];
 
 /** Targets, not ink: invisible on the stage, and no use in a picture. */
 const CHROME = '.title-hit, .snaps, .connector__hit, .connector__rim, .slot, '
-  + '.area__hit, .area__title-hit, .area__rim';
+  + '.area__hit, .area__title-hit, .area__rim, .domain__edge';
 
 /** Picked, hovered or held is the page's state, not the map's, and draws in the selection blue. */
 const STATE = /--(selected|hover|dragging|swap)$/;
@@ -64,6 +68,11 @@ export async function diagramSvg(diagram, { title = '' } = {}) {
   // that is in the page: it goes in out of sight, and comes straight back out.
   const host = el('svg', { 'aria-hidden': 'true' });
   host.style.cssText = 'position: absolute; width: 0; height: 0; overflow: hidden; visibility: hidden';
+  // The stage holds its lines to a width on screen, by the zoom it hands the
+  // stylesheet. The copy is outside the stage and has to be told the same, or
+  // it is drawn for a zoom of one: lines that were three pixels wide on a map
+  // seen whole come out as hairs across a picture five thousand wide.
+  host.style.setProperty('--k', getComputedStyle(diagram).getPropertyValue('--k') || '1');
   host.appendChild(content);
   document.body.appendChild(host);
 
@@ -102,7 +111,11 @@ export async function diagramSvg(diagram, { title = '' } = {}) {
   if (defs.hasChildNodes()) picture.appendChild(defs);
 
   // The domains are see-through, and their titles were inked for the paper
-  // under them, so the paper comes too.
+  // under them, so the paper comes too. That makes the theme part of the
+  // picture: exported from a dark page it is the dark map on its dark paper,
+  // which reads wherever it is put, where the dark map's white titles laid on
+  // someone else's white slide would not. The page is not redrawn light to
+  // export — the picture is what is on screen, and Light is one press away.
   const paper = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim() || '#fff';
   picture.appendChild(el('rect', { x, y, width, height, fill: paper }));
   picture.append(...content.children);

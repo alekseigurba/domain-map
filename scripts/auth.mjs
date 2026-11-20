@@ -29,7 +29,7 @@ const SCOPE = 'openid profile email';
 
 /** What has to load before anyone has signed in: the sign-in page and what it is drawn with. */
 const PUBLIC_FILES = new Set([
-  '/login.html', '/js/login.js', '/css/fonts.css', '/css/tokens.css', '/css/login.css',
+  '/login.html', '/js/login.js', '/js/theme-first.js', '/css/fonts.css', '/css/tokens.css', '/css/login.css',
   '/css/brand.css', '/favicon.svg',
 ]);
 const PUBLIC_PREFIXES = ['/fonts/'];

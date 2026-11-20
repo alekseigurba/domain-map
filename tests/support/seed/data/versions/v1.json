@@ -1,0 +1,76 @@
+{
+  "version": 5,
+  "title": "A map for the tests",
+  "description": "Small enough to read in a failing check, and whole enough to be a map: two domains, a line across them, and a capability that holds features.",
+  "layers": [
+    {
+      "key": "areas"
+    },
+    {
+      "key": "core"
+    },
+    {
+      "key": "presentation"
+    }
+  ],
+  "domains": [
+    {
+      "key": "billing",
+      "title": "Billing",
+      "shape": { "position": "0,0", "color": 3, "size": 72, "weight": "regular", "titleScale": 1, "opacity": 20 }
+    },
+    {
+      "key": "lending",
+      "title": "Lending",
+      "shape": { "position": "900,0", "color": 7, "size": 72, "weight": "regular", "titleScale": 1, "opacity": 20 }
+    }
+  ],
+  "capabilities": [
+    {
+      "key": "invoicing",
+      "domain": "billing",
+      "title": "Invoicing",
+      "shape": { "position": "-160,60", "color": 3, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 },
+      "features": [
+        {
+          "key": "issue-an-invoice",
+          "title": "Issue an invoice"
+        },
+        {
+          "key": "credit-note",
+          "title": "Credit note"
+        }
+      ]
+    },
+    {
+      "key": "collections",
+      "domain": "billing",
+      "title": "Collections",
+      "shape": { "position": "160,60", "color": 3, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
+    },
+    {
+      "key": "scoring",
+      "domain": "lending",
+      "title": "Scoring",
+      "shape": { "position": "0,60", "color": 7, "size": 32, "weight": "regular", "scale": 1, "stretch": 2, "opacity": 100, "order": 0 }
+    }
+  ],
+  "connectors": [
+    {
+      "from": "collections",
+      "to": "scoring",
+      "fromPoint": 0,
+      "toPoint": 12,
+      "lineStyle": "curved",
+      "anchored": false
+    },
+    {
+      "from": "invoicing",
+      "to": "collections",
+      "fromPoint": 0,
+      "toPoint": 12,
+      "lineStyle": "straight",
+      "anchored": false
+    }
+  ]
+}

@@ -4,8 +4,10 @@
 // package and calls it directly.
 //
 // Everything a consumer is meant to change is a parameter. `brandDir` shadows
-// the app's own files, `seedDir` decides what a fresh store starts life with,
-// and `store` and `auth` can be replaced outright. Crucially, the defaults that
+// the app's own files and adds pages of the consumer's own, `seedDir` decides
+// what a fresh store starts life with, `routes` answers requests of the
+// consumer's own behind the same sign-in, and `store` and `auth` can be
+// replaced outright. Crucially, the defaults that
 // belong to the package resolve against this module rather than the working
 // directory, so an install under node_modules still finds its own `app/` and
 // `seed/` — see BRANDING.md for which of these a consumer is expected to set.
@@ -122,6 +124,20 @@ function readBody(request) {
  *                                        `$ASSISTANT_API_KEY`, `$ASSISTANT_MODEL` and
  *                                        `$ASSISTANT_API_STYLE` describe; without the first two the
  *                                        Assistant writes prompts to copy and has no model.
+ * @param {Function|Function[]} [options.routes] Requests of the consumer's own, answered behind
+ *                                        the same sign-in as the map. Each is
+ *                                        `(request, response, context) => boolean`, sync or async,
+ *                                        tried in order after sign-in has let the request through
+ *                                        and before the package's own API and files; the first to
+ *                                        answer true has answered it, and false passes it on.
+ *                                        `context` is `{ url, env, user, who, may, json, readJson,
+ *                                        failure }`: `user` is the session, or null with sign-in off;
+ *                                        `who()` resolves to `{ user, person, role }`, read from
+ *                                        Postgres once per request; `may(role)` resolves to whether
+ *                                        that role is at least `role`; `json(response, status, body)`
+ *                                        answers; `readJson(request)` reads a body; and
+ *                                        `throw failure(status, message)` answers with that error
+ *                                        as JSON. See BRANDING.md.
  * @param {object}   [options.env]        Read instead of `process.env`.
  * @param {Function} [options.log]        Where the startup lines go. `() => {}` to quieten it.
  */
@@ -146,6 +162,13 @@ export function createDomainMapServer(options = {}) {
     : null;
 
   const store = options.store ?? fileStore(storageDir);
+
+  // The consumer's own routes, checked before anything is opened rather than
+  // on the first request that would have tripped over a typo in them.
+  const routes = [options.routes ?? []].flat();
+  if (!routes.every((route) => typeof route === 'function')) {
+    throw new TypeError('routes must be a function, or an array of functions, of (request, response, context).');
+  }
 
   const databaseUrl = options.databaseUrl ?? env.DATABASE_URL;
   if (!databaseUrl) {
@@ -236,6 +259,31 @@ export function createDomainMapServer(options = {}) {
   }
 
   const may = (who, role) => atLeast(who.role, role);
+
+  /**
+   * Offer a request to the consumer's routes, and say whether one answered it.
+   * Who is asking is read from Postgres only if a route asks, and then once:
+   * a consumer that serves its own scripts through here should not pay a
+   * query per file to find out that it did not want them.
+   */
+  async function handleRoutes(request, response, url) {
+    let asked = null;
+    const who = () => (asked ??= identify(request));
+    const context = {
+      url,
+      env,
+      user: required ? auth.user?.(request) ?? null : null,
+      who,
+      may: async (role) => may(await who(), role),
+      json: sendJson,
+      readJson,
+      failure,
+    };
+    for (const route of routes) {
+      if (await route(request, response, context)) return true;
+    }
+    return false;
+  }
 
   // Where a static request is looked for, in order: the brand's copy of a file
   // wins over the app's own, and a brand that has nothing to say about a file
@@ -653,6 +701,8 @@ export function createDomainMapServer(options = {}) {
 
       if (await auth.handle(request, response, url)) {
         // answered: a sign-in route, or someone who has to sign in first
+      } else if (routes.length > 0 && await handleRoutes(request, response, url)) {
+        // answered by one of the consumer's own routes
       } else if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
         await handleFiles(request, response, url, await identify(request));
       } else if (url.pathname.startsWith('/api/assistant/')) {

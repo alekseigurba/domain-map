@@ -28,7 +28,7 @@ export const MAX_TEXT_LENGTH = 2000;
  * Anything that walks every kind — the document, the menu, the layer stacks —
  * reads this rather than naming them itself.
  */
-export const ELEMENT_KINDS = ['domain', 'capability', 'touchpoint', 'actor', 'area'];
+export const ELEMENT_KINDS = ['domain', 'capability', 'feature', 'touchpoint', 'actor', 'area'];
 
 /**
  * The kinds an area may hold. A capability is here for the loose ones only: one
@@ -38,7 +38,15 @@ export const ELEMENT_KINDS = ['domain', 'capability', 'touchpoint', 'actor', 'ar
 export const MEMBER_KINDS = ['domain', 'touchpoint', 'capability'];
 
 /** The kinds a connector may be drawn between: the ones that carry snap points. */
-export const ENDPOINT_KINDS = ['capability', 'touchpoint', 'actor'];
+export const ENDPOINT_KINDS = ['domain', 'capability', 'feature', 'touchpoint', 'actor'];
+
+/**
+ * The kinds the terrain is made of, largest first: a domain holds capabilities
+ * and a capability holds features. A line may join any two of them, in any
+ * combination, which is what lets one part of a map be drawn down to its
+ * features while another is left as a domain that talks to a domain.
+ */
+export const TERRAIN_KINDS = ['domain', 'capability', 'feature'];
 
 // --- the layers --------------------------------------------------------------
 
@@ -74,6 +82,8 @@ export const LAYER_OF = Object.freeze({
   area: 'areas',
   domain: 'core',
   capability: 'core',
+  // A feature is inside a capability, and is wherever its capability is.
+  feature: 'core',
   touchpoint: 'presentation',
   actor: 'presentation',
 });
@@ -81,30 +91,36 @@ export const LAYER_OF = Object.freeze({
 /** The kinds that may be added to a layer, in the order their buttons sit in. */
 export const KINDS_ON = Object.freeze({
   areas: ['area'],
-  core: ['domain', 'capability'],
+  core: ['domain', 'capability', 'feature'],
   presentation: ['touchpoint', 'actor'],
 });
 
 /**
- * What each kind may be connected to: strictly down the stack. A person reaches
- * the business through a channel, and a channel reaches a capability — so an
- * actor joins a touchpoint, a touchpoint joins a capability, and capabilities
- * join each other. Nothing else is a line this model can draw.
+ * What each kind on the presentation layer may be connected to: strictly down
+ * the stack. A person reaches the business through a channel, and a channel
+ * reaches a capability — so an actor joins a touchpoint and a touchpoint joins
+ * a capability. The terrain under them has no such order: a domain, a
+ * capability and a feature join one another freely (TERRAIN_KINDS). Nothing
+ * else is a line this model can draw.
  */
 export const CONNECTS_TO = Object.freeze({
   actor: 'touchpoint',
   touchpoint: 'capability',
-  capability: 'capability',
 });
+
+const isTerrain = (kind) => TERRAIN_KINDS.includes(kind);
 
 /**
  * A line is stored under its upper end, which is the one that owns it. Between
- * two capabilities there is no upper end, and the map owns the line instead.
+ * two shapes of the terrain there is no upper end, and the map owns the line
+ * instead.
  */
 export const OWNER_KIND = Object.freeze({
   actor: 'actor',
   touchpoint: 'touchpoint',
+  domain: null,
   capability: null,
+  feature: null,
 });
 
 /** Where a kind's own lines are written, under the element that owns them. */
@@ -121,6 +137,9 @@ export const NESTED_UNDER = Object.freeze({
  * Null when the pair is not one this model allows.
  */
 export function orderEnds(a, b) {
+  // Two shapes of the terrain have no upper end between them, so the line
+  // stays the way round it was drawn: it is filed under the end it starts from.
+  if (isTerrain(a.kind) && isTerrain(b.kind)) return { upper: a, lower: b };
   if (CONNECTS_TO[a.kind] === b.kind) return { upper: a, lower: b };
   if (CONNECTS_TO[b.kind] === a.kind) return { upper: b, lower: a };
   return null;
@@ -136,10 +155,13 @@ export function connectorRule(fromKind, toKind) {
     return `A connector cannot end on ${a(wrong)}.`;
   }
   if (orderEnds({ kind: fromKind }, { kind: toKind })) return null;
-  // Naming what *is* allowed is more use than naming what is not.
-  const opening = a(fromKind);
+  // Naming what *is* allowed is more use than naming what is not. The end with
+  // a rule to name is the presentation one: the terrain's joins anything of
+  // the terrain, so it is never the one that was wrong.
+  const [strict, other] = isTerrain(fromKind) ? [toKind, fromKind] : [fromKind, toKind];
+  const opening = a(strict);
   return `${opening[0].toUpperCase()}${opening.slice(1)} connects to `
-    + `${a(CONNECTS_TO[fromKind])}, not to ${a(toKind)}.`;
+    + `${a(CONNECTS_TO[strict])}, not to ${a(other)}.`;
 }
 
 export const MAX_KEY_LENGTH = 64;
@@ -190,6 +212,18 @@ export const MAX_BEND_POINTS = 12;
 
 /** Snap points per capability. */
 export const MAX_POINT = 23;
+
+/** How much of the usual ring a lobe may be given. Mirrors geometry.js. */
+export const MIN_LOBE_SCALE = 0.25;
+export const MAX_LOBE_SCALE = 12;
+
+/**
+ * How many features one capability may hold. They are drawn inside its oval,
+ * which does not grow for them, so past this they are set too small for any
+ * zoom to read comfortably — and a capability with more than this to say is
+ * usually two capabilities.
+ */
+export const MAX_FEATURES = 48;
 
 export const MIN_TITLE_WIDTH = 40;
 export const MAX_TITLE_WIDTH = 2000;
@@ -288,11 +322,44 @@ export const CAPABILITY_DEFAULTS = {
   y: 0,
   lobeX: 0,
   lobeY: 0,
+  /**
+   * How much of the usual ring of blob its domain draws round it: what dragging
+   * the domain's boundary changes. One is the ring every lobe starts with.
+   */
+  lobeScale: 1,
   sortIndex: 0,
   icon: null,
   iconPlacement: DEFAULT_ICON_PLACEMENT,
   iconWeight: DEFAULT_ICON_WEIGHT,
 };
+
+/**
+ * A feature is one thing a capability does, named. It lives inside its
+ * capability and nowhere else, with no colour and no size of its own, because
+ * it is drawn in whatever room the capability's oval has for it: in the order
+ * the capability holds it, or where in the oval it has been put by hand. A
+ * line may end on one, as on a capability or a domain.
+ */
+export const FEATURE_DEFAULTS = {
+  capabilityId: null,
+  title: 'New feature',
+  description: '',
+  owner: '',
+  ownerId: null,
+  type: '',
+  sortIndex: 0,
+  /**
+   * Where in its capability's oval it has been put by hand, as a share of the
+   * oval's two radii in hundredths — so it keeps its place when the capability
+   * is resized. Null until it is moved: then it sits in the row its order
+   * gives it.
+   */
+  x: null,
+  y: null,
+};
+
+/** How far from the middle of its capability a feature may be put, in hundredths of a radius. */
+export const MAX_FEATURE_REACH = 100;
 
 /**
  * A touchpoint is a capability in everything but its geometry: it wears the
@@ -514,6 +581,20 @@ export function validateCapability(fields) {
     ?? (given(fields.iconWeight)
       && !(fields.iconWeight >= MIN_ICON_WEIGHT && fields.iconWeight <= MAX_ICON_WEIGHT)
       ? `iconWeight must be between ${MIN_ICON_WEIGHT} and ${MAX_ICON_WEIGHT}.`
+      : null)
+    ?? (given(fields.lobeScale)
+      && !(fields.lobeScale >= MIN_LOBE_SCALE && fields.lobeScale <= MAX_LOBE_SCALE)
+      ? `lobe must be between ${MIN_LOBE_SCALE} and ${MAX_LOBE_SCALE}.`
+      : null);
+}
+
+/** A feature's words, and where in its capability it has been put, if anywhere. */
+export function validateFeature(fields) {
+  return text(fields.title, fields.description, fields.owner, fields.ownerId)
+    ?? typed(fields.type)
+    ?? ([fields.x, fields.y].some((value) => given(value)
+      && !(Number.isFinite(value) && Math.abs(value) <= MAX_FEATURE_REACH))
+      ? `A feature's position must be within ${MAX_FEATURE_REACH} either way of its capability's middle.`
       : null);
 }
 
@@ -536,6 +617,7 @@ export const validatorFor = {
   area: validateArea,
   domain: validateDomain,
   capability: validateCapability,
+  feature: validateFeature,
   touchpoint: validateTouchpoint,
   actor: validateActor,
 };

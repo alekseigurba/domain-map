@@ -44,26 +44,88 @@ Section and panel headings are uppercase, semibold, `0.1em` tracking, in
 ## Color
 
 The raw scales are declared verbatim as `--r-*`: brand 100–600, haze 200–600,
-sage 200–600, charcoal 200–600, azure, amethyst, ember, orange, blue, red, green,
+sage 200–600, charcoal 200–600, night 100–700, azure, amethyst, ember, orange, blue, red, green,
 focused, neutral-white. Brand is the one scale a deployment replaces with its own; sage is haze tinted
-toward it, so the chrome carries the brand without competing with the map's fills. Everything else names
-what a color does here.
+toward it, so the chrome carries the brand without competing with the map's fills. Night is what sage
+and charcoal are, for the dark theme. Everything else names what a color does here, once for each theme.
 
-| Token | Raw | Where |
-| --- | --- | --- |
-| `--paper` | neutral-white | the stage, and controls sitting on chrome |
-| `--chrome` | sage-200 | header, footer, both sidebars |
-| `--chrome-hover` | sage-400 | hovered rows and buttons |
-| `--line` / `--line-strong` | sage-500 / sage-600 | dividers, button borders |
-| `--ink` / `--ink-soft` | charcoal-400 / charcoal-300 | text, secondary text |
-| `--ink-invert` | neutral-white | text on a filled control |
-| `--selection` | focused-400 | selection outlines, active controls |
-| `--selected-row` | brand-200 | the selected row in the tree, a step past the sage hover |
-| `--danger` | red-100 | the delete button's hover |
+| Token | Light | Dark | Where |
+| --- | --- | --- | --- |
+| `--paper` | neutral-white | night-700 `#141613` | the stage, and controls sitting on chrome |
+| `--chrome` | sage-200 | night-600 `#1c1f1b` | header, footer, both sidebars |
+| `--chrome-hover` | sage-400 | night-500 `#2a2e28` | hovered rows and buttons |
+| `--line` / `--line-strong` | sage-500 / sage-600 | night-400 `#333831` / night-300 `#4b5247` | dividers, button borders |
+| `--line-quiet` | charcoal-200 | charcoal-300 | the edge of a card that is only a note |
+| `--ink` / `--ink-soft` | charcoal-400 / charcoal-300 | night-100 `#e7eae4` / night-200 `#a0a69c` | text, secondary text |
+| `--ink-strong` | charcoal-600 | neutral-white | what is being typed into a field in Edit mode |
+| `--ink-invert` | neutral-white | neutral-white | text on a control filled with the brand color or the orange |
+| `--selection` | focused-400 | `#4a9bff` | selection outlines, active controls |
+| `--selection-ink` | neutral-white | night-700 | text on a control filled with the selection |
+| `--selected-row` | brand-200 | brand-400 at 38% over night-600 | the selected row in the tree, a step past the hover |
+| `--danger` | red-100 | `#3a1c1c` | the delete button's hover |
+| `--error` / `--error-ink` | red-400 / `#8c2f18` | `#f1857c` / `#f3a092` | a border or an edge on what went wrong, and the sentence that says what did |
+| `--swatch-edge` | black at 25% | white at 30% | round a swatch in the tree, so a pale one still has an outline |
+| `--scrim` | near-black at 8% | black at 30% | over the page behind a dialog |
+| `--shadow-weight` | 1 | 3 | how much of every shadow there is |
+
+### The dark theme
+
+The page follows the system until someone chooses in the profile popup, and
+`data-theme` on the root says which theme it is in — put there before the first
+paint by `js/theme-first.js`, and after that by [`app/js/theme.js`](app/js/theme.js).
+The dark theme is the one block in `tokens.css` under `:root[data-theme="dark"]`:
+the semantic tokens of the table above said again, and the lines and the
+capability's rim from further down the file. No other stylesheet names the
+theme, with one exception that is a sentence rather than a color — the line in
+the palette editor that is only true on a dark page.
+
+The stage is the darkest surface where it was the lightest, and the chrome a
+shade lighter where it was a shade darker, so the two keep their order of
+importance: the map is what the page is built round. Ink on paper is close to
+15 to 1 in both themes, and `--ink-soft` on chrome better than 5 to 1 in both. A selected
+row is mixed from the brand color rather than named, so a brand that has never
+heard of the dark theme still has one in its own color.
+
+Three things do not turn. `--ink-invert` is white in both, because the fills it
+is read on — the brand color, the orange of unsaved work — are the same fills.
+The color picker's own gradients are the color space, not chrome. And a shadow
+is cast in black whatever the theme; there is just three times as much of it,
+since next to nothing shows against a page that is already dark.
+
+**Adding a color from now on.** A color is written in `tokens.css` and nowhere
+else: a rule in another stylesheet that names a hex, an `rgb()` or a raw
+`--r-*` scale is one the dark theme cannot reach. So a new element is drawn in
+the semantic tokens there are. Where none fits, a new one is declared in the
+`:root` block with its light value, then looked at on a dark page: if it is
+wrong there it is said again in the dark block, and held to 4.5 to 1 against
+what it sits on where it is text. A token whose value is the same in both
+themes — a size, a weight, the brand color — is declared once. Anything an
+exported SVG will carry is a plain hex or `rgba()`, not a `color-mix()`, which
+an SVG reader outside a browser does not know.
 
 Unsaved work is the one thing in the header worth interrupting for, so the Save
 chip goes orange-400 on white while it is dirty. A typed value that is not yet a
 color turns its field's border red-400 rather than throwing the text away.
+
+### Markers
+
+What Draw mode draws with. A flow traced over the map has to read against every
+fill in the palette and against the greys the lines are drawn in, so the markers
+are the saturated ends of the raw scales, where the palette is pale.
+
+| Token | Raw | Where |
+| --- | --- | --- |
+| `--marker-red` | red-400 | the marker first in hand |
+| `--marker-orange` | orange-400 | |
+| `--marker-green` | green-400 | |
+| `--marker-blue` | azure-400 | |
+| `--marker-ink` | charcoal-400 | black, for a word written beside a route |
+| `--marker-width` | 6px | how wide a marker is on screen as a stroke is made |
+
+A stroke names its marker — `data-marker="red"` — rather than carrying a colour,
+and [`diagram.css`](app/css/diagram.css) says once what each name looks like, for
+the stroke on the map and the disc in the tray alike. So restating one of these
+tokens, in a theme or in a brand, recolours what has already been drawn.
 
 ### Shape palette
 
@@ -88,6 +150,41 @@ or 24 in **Edit palette**.
 | 13 `#77bc80` | 14 `#5985ab` | 15 `#a86cd1` | 16 `#d3b23b` | 17 `#f2c3aa` | 18 `#f66598` |
 | 19 `#0d9c08` | 20 `#aedbe6` | 21 `#a85bad` | 22 `#f1982b` | 23 `#9f4e4e` | 24 `#d86161` |
 
+### The palette on dark paper
+
+A map has one palette, and it is the one above: `--c1` … `--c24` are copied into
+a map file when its palette is edited, so they mean the same thing in both
+themes. On a dark map each swatch is drawn as its **dark counterpart**, worked
+out from the swatch by `darkCounterpart` in
+[`app/js/geometry.js`](app/js/geometry.js): the same color in less light. Every
+channel is dimmed by the same share, as light, so hue and saturation are what
+they were; a color keeps 27% of its own brightness on top of a floor of 0.18 in
+luminance, which halves the pale end and leaves it the pale end; and nothing is
+ever lifted, so a swatch already below that line — eight of these — is drawn as
+it is. The stock palette comes out as:
+
+| | | | | | |
+| --- | --- | --- | --- | --- | --- |
+| 1 `#7b9571` | 2 `#66a1b0` | 3 `#b693a7` | 4 `#bda534` | 5 `#b06a46` | 6 `#dc6d7d` |
+| 7 `#4c9b57` | 8 `#3c94a3` | 9 `#8a8dcc` | 10 `#b9aa60` | 11 `#d16d3a` | 12 `#c67998` |
+| 13 `#65a16d` | 14 `#5985ab` | 15 `#a86cd1` | 16 `#af942f` | 17 `#bc9783` | 18 `#e55d8d` |
+| 19 `#0d9c08` | 20 `#84a7b0` | 21 `#a85bad` | 22 `#ce8223` | 23 `#9f4e4e` | 24 `#d86161` |
+
+These are not tokens. They are what the rule gives for the tokens above, and a
+map's own palette, or a brand's, gets the same rule. A stylesheet that wants to
+choose one by hand names it `--c1-dark` … `--c24-dark`; what it names holds for
+the stylesheet's own swatch, and is dropped for a swatch a map has since made
+another color.
+
+The floor is where black type reads at 4.5 to 1, which is the point of it: a
+capability's title is black on every swatch in both themes, and an icon drawn to
+hold against the light palette holds against this one. Only a shape made
+see-through, where the dark paper comes up through the fill, turns its title
+white — and an actor's figure with it. Everywhere a shape's color is shown —
+the tree's swatches, the color grid in the details panel — it is the color the
+map is drawn in, so the counterpart on a dark page. The palette editor is the
+one place that shows the palette itself.
+
 ## Spacing, radius, icon sizes
 
 Spacing is `--space-025` … `--space-200` (4, 8, 12, 16, 24, 32px); the four gaps
@@ -99,7 +196,7 @@ Radii are `--radius-s|m|l|xl` (4/8/12/16px) and icon boxes `--icon-s|m|l`
 
 Button icons are plain `.svg` files under [`app/icons/`](../app/icons/) —
 `add-domain`, `add-capability`, `collapse`, `delete`, `reset`,
-`capability-colors`, `palette`. Each `[data-icon]`
+`capability-colors`, `palette`, `eraser`, `undo`. Each `[data-icon]`
 placeholder in the markup is *replaced* by the fetched `<svg>`
 ([`app/js/icons.js`](../app/js/icons.js)), not merely pointed at it: only a node
 that is part of the page can take its stroke from the button's own
@@ -160,12 +257,16 @@ Brand on the left — logo at `--icon-m` beside the one heading on the page —
 actions on the right. **Save** and the triangle beside it are one split control
 with no seam between them: the button writes the version being edited, the
 triangle opens the rest. Its menu is `position: fixed` and placed in script,
-because the header does not scroll and would otherwise clip a long list. Then
+because the header does not scroll and would otherwise clip a long list.
+**Draw** follows the version chip and is a switch, not an action: pressed, it
+holds `--selected-row` and a marker is in hand over a locked map. It leaves the
+row while Edit is on, since the two are never on together. Then
 **Export** and **Import**, which move a JSON document in and out by hand, with
 **Export SVG** between them: the diagram as a picture, without the selection or
 the edit chrome, cropped to 10px around the ink. Unlike an exported map it
-carries its icons and its type inside it, since a picture has no server to ask.
-**Assistant** comes next, and is the one chip in the row that is a switch rather
+carries its icons and its type inside it, since a picture has no server to ask,
+and whatever has been drawn on the map with a marker.
+**Assistant** comes next, and is the other chip in the row that is a switch rather
 than an action: it swaps the details column for the Assistant and back. Unpressed
 it keeps its ink like the chips beside it — it is still a thing to press — and
 pressed it holds `--selected-row`, the fill the tree gives what is selected.
@@ -181,8 +282,13 @@ palette editor, since it holds prose rather than controls.
 Last in the row, the **avatar**: initials in a circle, or a silhouette when
 sign-in is off. It opens the **profile popup**, pinned under it like About and
 narrower: the name, the address, one line saying the role and what it may do —
-*Viewer — sees the published map, and nothing else* — and, in the foot, **Users & access**
+*Viewer — sees the published map, and nothing else* — then **Theme**, and, in the foot, **Users & access**
 for everyone who works on the map, **Sign out**, and Close on the right.
+Theme is an `--ink-soft` label and three chips on one row — **System**, **Light**,
+**Dark** — sharing what the label leaves; the one in force is filled with
+`--selection`, as the palette's size is. It is here rather than in the header
+because it is whoever is looking's and not the map's: the browser keeps it, as
+it keeps which panels are folded.
 
 ### Versions
 
@@ -284,6 +390,14 @@ element it starts from — a capability's lines under the capability, an actor's
 under the actor — one indent deeper, with no heading in between. One rule for
 all four kinds, and no line listed twice.
 
+A capability's **features** hang under it the same way, one indent deeper and
+before its lines: what it is made of, then where it reaches. A feature's swatch
+is a small bubble in its capability's colour — the shape it is on the map —
+which is what tells its row from a line's rule. A feature that starts lines
+carries them under it, a step deeper again, and a domain's own lines hang under
+the domain after its capabilities: every line under the shape it was drawn
+from, whatever kind that is.
+
 ### Details panel
 
 An **accordion**: a first section headed by what is selected, **Domain** or
@@ -326,7 +440,10 @@ edited. It opens on the swatch the selected shape wears. Below them, a picker
 that is always open on that swatch:
 a saturation and brightness area, a hue strip, and the hex field. Dragging and
 typing each keep the other in step as they go, and a drag is written once, when
-it lands, as a single undo step.
+it lands, as a single undo step. The swatches and the picker show the palette as
+the map holds it, which is how the light theme draws it; on a dark page the
+shapes behind are drawn in dark counterparts, and an `--ink-soft` line above the
+foot says so, there and only there.
 
 ### Assistant
 
@@ -419,6 +536,90 @@ right, a one-line hint bottom left in `--fs-xs` `--ink-soft`, and the kebab menu
 that hangs off a selected domain — a floating row of chips on paper, positioned
 by the diagram. The cursor carries the mode: grab, grabbing while panning,
 crosshair while connecting.
+
+While **Draw** is on, the **marker tray** has the top left corner — the one the
+Add buttons hold in Edit mode, which it is never on together with. It is one row
+on the layer control's see-through paper, with a `--line-strong` border: the
+five markers, each a disc of its own colour the size of a chip, the one in hand
+ringed in `--selection` the way a swatch in the details panel is; a hairline;
+then the eraser, undo and clear as icon chips, which have no edge until they are
+pointed at, and **Done**. The eraser is the one switch among them and holds
+`--selected-row` while it is in hand; clear fills `--danger` under the pointer,
+as Delete does. The row wraps rather than run off a narrow stage, and on a phone
+every control on it steps up to 32px, a size a finger lands on. The cursor is a
+crosshair over open ground and shapes alike — a shape's own cursor offers to
+move it, and nothing on a locked map moves — and a hand while Space is held.
+With the eraser in hand a ring in `--ink` shows how far it reaches: for a mouse
+or a pen, since a finger has no pointer to draw it round.
+
+A **stroke** is drawn in its marker's colour at 90%, so a title it crosses can
+still be read, round at its ends and its corners, and as wide on the map as the
+marker was on screen when it was made. It takes no pointer: what is under it is
+still the thing pressed.
+
+### Levels and the zoom
+
+The stage draws more the closer it is looked at, and moves nothing to do it;
+and its lines are drawn at one of three levels. `app/js/zoom.js` decides what;
+these are the elements that come of it.
+
+- **The level control** — `.level`, the first thing in the zoom stack and as
+  wide as one of its buttons: a slider stood on end on a paper panel with a
+  `--line-strong` border, finest at the top, the way + is over −. Its three
+  stops are lettered beside the track, **F**, **C**, **D**, in `--ink-soft` at
+  10px, the one in force in `--ink` and semibold; a letter presses as the
+  slider drags. The control's title says what the level in force draws, and
+  the footer's status line names the level as it changes.
+- **A folded line** — every line lifted to the same two places, as one. It is
+  a `.connector-group` like any line and wears `--connector-public`. Its weight
+  is its own and is set in screen pixels, 2.5 to 7 by how many lines it carries
+  (`--fold-width`, set on the line by the diagram). Over open ground it is
+  straight; with a shape in its way it is curved round it. Standing for one
+  line it is picked as that line and wears the selected state; standing for
+  several it takes only the hover rim, and names itself in the chip with a
+  third row in `--ink-soft` for the count.
+- **Pips** — `.cap__pip`, a row of dots along the foot of a shut capability
+  that holds features, one each up to seven, in the title's ink at 30%.
+- **An open capability** — `.cap--open`. Its name is `.cap__heading`, bold, in
+  the crown of the oval at an eighth of the oval's shorter radius; its icon is
+  not drawn.
+- **A feature** — `.feature`, in a stack of its own over the lines, so a line
+  passes behind a bubble and never through its name. A bubble of white at
+  `--feature-fill-opacity` over the capability's fill, with a one-pixel rim in
+  `--capability-border` that does not scale with the zoom, and its name in the
+  capability's ink at the one size the capability's layout chose. Hover lifts
+  the fill to 80%; selected, the rim is `--selection` at two pixels; in hand it
+  is at 85%, and the one it would trade places with is ringed in `--selection`.
+  It borrows its colour from what is under it, so it needs none and follows any
+  palette. White in both themes, since a capability's fill is kept light enough
+  for black type in either; where a see-through capability on the dark map
+  turns its title white, the bubble is `--paper` instead
+  (`.feature--inverted`).
+- **Connection points** — every shape a line may end on carries them, and
+  shows its own when pointed at or picked, never those of what is inside it. A
+  domain's sit on its outline; a feature shows every other one, at a size that
+  goes with its bubble.
+- **A domain's edge** — `.domain__edge`, on a selected domain in Edit mode: a
+  band along the outline, 14px wide on screen, that takes the pointer and
+  shows at 28% `--selection` under it. The cursor is a hand, closed while a
+  lobe is being resized.
+
+The diagram hands the zoom to the stylesheet as `--k` on the stage's `<svg>`,
+and anything measured on screen divides by it. A line's weight is still its
+scope's width in map units, drawn between two widths on screen:
+
+| Token | Value | What it holds |
+| --- | --- | --- |
+| `--connector-least` | 2.25px | the least a line is drawn, however far out |
+| `--connector-selected-least` | 4.5px | the same for a picked line, so it still reads as picked |
+| `--connector-most` | 14px | the most, however far in |
+| `--connector-reach` | 20px | how near the pointer has to come to take a line |
+| `--connector-reach-touch` | 40px | the same under a finger (`pointer: coarse`) |
+| `--feature-fill-opacity` | 0.62 | how much white a feature's bubble lays over its capability |
+
+A new stage element that should keep its size on screen divides by `--k` the
+same way; one that belongs to the terrain is left in map units and scales with
+it.
 
 ### Footer
 
@@ -528,8 +729,10 @@ page until **Save** writes the whole map to the version being edited; the
 triangle saves to another version or opens one, and `Export`/`Import` move the
 same document in and out by hand. Unsaved edits and the undo history — and the
 Assistant's cards, which name the same records — are kept in
-the tab's session storage, so they survive a refresh; closing the tab still
-loses them, which is why the page asks before it goes. Shapes reference each other by `key` — a slug
+the tab's session storage, every list the map has, so they survive a refresh; closing the tab still
+loses them, which is why the page asks before it goes. What has been drawn on
+the map with a marker is kept there too, under a key of its own, and is no part
+of the document: no version holds it and no export of the map carries it. Shapes reference each other by `key` — a slug
 of the title — so a document reads like prose and can be edited by hand. An
 empty store is seeded once from [`seed/`](../seed), which mirrors the store's own key
 space: everything it holds sits under `data/`, so one volume covers the lot.

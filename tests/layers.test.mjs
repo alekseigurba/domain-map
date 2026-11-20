@@ -41,8 +41,21 @@ check('a domain and a capability are on the base layer',
 check('a touchpoint and an actor are on the presentation layer',
   rules.LAYER_OF.touchpoint === 'presentation' && rules.LAYER_OF.actor === 'presentation');
 check('each layer takes only its own kinds',
-  rules.KINDS_ON.core.join(',') === 'domain,capability'
+  rules.KINDS_ON.core.join(',') === 'domain,capability,feature'
   && rules.KINDS_ON.presentation.join(',') === 'touchpoint,actor');
+check('a feature is wherever its capability is', rules.LAYER_OF.feature === 'core');
+// The terrain joins itself freely: any two of a domain, a capability and a feature.
+check('a domain, a capability and a feature connect to one another in every combination',
+  rules.TERRAIN_KINDS.every((from) => rules.TERRAIN_KINDS.every((to) => rules.connectorRule(from, to) === null)));
+check('such a line stays the way round it was drawn, having no upper end',
+  rules.orderEnds({ kind: 'feature', id: 'f' }, { kind: 'domain', id: 'd' }).upper.kind === 'feature'
+  && rules.orderEnds({ kind: 'domain', id: 'd' }, { kind: 'feature', id: 'f' }).upper.kind === 'domain');
+check('a touchpoint still reaches a capability and nothing else of the terrain',
+  rules.connectorRule('touchpoint', 'capability') === null
+  && (rules.connectorRule('touchpoint', 'feature') ?? '').includes('A touchpoint connects to a capability, not to a feature')
+  && (rules.connectorRule('domain', 'touchpoint') ?? '').includes('A touchpoint connects to a capability, not to a domain'));
+check('and an actor nothing of it at all',
+  (rules.connectorRule('feature', 'actor') ?? '').includes('An actor connects to a touchpoint, not to a feature'));
 
 // Strictly down the stack: a person reaches the business through a channel.
 check('an actor connects to a touchpoint', rules.connectorRule('actor', 'touchpoint') === null);
@@ -57,8 +70,8 @@ check('an actor does not reach a capability directly',
   (rules.connectorRule('actor', 'capability') ?? '').includes('not to a capability'));
 check('two actors do not connect', rules.connectorRule('actor', 'actor') !== null);
 check('two touchpoints do not connect', rules.connectorRule('touchpoint', 'touchpoint') !== null);
-check('nothing connects to a domain',
-  (rules.connectorRule('capability', 'domain') ?? '').includes('cannot end on a domain'));
+check('nothing connects to an area, which is no shape of the terrain',
+  (rules.connectorRule('domain', 'area') ?? '').includes('cannot end on an area'));
 
 // A line is filed under its upper end, whichever way round it was drawn.
 const ordered = rules.orderEnds({ kind: 'capability', id: 'c' }, { kind: 'touchpoint', id: 't' });
@@ -232,8 +245,9 @@ check('and only what was chosen: the touchpoint wrote no weight',
   !('iconWeight' in dressedOut.touchpoints[0].shape));
 // Placement and weight were fields an older app could read past. Areas are
 // not: read past, they would be lost on the next save, so the number moved --
-// and again for the owner's id, which is dropped the same way.
-check('every save writes version 4', dressedOut.version === 4 && CURRENT_VERSION === 4);
+// and again for the owner's id, which is dropped the same way, and again for
+// the features a capability holds.
+check('every save writes version 5', dressedOut.version === 5 && CURRENT_VERSION === 5);
 check('a map with no areas writes no list of them', !('areas' in dressedOut));
 
 // --- what a file may not say -------------------------------------------------
@@ -271,9 +285,12 @@ refuses('an actor reaching a capability is refused',
 refuses('a flat line from an actor to a capability is refused',
   { ...v2, connectors: [{ from: 'payer', fromKind: 'actor', to: 'invoicing' }] },
   'not to a capability');
-refuses('a line ending on a domain is refused',
+refuses('a line from a capability to the domain that holds it is refused',
   { ...v2, connectors: [{ from: 'invoicing', to: 'billing', toKind: 'domain' }] },
-  'cannot end on a domain');
+  'cannot join a shape to the one that holds it');
+refuses('a line ending on an area is refused',
+  { ...v2, connectors: [{ from: 'invoicing', to: 'billing', toKind: 'area' }] },
+  'cannot end on an area');
 refuses('an opacity off the scale is refused',
   { ...v2, domains: [{ ...v2.domains[0], shape: { position: '0,0', opacity: 5 } }] },
   'opacity must be between 10 and 100');
@@ -311,7 +328,7 @@ check('the core layer holds the domain and its capability, and no lines',
 // Which layer is being worked on: an Edit-mode idea, never saved.
 check('nothing is selected to start with', store_.selectedLayerKey() === null);
 check('only its own kinds may be added to a layer',
-  store_.kindsAddableTo('core').join(',') === 'domain,capability');
+  store_.kindsAddableTo('core').join(',') === 'domain,capability,feature');
 
 store_.setLayerState('presentation', { hidden: true });
 check('hiding a layer hides it', store_.isHidden('presentation'));
@@ -368,10 +385,10 @@ check('an actor may not reach a capability',
   (threw(() => store_.createConnector({
     fromId: payer.id, fromKind: 'actor', toId: invoicing.id, toKind: 'capability',
   })) ?? '').includes('not to a capability'));
-check('a line may not end on a domain',
+check('a touchpoint may not reach a domain',
   (threw(() => store_.createConnector({
     fromId: made.id, fromKind: 'touchpoint', toId: billing.id, toKind: 'domain',
-  })) ?? '').includes('cannot end on a domain'));
+  })) ?? '').includes('connects to a capability, not to a domain'));
 check('two touchpoints may not be joined',
   threw(() => store_.createConnector({
     fromId: made.id, fromKind: 'touchpoint', toId: portal.id, toKind: 'touchpoint',
@@ -580,6 +597,266 @@ check('a version 3 file reads with every owner a plain name',
   fromDocument({ version: 3, domains: [{ key: 'a', title: 'A', owner: 'Someone' }] }).domains[0].ownerId === null);
 refuses('an id that is not text is refused', { version: 4, domains: [{ key: 'a', title: 'A', ownerId: 7 }] }, 'ownerId');
 refuses('and one too long to be one', { version: 4, actors: [{ key: 'a', title: 'A', ownerId: 'x'.repeat(201) }] }, 'ownerId');
+
+// --- features: what a capability does, held inside it -------------------------
+
+const featured = {
+  version: 5,
+  title: 'Features',
+  types: { feature: ['Customer-facing', 'Back office'] },
+  domains: [{ key: 'billing', title: 'Billing' }],
+  capabilities: [
+    {
+      key: 'invoicing',
+      domain: 'billing',
+      title: 'Invoicing',
+      features: [
+        { key: 'issue-an-invoice', title: 'Issue an invoice', description: 'From an order, once it ships.', type: 'Back office' },
+        { key: 'credit-note', title: 'Credit note', owner: 'Jane Doe', ownerId: '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41' },
+        { key: 'reminders', title: 'Reminders' },
+      ],
+    },
+    { key: 'collections', domain: 'billing', title: 'Collections', features: [{ key: 'dunning', title: 'Dunning' }] },
+    { key: 'pricing', title: 'Pricing' },
+  ],
+  connectors: [{ from: 'invoicing', to: 'collections' }],
+};
+check('a file whose capabilities hold features is valid', validate(featured) === null, validate(featured) ?? '');
+
+const featuredMap = fromDocument(featured);
+const capabilityOf = (feature) => featuredMap.capabilities.find((one) => one.id === feature.capabilityId);
+check('every feature is read, each naming the capability it was written under',
+  featuredMap.features.length === 4
+  && capabilityOf(titled(featuredMap.features, 'Credit note')).title === 'Invoicing'
+  && capabilityOf(titled(featuredMap.features, 'Dunning')).title === 'Collections');
+check('in the order the file had them',
+  featuredMap.features.filter((one) => capabilityOf(one).title === 'Invoicing')
+    .sort((a, b) => a.sortIndex - b.sortIndex).map((one) => one.title).join(',')
+  === 'Issue an invoice,Credit note,Reminders');
+check('a feature carries what it is called, what it is, its type and its owner',
+  titled(featuredMap.features, 'Issue an invoice').description === 'From an order, once it ships.'
+  && titled(featuredMap.features, 'Issue an invoice').type === 'Back office'
+  && titled(featuredMap.features, 'Credit note').ownerId === '6b4f2a0e-9d1c-4e0a-8c3b-2f1d9e7a5c41');
+check('and nothing of a look: no colour, no size',
+  !['colorIndex', 'fontSize', 'sizeScale'].some((field) => field in titled(featuredMap.features, 'Dunning')));
+check('it has no place of its own until it is put somewhere by hand',
+  titled(featuredMap.features, 'Dunning').x === null && titled(featuredMap.features, 'Dunning').y === null);
+check('a feature keeps a Type list of its own, as every kind does',
+  featuredMap.types.feature.join(',') === 'Customer-facing,Back office');
+
+const featuredOut = toDocument({ ...featuredMap, palette: [] });
+check('features are written back under their capability, in order',
+  keyed(featuredOut.capabilities, 'invoicing').features.map((one) => one.key).join(',')
+  === 'issue-an-invoice,credit-note,reminders');
+check('a capability that holds none writes no list of them',
+  !('features' in keyed(featuredOut.capabilities, 'pricing')));
+check('reading a file with features and writing it leaves it unchanged',
+  stringify(featuredOut) === stringify(toDocument({ ...fromDocument(featuredOut), palette: [] })));
+check('a feature writes only what it says',
+  JSON.stringify(Object.keys(keyed(featuredOut.capabilities, 'collections').features[0])) === '["key","title"]');
+check('two features of one name get keys of their own across the whole file', (() => {
+  const twice = structuredClone(featured);
+  twice.capabilities[1].features.push({ key: 'reminders-x', title: 'Reminders' });
+  const written = toDocument({ ...fromDocument(twice), palette: [] });
+  return keyed(written.capabilities, 'collections').features.at(-1).key === 'reminders-2';
+})());
+check('a version 4 file reads as a map whose capabilities hold nothing',
+  fromDocument({ version: 4, capabilities: [{ key: 'a', title: 'A' }] }).features.length === 0);
+
+refuses('features that are not a list are refused', (() => {
+  const bad = structuredClone(featured);
+  bad.capabilities[0].features = { key: 'a' };
+  return bad;
+})(), 'features must be a list');
+refuses('a feature with no key is refused', (() => {
+  const bad = structuredClone(featured);
+  delete bad.capabilities[0].features[0].key;
+  return bad;
+})(), 'every feature needs a key');
+refuses('two features sharing a key are refused, though they sit in two capabilities', (() => {
+  const bad = structuredClone(featured);
+  bad.capabilities[1].features[0].key = 'reminders';
+  return bad;
+})(), "Two features share the key 'reminders'");
+refuses('a feature with a blank title is refused', (() => {
+  const bad = structuredClone(featured);
+  bad.capabilities[0].features[0].title = '  ';
+  return bad;
+})(), "Feature 'issue-an-invoice': Title must be");
+refuses('more features than a capability holds are refused', (() => {
+  const bad = structuredClone(featured);
+  bad.capabilities[2].features = Array.from({ length: rules.MAX_FEATURES + 1 },
+    (_, at) => ({ key: `f-${at}`, title: `F ${at}` }));
+  return bad;
+})(), `holds at most ${rules.MAX_FEATURES}`);
+
+// --- lines among domains, capabilities and features ---------------------------
+
+const wired = structuredClone(featured);
+wired.domains.push({ key: 'lending', title: 'Lending' });
+wired.capabilities.push({ key: 'scoring', domain: 'lending', title: 'Scoring', features: [{ key: 'bureau-check', title: 'Bureau check' }] });
+wired.capabilities[0].features[1].shape = { position: '-40,25' };
+wired.connectors = [
+  { from: 'invoicing', to: 'collections' },
+  { from: 'billing', fromKind: 'domain', to: 'lending', toKind: 'domain', description: 'Billing asks Lending.' },
+  { from: 'dunning', fromKind: 'feature', to: 'bureau-check', toKind: 'feature' },
+  { from: 'invoicing', to: 'lending', toKind: 'domain' },
+  { from: 'credit-note', fromKind: 'feature', to: 'scoring' },
+  { from: 'lending', fromKind: 'domain', to: 'reminders', toKind: 'feature' },
+];
+check('a file may join domains, capabilities and features in any combination', validate(wired) === null, validate(wired) ?? '');
+const wiredMap = fromDocument(wired);
+const pairOf = (line) => `${line.fromKind}-${line.toKind}`;
+check('every such line is read with the kinds it was written with',
+  wiredMap.connectors.map(pairOf).join(',')
+  === 'capability-capability,domain-domain,feature-feature,capability-domain,feature-capability,domain-feature',
+  wiredMap.connectors.map(pairOf).join(','));
+check('and its ends are the records the keys name',
+  wiredMap.domains.some((one) => one.id === wiredMap.connectors[1].fromId && one.title === 'Billing')
+  && wiredMap.features.some((one) => one.id === wiredMap.connectors[2].toId && one.title === 'Bureau check'));
+const wiredOut = toDocument({ ...wiredMap, palette: [] });
+check('they are written at the top of the file, a kind said only where it is not a capability',
+  JSON.stringify(wiredOut.connectors.map((line) => [line.from, line.fromKind ?? null, line.to, line.toKind ?? null]))
+  === JSON.stringify([
+    ['invoicing', null, 'collections', null],
+    ['billing', 'domain', 'lending', 'domain'],
+    ['dunning', 'feature', 'bureau-check', 'feature'],
+    ['invoicing', null, 'lending', 'domain'],
+    ['credit-note', 'feature', 'scoring', null],
+    ['lending', 'domain', 'reminders', 'feature'],
+  ]), JSON.stringify(wiredOut.connectors));
+check('so a line between two capabilities is written as it always was',
+  JSON.stringify(Object.keys(wiredOut.connectors[0]).slice(0, 2)) === '["from","to"]');
+check('reading such a file and writing it leaves it unchanged',
+  stringify(wiredOut) === stringify(toDocument({ ...fromDocument(wiredOut), palette: [] })));
+check('a feature put somewhere by hand reads with its place, in hundredths of its capability\'s radii',
+  titled(wiredMap.features, 'Credit note').x === -40 && titled(wiredMap.features, 'Credit note').y === 25);
+check('and writes it back as a shape, where one left in its row writes none',
+  keyed(wiredOut.capabilities, 'invoicing').features[1].shape.position === '-40,25'
+  && !('shape' in keyed(wiredOut.capabilities, 'invoicing').features[0]));
+refuses('a feature put outside its capability is refused', (() => {
+  const bad = structuredClone(wired);
+  bad.capabilities[0].features[1].shape = { position: '140,0' };
+  return bad;
+})(), 'position must be within');
+refuses('a line from a feature to the capability that holds it is refused',
+  { ...wired, connectors: [{ from: 'dunning', fromKind: 'feature', to: 'collections' }] },
+  'cannot join a shape to the one that holds it');
+refuses('and so is one to the domain its capability is in',
+  { ...wired, connectors: [{ from: 'billing', fromKind: 'domain', to: 'dunning', toKind: 'feature' }] },
+  'cannot join a shape to the one that holds it');
+refuses('a line to a feature that is not in the file is refused',
+  { ...wired, connectors: [{ from: 'invoicing', to: 'nowhere', toKind: 'feature' }] },
+  'not in the file');
+
+store_.setMap(wiredMap);
+const kindsOf = (kind) => store.connectors.filter((line) => line.fromKind === kind || line.toKind === kind).length;
+const billingNow = titled(store.domains, 'Billing');
+const lendingNow = titled(store.domains, 'Lending');
+const dunningNow = titled(store.features, 'Dunning');
+const scoringNow = titled(store.capabilities, 'Scoring');
+check('a line between two domains crosses a boundary, by definition',
+  store_.connectorScope(store.connectors[1]) === 'public');
+const inside = store_.createConnector({
+  fromId: titled(store.features, 'Reminders').id, fromKind: 'feature', toId: dunningNow.id, toKind: 'feature',
+});
+check('a line between features of two capabilities in one domain stays inside it',
+  store_.connectorScope(inside) === 'internal');
+check('a line from a feature to a capability in another domain does not',
+  store_.connectorScope(store.connectors[4]) === 'public');
+check('the store refuses a line from a shape to the one that holds it',
+  (threw(() => store_.createConnector({
+    fromId: dunningNow.id, fromKind: 'feature', toId: billingNow.id, toKind: 'domain',
+  })) ?? '').includes('cannot join a shape to the one that holds it'));
+check('a feature is not handed to a capability it is connected to',
+  (threw(() => store_.updateFeature(titled(store.features, 'Credit note').id, { capabilityId: scoringNow.id })) ?? '')
+    .includes('Remove the connector first'));
+check('nor a capability put into a domain it is connected to',
+  (threw(() => store_.updateCapability(titled(store.capabilities, 'Invoicing').id, { domainId: lendingNow.id })) ?? '')
+    .includes('Remove the connector first'));
+const linesBefore = store.connectors.length;
+const goneWithFeature = store_.deleteFeature(dunningNow.id);
+check('deleting a feature takes the lines that ended on it',
+  goneWithFeature.connectors.length === 2 && store.connectors.length === linesBefore - 2);
+store_.restore(goneWithFeature);
+check('and undoing it brings them back', store.connectors.length === linesBefore);
+const goneWithCapability = store_.deleteCapability(scoringNow.id);
+check('deleting a capability takes its own lines and its features\'',
+  goneWithCapability.connectors.length === 2 && kindsOf('feature') === 2, `${goneWithCapability.connectors.length} lines, ${kindsOf('feature')} left on features`);
+store_.restore(goneWithCapability);
+const goneWithDomain = store_.deleteDomain(lendingNow.id);
+check('deleting a domain takes every line that ended on it or on anything in it',
+  goneWithDomain.connectors.length === 5 && store.connectors.length === linesBefore - 5,
+  `${goneWithDomain.connectors.length} lines gone, ${store.connectors.length} left`);
+store_.restore(goneWithDomain);
+check('and undoing it brings every one back', store.connectors.length === linesBefore);
+
+const creditNote = titled(store.features, 'Credit note');
+store_.updateFeature(creditNote.id, { x: 61.4, y: -250 });
+check('a feature is put where it is dragged, in whole hundredths and no further than the rim',
+  creditNote.x === 61 && creditNote.y === -100, `${creditNote.x},${creditNote.y}`);
+store_.updateFeature(creditNote.id, { clearPosition: true });
+check('and sent back to its row', creditNote.x === null && creditNote.y === null);
+store_.updateFeature(creditNote.id, { x: 10, y: 10 });
+store_.deleteConnector(store.connectors.find((line) => line.fromId === creditNote.id).id);
+store_.updateFeature(creditNote.id, { capabilityId: scoringNow.id });
+check('handed to another capability, a feature arrives in its row: a place in one oval means nothing in another',
+  creditNote.capabilityId === scoringNow.id && creditNote.x === null);
+
+store_.setMap(featuredMap);
+const invoicingNow = titled(store.capabilities, 'Invoicing');
+const collectionsNow = titled(store.capabilities, 'Collections');
+check('the store hands a capability its features in order',
+  store_.featuresOf(invoicingNow.id).map((one) => one.title).join(',') === 'Issue an invoice,Credit note,Reminders');
+const added = store_.createFeature({ capabilityId: invoicingNow.id });
+check('a new feature goes after the last its capability holds',
+  store_.featuresOf(invoicingNow.id).at(-1).id === added.id && added.title === rules.FEATURE_DEFAULTS.title);
+check('a feature is not made outside a capability', (() => {
+  try { store_.createFeature({ title: 'Nowhere' }); return false; } catch (error) {
+    return error.message.includes('belongs to a capability');
+  }
+})());
+store_.updateFeature(added.id, { title: 'Pro forma', capabilityId: collectionsNow.id });
+check('a feature is renamed, and handed to another capability',
+  added.title === 'Pro forma' && store_.featuresOf(collectionsNow.id).some((one) => one.id === added.id)
+  && !store_.featuresOf(invoicingNow.id).some((one) => one.id === added.id));
+check('a blank title leaves the one it had',
+  store_.updateFeature(added.id, { title: '   ' }).title === 'Pro forma');
+store_.select('feature', added.id);
+const goneFeature = store_.deleteFeature(added.id);
+check('deleting a feature takes it and nothing else',
+  store.features.length === 4 && store.capabilities.length === 3 && store.selection.id === null);
+store_.restore(goneFeature);
+check('and undoing that puts it back as it was',
+  store_.find('feature', added.id)?.title === 'Pro forma' && store.features.length === 5);
+
+const goneCapability = store_.deleteCapability(invoicingNow.id);
+check('deleting a capability takes the features inside it',
+  store.features.every((one) => one.capabilityId !== invoicingNow.id) && store.features.length === 2
+  && goneCapability.features.length === 3);
+store_.restore(goneCapability);
+check('and undoing it brings them back with it, and its line',
+  store_.featuresOf(invoicingNow.id).length === 3 && store.connectors.length === 1);
+const goneDomain = store_.deleteDomain(store.domains[0].id);
+check('deleting a domain takes its capabilities\' features too',
+  store.features.length === 0 && goneDomain.features.length === 5);
+store_.restore(goneDomain);
+check('and undoing it brings every one back', store.features.length === 5 && store.capabilities.length === 3);
+
+const crowded = titled(store.capabilities, 'Pricing');
+for (let at = 0; at < rules.MAX_FEATURES; at++) store_.createFeature({ capabilityId: crowded.id, title: `F ${at}` });
+check('a capability that is full takes no more', (() => {
+  try { store_.createFeature({ capabilityId: crowded.id }); return false; } catch (error) {
+    return error.message.includes(`at most ${rules.MAX_FEATURES}`);
+  }
+})());
+check('nor one handed over from another', (() => {
+  try { store_.updateFeature(store_.featuresOf(collectionsNow.id)[0].id, { capabilityId: crowded.id }); return false; } catch (error) {
+    return error.message.includes('at most');
+  }
+})());
+check('a Type choice in use by a feature is counted, as for any kind',
+  store_.typeUsage('feature', 'Back office') === 1);
 
 console.log(failures === 0 ? '\nAll layer checks passed.' : `\n${failures} check(s) failed.`);
 process.exitCode = failures === 0 ? 0 : 1;

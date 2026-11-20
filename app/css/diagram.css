@@ -29,6 +29,55 @@
   gap: var(--gap-1);
 }
 
+/* The level the lines are drawn at, over the zoom buttons and as wide as one:
+   a slider stood on end, finest at the top, the way + is over −. Its three
+   stops are lettered beside the track — F, C, D — and the one in force is in
+   the page's ink. It is the zoom's neighbour because it answers the same
+   question, how much to show, without moving the map. */
+.level {
+  box-sizing: border-box;
+  width: var(--icon-l);
+  padding: var(--gap-2) 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s);
+  background: var(--paper);
+}
+
+.level__stops {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink-soft);
+}
+
+.level__stop {
+  padding: 1px 0;
+  cursor: pointer;
+}
+
+.level[data-level="feature"] .level__stop[data-level="feature"],
+.level[data-level="capability"] .level__stop[data-level="capability"],
+.level[data-level="domain"] .level__stop[data-level="domain"] {
+  color: var(--ink);
+  font-weight: var(--fw-semibold);
+}
+
+.level__slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 14px;
+  height: 58px;
+  margin: 0;
+  accent-color: var(--ink-soft);
+  cursor: pointer;
+}
+
 /* --- the layer control --------------------------------------------------- */
 
 /* The corner that used to hold the "Drag to pan…" line: the layer rows, and
@@ -196,6 +245,110 @@
   stroke-linejoin: round;
 }
 
+/* --- drawing on the map ---------------------------------------------------- */
+
+/* Draw mode: the marker has the stage. The cursor says what a press would do —
+   draw, or pan while Space is held — over open ground and over a shape alike:
+   a shape's own cursor offers to move it, and nothing on a locked map moves. */
+.diagram[data-drawing] { cursor: crosshair; }
+.diagram[data-drawing="pan"] { cursor: grab; }
+.diagram[data-drawing][data-panning="true"] { cursor: grabbing; }
+.diagram[data-drawing] #layer-stacks * { cursor: inherit; }
+
+/* Which marker a thing is — a stroke on the map, a marker in the tray — is said
+   once, here, as the colour both of them take. */
+[data-marker="red"] { --marker: var(--marker-red); }
+[data-marker="orange"] { --marker: var(--marker-orange); }
+[data-marker="green"] { --marker: var(--marker-green); }
+[data-marker="blue"] { --marker: var(--marker-blue); }
+[data-marker="ink"] { --marker: var(--marker-ink); }
+
+/* A stroke takes no pointer: it lies over the map, and what is under it is
+   still the thing pressed. Its width is its own, in the map's units, from when
+   it was drawn. Not quite solid, so a title it crosses can still be read. */
+.stroke {
+  fill: none;
+  stroke: var(--marker);
+  stroke-opacity: 0.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* The marker tray: the corner the Add buttons hold in Edit mode, on the same
+   see-through paper as the layer control, so the map shows a little through it
+   and a word on it can still be read over a domain's colour. It wraps rather
+   than run off a narrow stage. */
+.tray {
+  position: absolute;
+  left: var(--gap-3);
+  top: var(--gap-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-1);
+  max-width: calc(100% - 2 * var(--gap-3));
+  padding: var(--gap-1);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+}
+
+/* A marker is a disc of its own colour, the size of a chip. The paper round it
+   is what keeps the ring off the colour when it is the one in hand — the same
+   ring a swatch in the details panel wears. */
+.tray__marker {
+  flex: none;
+  width: var(--chip-h);
+  height: var(--chip-h);
+  padding: 0;
+  background: var(--marker);
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tray__marker:hover { outline: 1px solid var(--line-strong); }
+.tray__marker[aria-pressed="true"] { outline: 2px solid var(--selection); }
+
+/* Between what draws and what is done to the drawing. */
+.tray__rule {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px;
+  background: var(--line);
+}
+
+/* The rest are chips as the header has them: no edge until pointed at, and the
+   eraser, the one switch among them, holds the selected row's fill while it is
+   the thing in hand. */
+.tray .btn {
+  border-color: transparent;
+  background: transparent;
+}
+
+.tray .btn:hover,
+.tray .btn:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--chrome-hover);
+}
+
+.tray .btn[aria-pressed="false"] { color: var(--ink); }
+.tray .btn[aria-pressed="true"] { background: var(--selected-row); }
+.tray .btn--danger:hover { background: var(--danger); }
+
+/* How far the eraser reaches, drawn round the pointer: what is inside the ring
+   when it is pressed is what goes. Sized by draw.js, which is what knows the
+   reach, and never in the way of the press it is drawn round. */
+.eraser-ring {
+  position: absolute;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper) 45%, transparent);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 /* --- areas --------------------------------------------------------------- */
 
 /* A band round what a team holds: a wash, a border with a break in it, and the
@@ -282,6 +435,24 @@
   stroke-opacity: 0.9;
 }
 
+/* The boundary of a picked domain, in Edit mode: a band along the outline that
+   takes the pointer, wide enough on screen to find at any zoom. Drag it and
+   the lobe behind that stretch of it grows or shrinks. It shows faintly under
+   the pointer, so the boundary reads as something to take hold of. */
+.domain__edge {
+  fill: none;
+  stroke: var(--selection);
+  stroke-opacity: 0;
+  stroke-width: calc(14px / var(--k, 1));
+  stroke-linejoin: round;
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+.domain__edge:hover { stroke-opacity: 0.28; }
+.diagram[data-resizing="true"] { cursor: grabbing; }
+.diagram[data-resizing="true"] .domain__edge { stroke-opacity: 0.28; cursor: grabbing; }
+
 .domain--selected .domain__blob {
   stroke: var(--selection);
   stroke-width: 7;
@@ -350,15 +521,17 @@
   stroke-width: 2.5;
 }
 
+/* --figure-ink is set on the figure by the diagram, and only on a dark map:
+   there the page's ink is a light one, and so is a ring drawn solid. */
 .actor__figure {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--figure-ink, var(--ink));
   stroke-width: 2;
   stroke-linecap: round;
   pointer-events: none;
 }
 
-.actor__figure circle { fill: var(--ink); stroke: none; }
+.actor__figure circle { fill: var(--figure-ink, var(--ink)); stroke: none; }
 
 /* --- capabilities -------------------------------------------------------- */
 
@@ -386,14 +559,74 @@
    thing a set of icons told apart by colour had to say. */
 .cap__icon { pointer-events: none; }
 
+/* --- features ------------------------------------------------------------ */
+
+/* A shut capability says there is more inside with a row of pips along its
+   foot. They are the title's ink, thinned: a hint, small enough to be gone
+   from the helicopter view and to show as the map closes in. */
+.cap__pip {
+  fill-opacity: 0.3;
+  pointer-events: none;
+}
+
+/* A feature is a bubble of white laid over its capability's colour, so it
+   wears that colour paled and needs none of its own. White and not the stage's
+   paper: a capability keeps a fill light enough for black type in either
+   theme, and the bubble is there to lift that type further off it. Its rim is
+   a hairline at every zoom: the bubbles are small, and a rim in map units is
+   either lost or loud. */
+.feature { cursor: pointer; }
+
+.feature__bubble {
+  fill: var(--r-neutral-white);
+  fill-opacity: var(--feature-fill-opacity);
+  stroke: var(--capability-border);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.feature:hover .feature__bubble { fill-opacity: 0.8; }
+
+/* In hand, it is lifted a little off the oval; the one it would trade places
+   with is ringed, as a capability about to be swapped is. */
+.feature--dragging { opacity: 0.85; }
+
+.feature--swap .feature__bubble {
+  stroke: var(--selection);
+  stroke-width: 2px;
+}
+
+/* The one case the other way round: a capability made see-through on the dark
+   map has its title in white, and its features are laid in the dark paper. */
+.feature--inverted .feature__bubble { fill: var(--paper); }
+
+.feature--selected .feature__bubble {
+  stroke: var(--selection);
+  stroke-opacity: 0.9;
+  stroke-width: 2px;
+}
+
 /* --- connectors ---------------------------------------------------------- */
 
 /* A line that crosses a domain boundary is a public event and reads loud; one
    that stays inside a domain is plumbing and stays quiet. Each scope sets its
-   own weight on the group, so the rim under the line can be drawn from it. */
+   own weight on the group, so the rim under the line can be drawn from it.
+
+   That weight is in map units, and is what is drawn for as long as it reads.
+   Zoomed out to the whole map it thins to a hair, and the lines are the first
+   thing the map loses; zoomed in on one capability it swells into a road. So
+   what is drawn is held between two widths on screen — the diagram hands the
+   zoom over in --k. */
+.connector-group {
+  --connector-shown: clamp(
+    calc(var(--connector-least) / var(--k, 1)),
+    var(--connector-width),
+    calc(var(--connector-most) / var(--k, 1)));
+}
+
 .connector {
   stroke-linecap: round;
-  stroke-width: var(--connector-width);
+  stroke-width: var(--connector-shown);
   fill: none;
 }
 
@@ -423,11 +656,30 @@
    differently for it: where a line runs is the map's meaning, and dashing it
    would say something about the terrain that anchoring does not mean. */
 
+/* A folded line stands for every line lifted to the same two places. Its
+   weight is set on screen outright, by how many lines it carries, so it reads
+   the same at whatever zoom it is seen from. Standing for one line it is
+   picked as that line; standing for several it only names itself under the
+   pointer, and takes no pick. */
+.connector--folded {
+  --connector-shown: calc(var(--fold-width) / var(--k, 1));
+}
+
+.connector--folded[data-type="fold"] .connector__hit { cursor: default; }
+
+/* What takes the pointer is wider than what is seen, and is measured on
+   screen as well: a target in map units shrinks with the map, to a few pixels
+   from the helicopter view — and under a finger a few pixels is nothing. */
 .connector__hit {
+  --reach: var(--connector-reach);
   stroke: transparent;
-  stroke-width: 18;
+  stroke-width: max(18px, calc(var(--reach) / var(--k, 1)));
   fill: none;
   cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  .connector__hit { --reach: var(--connector-reach-touch); }
 }
 
 /* A line has no inside to outline, so its rim is drawn under it and shows as a
@@ -438,7 +690,9 @@
   fill: none;
   stroke: none;
   stroke-linecap: round;
-  stroke-width: calc(var(--connector-width) + 6px);
+  /* A border either side of the line as it is drawn, never less than two
+     pixels of it on screen. */
+  stroke-width: calc(var(--connector-shown) + max(6px, calc(4px / var(--k, 1))));
   pointer-events: none;
 }
 
@@ -457,6 +711,7 @@
    own colour is what holds it clear of them. */
 .connector--selected {
   --connector-width: var(--connector-selected-width);
+  --connector-least: var(--connector-selected-least);
 }
 
 .connector--selected .connector { stroke: var(--selection); }
@@ -468,7 +723,10 @@
 
 .connector--draft {
   stroke: var(--selection);
-  stroke-width: var(--connector-public-width);
+  stroke-width: clamp(
+    calc(var(--connector-least) / var(--k, 1)),
+    var(--connector-public-width),
+    calc(var(--connector-most) / var(--k, 1)));
   stroke-linecap: round;
   stroke-dasharray: 9 7;
   fill: none;
@@ -495,6 +753,13 @@
   dominant-baseline: central;
 }
 
+/* How many lines a folded one stands for: a fact about the two names above
+   it, so it is set quieter than they are. */
+.connector-label__text--count {
+  font-weight: 400;
+  fill: var(--ink-soft);
+}
+
 /* --- connection snap points ---------------------------------------------- */
 
 /* A generous invisible target around each small visible dot. */
@@ -504,8 +769,15 @@
   cursor: crosshair;
 }
 
-.cap:hover .snap-hit,
-.cap--selected .snap-hit,
+/* A shape shows its own points and not those of what is inside it: a
+   capability's are its direct child, and its features bring up theirs when
+   they are pointed at themselves. */
+.cap:hover > .snaps .snap-hit,
+.cap--selected > .snaps .snap-hit,
+.feature:hover .snap-hit,
+.feature--selected .snap-hit,
+.domain:hover .snap-hit,
+.domain--selected .snap-hit,
 .touchpoint:hover .snap-hit,
 .touchpoint--selected .snap-hit,
 .actor:hover .snap-hit,
@@ -521,8 +793,12 @@
   transition: opacity 90ms linear;
 }
 
-.cap:hover .snap,
-.cap--selected .snap,
+.cap:hover > .snaps .snap,
+.cap--selected > .snaps .snap,
+.feature:hover .snap,
+.feature--selected .snap,
+.domain:hover .snap,
+.domain--selected .snap,
 .touchpoint:hover .snap,
 .touchpoint--selected .snap,
 .actor:hover .snap,

@@ -1,9 +1,14 @@
 // The palette editor: a modal over the whole page, because the palette belongs
 // to the map rather than to whatever happens to be selected. How many colours
 // there are, which one is being changed, and a picker that stays open on it.
+//
+// It edits the palette as the map holds it — geometry's PALETTE, not the COLORS
+// the shapes are drawn in. On a light map those are the same list. On a dark
+// one every shape wears its swatch's dark counterpart, and a picker pointed at
+// that would be editing a colour the map does not have.
 
 import { store } from './store.js';
-import { COLORS, PALETTE_SIZES, DEFAULT_PALETTE } from './geometry.js';
+import { PALETTE, PALETTE_SIZES, DEFAULT_PALETTE } from './geometry.js';
 
 const dialog = document.getElementById('palette-dialog');
 
@@ -43,7 +48,7 @@ export function initPalette(callbacks) {
 /** Open on one swatch, or on whichever was edited last. */
 export function openPalette(index = null) {
   if (dialog.open) return;
-  active = clamp(index ?? active, 0, COLORS.length - 1);
+  active = clamp(index ?? active, 0, PALETTE.length - 1);
   loadSaved({ keep: false });
   refresh();
   dialog.showModal();
@@ -103,7 +108,7 @@ function toHex({ h, s, v }) {
 const currentPalette = () => (store.palette?.length ? [...store.palette] : [...DEFAULT_PALETTE]);
 
 /** What the swatch being edited holds in the map. */
-const savedHex = () => readHex(COLORS[active]) ?? '#000000';
+const savedHex = () => readHex(PALETTE[active]) ?? '#000000';
 
 /** Write one swatch. Only a colour that differs is a change, and an undo step. */
 function save(color) {
@@ -172,10 +177,10 @@ function commitHex() {
 // --- painting ----------------------------------------------------------------
 
 function refresh() {
-  active = clamp(active, 0, COLORS.length - 1);
+  active = clamp(active, 0, PALETTE.length - 1);
 
   for (const button of sizeButtons) {
-    const on = Number(button.dataset.size) === COLORS.length;
+    const on = Number(button.dataset.size) === PALETTE.length;
     button.classList.toggle('palette-size--on', on);
     button.setAttribute('aria-pressed', String(on));
   }
@@ -197,8 +202,8 @@ function refresh() {
  * never gets its click, and the blur that writes a typed hex lands exactly there.
  */
 function paintGrid() {
-  if (grid.children.length !== COLORS.length) {
-    grid.replaceChildren(...COLORS.map((_, i) => {
+  if (grid.children.length !== PALETTE.length) {
+    grid.replaceChildren(...PALETTE.map((_, i) => {
       const button = element('button', 'swatch');
       button.type = 'button';
       button.title = `Edit color ${i + 1}`;
@@ -207,7 +212,7 @@ function paintGrid() {
     }));
   }
   [...grid.children].forEach((button, i) => {
-    button.style.background = COLORS[i];
+    button.style.background = PALETTE[i];
     button.setAttribute('aria-pressed', String(i === active));
   });
 }
@@ -320,6 +325,12 @@ function build() {
   const columns = element('div', 'palette-editor');
   columns.append(list, picker);
 
+  // Only the dark theme shows it — the stylesheet's doing, so it is there or
+  // gone with the theme and nothing here has to hear about the change.
+  const note = element('p', 'palette-editor__note',
+    'The palette is shown as the light theme draws it. '
+    + 'The dark theme draws each color dimmed, as the map behind shows.');
+
   // --- the way out -----------------------------------------------------------
   const resetButton = element('button', 'btn btn--chip', 'Reset to defaults');
   resetButton.type = 'button';
@@ -333,7 +344,7 @@ function build() {
   foot.append(resetButton, done);
 
   const body = element('div', 'dialog__body');
-  body.append(title, columns, foot);
+  body.append(title, columns, note, foot);
   dialog.replaceChildren(body);
 
   wireArea();
