@@ -7,6 +7,8 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.6.1 — 2026-11-23
+
 A feature that leans, a line's shape set beside the line, the Assistant's model
 and its key managed in the app, a people list that can be searched and cleared
 out, and the lines of the domain level put right. Map files stay version 5; one
