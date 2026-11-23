@@ -165,15 +165,21 @@ new one instead.
 ## The demo in the README
 
 [demo.gif](demo.gif) is a recording of the real app, driven through the example
-seed: a domain added, two capabilities put in it, arranged, and one of them
-connected across to a capability in another domain. It closes on the eye in the
-layer control: the seed opens with the Presentation layer hidden, so showing it
-is the last thing the recording does, and the touchpoints arrive over a map the
-viewer has already read.
+seed, and is a walk through what the map is for in the order someone would
+meet it. The lines are folded up to the domain level and let down again. A
+domain is added, two capabilities are put in it and arranged, and one of them
+is connected across to a capability in another domain. A product lead and a
+tech lead are named on the new domain, and one of their cards is dragged
+clear. A team is put on it, which lights the map up. It closes on the domain
+as a slide, worked on and then presented — everything the recording did to
+the map, said back on one card.
 
-It is captured rather than drawn — a Playwright script clicks and drags the app
-at 1440x900 and two device pixels to one, writes one PNG per frame with a
-pointer painted into the page, and ffmpeg folds the frames into a 20fps GIF at
-half that size. Neither tool is a dependency of this repo, so the script lives
-outside it. Re-record whenever the chrome around the map changes enough that
-the recording misleads — a new control in a corner, a panel that moves.
+It is captured rather than drawn — a script drives headless Chrome over its
+debugging protocol at 1440x900 and two device pixels to one, clicking and
+dragging the app, and writes one PNG per frame with a pointer painted into
+the page; the frames are then folded into a 20fps GIF at half that size, one
+palette for the whole recording and each frame carrying only the pixels that
+changed. Neither the browser nor the encoder is a dependency of this repo, so
+the script lives outside it. Re-record whenever the chrome around the map
+changes enough that the recording misleads — a new control in a corner, a
+panel that moves.

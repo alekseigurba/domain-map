@@ -8,7 +8,7 @@ Flows are overlays. Trace a payment authorization from checkout through invoicin
 
 Establish the context once. Then draw on top of it -- with a marker or digitally -- every time after.
 
-![Adding a Data & Analytics domain to the example map, giving it two capabilities, arranging them, and connecting one across to the Underwriting Engine in another domain — then showing the Presentation layer, which brings the touchpoints up over the map](docs/demo.gif)
+![The example map read at the level of its domains and back; then a Data & Analytics domain added to it, given two capabilities, arranged, and connected across to the Underwriting Engine in another domain; a product lead and a tech lead named on the new domain, and one of their cards moved; a team put on it, which lights the map up; and the domain as a slide, worked on and then presented](docs/demo.gif)
 
 ## Run it
 
