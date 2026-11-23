@@ -1,6 +1,8 @@
 // The model behind the Assistant, when there is one. Two variables connect it —
 // ASSISTANT_API_URL and ASSISTANT_API_KEY — and without both the Assistant is
-// what it was before: a prompt to copy and a reply to paste.
+// what it was before: a prompt to copy and a reply to paste. The key may also
+// be one an administrator has set in the app, kept by scripts/assistant-settings.mjs:
+// the address is the deployment's to say, and the key is the part that expires.
 //
 // The server is only ever a relay. The page writes the prompt, because the page
 // is where the map and the skills are; this posts it on with a key the browser
@@ -110,14 +112,34 @@ async function reasonOf(response) {
   }
 }
 
+/**
+ * What an API said, with the key taken out of it. Most say nothing of the key
+ * they refused; some quote it back, whole or with its middle starred out, and
+ * what they say is passed on to whoever sent the message. So the key goes, and
+ * so does any run of characters that begins or ends as it does — a key shown
+ * by its last four letters is still four letters of a secret.
+ */
+function withoutKey(reason, key) {
+  // Nothing that short is a key anyone was issued, and taking a letter or two
+  // out of every sentence the API says would leave it saying nothing.
+  if (key.length < 8) return reason;
+  const said = reason.split(key).join('***');
+  if (key.length < 12) return said;
+  const [head, tail] = [key.slice(0, 6), key.slice(-4)];
+  return said.replace(/[\w*.\-•…]{8,}/g, (run) => (run.startsWith(head) || run.endsWith(tail) ? '***' : run));
+}
+
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 /**
  * What the Assistant is connected to, from the environment.
  *
- * @returns `{ connected, host, model, style, chat, warnings }`. `chat` takes
- *   `{ system, messages }` and answers with the model's text; unconnected, there
- *   is none.
+ * @returns `{ connected, host, model, style, chat, chatWith, warnings }`.
+ *   `chat` takes `{ system, messages }` and answers with the model's text, on
+ *   the environment's key; unconnected, there is none. `chatWith` is the same
+ *   on a key it is handed, and is there whenever the address is — so a model
+ *   whose key the deployment never had, or no longer has a good one for, can
+ *   still be reached on one an administrator sets in the app.
  */
 export function createAssistant(env = process.env, { fetch: fetch_ = fetch } = {}) {
   const url = given(env.ASSISTANT_API_URL);
@@ -125,9 +147,7 @@ export function createAssistant(env = process.env, { fetch: fetch_ = fetch } = {
   const unconnected = (warnings = []) => ({ connected: false, host: null, model: null, style: null, warnings });
 
   if (!url && !key) return unconnected();
-  if (!url || !key) {
-    return unconnected([`ASSISTANT_API_${url ? 'KEY' : 'URL'} is not set, so the Assistant has no model: it takes both.`]);
-  }
+  if (!url) return unconnected(['ASSISTANT_API_URL is not set, so the Assistant has no model: it takes both.']);
 
   let host;
   try {
@@ -150,7 +170,7 @@ export function createAssistant(env = process.env, { fetch: fetch_ = fetch } = {
     ? [`ASSISTANT_MODEL is "${model}", and Anthropic's API takes a full model id, such as ${ANTHROPIC_IDS}.`]
     : [];
 
-  async function chat(conversation, { signal } = {}) {
+  async function chatWith(key, conversation, { signal } = {}) {
     const request = shape({ key, model, host }, conversation);
     const send = () => fetch_(url, {
       method: 'POST',
@@ -174,7 +194,7 @@ export function createAssistant(env = process.env, { fetch: fetch_ = fetch } = {
     }
 
     if (!response.ok) {
-      const reason = await reasonOf(response);
+      const reason = withoutKey(await reasonOf(response), key);
       // The key is the deployment's, not the owner's, so a 401 is not theirs to fix.
       // Both APIs answer an unknown model with a 404 that names it, which reads
       // as though the address were wrong. It is the setting that is.
@@ -190,5 +210,16 @@ export function createAssistant(env = process.env, { fetch: fetch_ = fetch } = {
     return request.read(await response.json());
   }
 
-  return { connected: true, host, model, style, chat, warnings };
+  // An address and no key: no model yet, but somewhere for a key to be used.
+  if (!key) {
+    return {
+      ...unconnected(['ASSISTANT_API_KEY is not set, so the Assistant has no model: it takes both. '
+        + 'An administrator can give it a key in the app instead.', ...warnings]),
+      host,
+      model,
+      style,
+      chatWith,
+    };
+  }
+  return { connected: true, host, model, style, chat: (conversation, options) => chatWith(key, conversation, options), chatWith, warnings };
 }

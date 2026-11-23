@@ -3,7 +3,7 @@
 // round what it holds. Pure functions — no DOM writes.
 
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE } from './defaults.js';
-import { AREA_SHAPE } from './rules.js';
+import { AREA_SHAPE, DEFAULT_FEATURE_STRETCH } from './rules.js';
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -412,20 +412,24 @@ function textBlock(title, fontSize, weight, maxWidth = fontSize * 8, maxLines = 
 }
 
 /**
- * The radii of an oval at 1x. The long radius and the short one move towards
- * each other a step at a time, so round is the mean of the two. `??` and not
- * `||`, since round is 0; a value off the scale is held to its nearer end.
+ * An oval of two radii at one step of its lean: the long radius and the short
+ * one move towards each other a step at a time, so round is the mean of the
+ * two and the ends are the same oval a quarter turn apart. A value off the
+ * scale is held to its nearer end.
  */
-function ovalRadii(stretch) {
+function leaning(long, short, stretch) {
   const tallest = OVAL_STRETCHES[0];
   const widest = OVAL_STRETCHES[OVAL_STRETCHES.length - 1];
-  const held = Math.min(widest, Math.max(tallest, stretch ?? DEFAULT_STRETCH));
+  const held = Math.min(widest, Math.max(tallest, stretch));
   const wide = (held - tallest) / (widest - tallest); // 0 standing tall, 1 lying wide
   return {
-    rx: BASE_RY + (BASE_RX - BASE_RY) * wide,
-    ry: BASE_RX + (BASE_RY - BASE_RX) * wide,
+    rx: short + (long - short) * wide,
+    ry: long + (short - long) * wide,
   };
 }
+
+/** The radii of a capability's oval at 1x. `??` and not `||`, since round is 0. */
+const ovalRadii = (stretch) => leaning(BASE_RX, BASE_RY, stretch ?? DEFAULT_STRETCH);
 
 /** Which side of its title an icon sits on. Mirrors rules.js. */
 export const ICON_PLACEMENTS = ['top', 'left', 'bottom', 'right'];
@@ -805,6 +809,36 @@ function heldInside(size, bubble, point) {
 }
 
 /**
+ * The radii of a feature's bubble, from the seat its row gives it and the way
+ * it leans: on the scale a capability's oval leans on, from standing tall
+ * through round to lying wide. A seat is the bubble lying wide, the shape a
+ * feature has always had. A step at a time its two radii trade places, exactly
+ * as a capability's do, so a feature stood up is the bubble it was, a quarter
+ * turn round: as much of a shape as before, and taller than the row it sits
+ * in.
+ *
+ * A seat already no wider than it is tall — a row crowded enough squeezes them
+ * so — has no length to stand up on, and is left as it is.
+ */
+function bubbleRadii(seat, stretch) {
+  if (seat.rx <= seat.ry) return { rx: seat.rx, ry: seat.ry };
+  return leaning(seat.rx, seat.ry, stretch ?? DEFAULT_FEATURE_STRETCH);
+}
+
+/**
+ * Where a bubble that leans sits when it is left in its row: in its seat,
+ * moved only as far as keeps it in the band the bubbles have, clear of the
+ * capability's name over them, and inside the rim. A bubble lying wide fits
+ * its seat and is never moved.
+ */
+function seated(size, bubble) {
+  const top = FEATURES_TOP * size.ry + bubble.ry;
+  const foot = FEATURES_BOTTOM * size.ry - bubble.ry;
+  const y = top > foot ? (top + foot) / 2 : Math.min(foot, Math.max(top, bubble.y));
+  return heldInside(size, bubble, { x: bubble.x, y });
+}
+
+/**
  * The place to keep for a feature let go at `point`, measured from the middle
  * of its capability's oval: whole hundredths of the radii, as the file writes
  * them, for where the bubble actually comes to rest.
@@ -837,7 +871,11 @@ function fitType(title, weight, width, height, start) {
  * Every name in one capability is set at one size, the size its hardest name
  * to fit needs — one size is what makes them read as a list — though never
  * less than seven tenths of what a typical name there could take: one very long
- * name is cut with an ellipsis sooner than it shrinks all the others.
+ * name is cut with an ellipsis sooner than it shrinks all the others. That size
+ * is worked out from the bubbles as their rows make them. One that has been
+ * leaned is the exception to it, and the only one: its name is set no larger
+ * than the rest, and smaller where the shape it was given has less width for
+ * it — standing one feature up does not reset the type of its neighbours.
  *
  * @param size     the capability's oval, as capabilitySize gives it
  * @param features what it holds, in order, each with a title
@@ -857,14 +895,14 @@ export function layoutFeatures(size, features, title = '') {
   if (!best) return null;
 
   const weight = DEFAULT_CAPABILITY_FONT_WEIGHT;
+  // The largest box that fits inside an ellipse has sides its radii over sqrt(2).
+  const roomIn = ({ rx, ry }) => ({ roomX: rx * Math.SQRT2 * FEATURE_ROOM, roomY: ry * Math.SQRT2 * FEATURE_ROOM });
   const seats = best.laid.flatMap((row) => Array.from({ length: row.inRow }, (_, at) => ({
     x: (at - (row.inRow - 1) / 2) * row.step,
     y: row.y,
     rx: row.rx,
     ry: row.ry,
-    // The largest box that fits inside an ellipse has sides its radii over sqrt(2).
-    roomX: row.rx * Math.SQRT2 * FEATURE_ROOM,
-    roomY: row.ry * Math.SQRT2 * FEATURE_ROOM,
+    ...roomIn(row),
   })));
 
   const wanted = features.map((feature, at) =>
@@ -874,17 +912,25 @@ export function layoutFeatures(size, features, title = '') {
 
   const bubbles = features.map((feature, at) => {
     const seat = seats[at];
-    const rows = Math.max(1, Math.min(MAX_FEATURE_LINES, Math.floor(seat.roomY / (fontSize * 1.18))));
+    // The rows are made for bubbles lying wide, and a feature that leans takes
+    // its seat's two radii and trades them: its neighbours are not moved for
+    // it. A capability's are not either when its oval is stood up — what it
+    // then lies across is for whoever stood it up to move.
+    const radii = bubbleRadii(seat, feature.stretch);
+    const leans = radii.rx !== seat.rx;
+    const shape = leans ? { ...seat, ...radii, ...roomIn(radii) } : seat;
+    const type = leans ? fitType(feature.title, weight, shape.roomX, shape.roomY, fontSize) : fontSize;
+    const rows = Math.max(1, Math.min(MAX_FEATURE_LINES, Math.floor(shape.roomY / (type * 1.18))));
     // In the seat its order gives it, unless it has been put somewhere by
     // hand: then it is there, the size its seat would have made it.
-    const put = featureSpot(size, seat, feature);
+    const place = featureSpot(size, shape, feature) ?? (leans ? seated(size, shape) : seat);
     return {
       item: feature,
-      x: put?.x ?? seat.x,
-      y: put?.y ?? seat.y,
-      rx: seat.rx,
-      ry: seat.ry,
-      ...textBlock(feature.title, fontSize, weight, seat.roomX, rows),
+      x: place.x,
+      y: place.y,
+      rx: shape.rx,
+      ry: shape.ry,
+      ...textBlock(feature.title, type, weight, shape.roomX, rows),
     };
   });
 
@@ -1130,6 +1176,22 @@ export function closestSnapPair(fromPosition, fromSize, toPosition, toSize) {
   return best;
 }
 
+/**
+ * The snap point of a shape that lies nearest a point on the map, by how far
+ * off it is. Round an oval that is the point facing it, near enough. Round a
+ * blob it need not be: a blob's points are set out by direction from the
+ * middle of its body, and the one facing a neighbour may be a lobe away from
+ * the stretch of boundary that neighbour lies against.
+ */
+export function closestSnapTo(position, size, target) {
+  let best = { point: 0, distance: Infinity };
+  for (const snap of snapPoints(size)) {
+    const distance = (position.x + snap.x - target.x) ** 2 + (position.y + snap.y - target.y) ** 2;
+    if (distance < best.distance) best = { point: snap.index, distance };
+  }
+  return best.point;
+}
+
 /** A connector path: a straight chord, or one bowed sideways by a fixed share. */
 /**
  * Where a curved line bends when nobody has shaped it: one point, offset from
@@ -1338,10 +1400,29 @@ export function nearestSegment(points, x, y) {
 
 // --- blobs -----------------------------------------------------------------
 
-const BLOB_STEPS = 96;
+const BLOB_STEPS = 96;   // the fewest points an outline is drawn through
+const MOST_BLOB_STEPS = 200; // and the most, however long the outline runs
+const BLOB_SPACING = 24; // about how far apart those points are, between the two
 const SCAN_STEPS = 30;   // coarse pass looking for the outermost surface crossing
 const REFINE_STEPS = 14; // bisections after it
 const BLEND = 1.7;       // low, so neighbouring lobes read as one mass
+const TRACE_SHARE = 6;   // a step along the outline is this share of the smallest lobe's radius
+const TRACE_LIMIT = 4000; // steps before a walk that has not come back round is given up
+
+/**
+ * Where a lobe's middle is taken to be, seen from a point: its own middle, or —
+ * for a lobe that trails, as a title's does when it hangs off the blob — the
+ * place along its trail that brings it nearest. Such a lobe is the oval swept
+ * from one end of the trail to the other, not an oval at either end.
+ */
+function middleAlong(lobe, x, y) {
+  const dx = lobe.trail.x - lobe.x;
+  const dy = lobe.trail.y - lobe.y;
+  const span = (dx / lobe.rx) ** 2 + (dy / lobe.ry) ** 2;
+  if (span === 0) return 0;
+  const along = (((x - lobe.x) * dx) / lobe.rx ** 2 + ((y - lobe.y) * dy) / lobe.ry ** 2) / span;
+  return Math.min(1, Math.max(0, along));
+}
 
 /**
  * A metaball field over the lobes: 1 exactly on a lone lobe's rim, more where
@@ -1351,10 +1432,45 @@ const BLEND = 1.7;       // low, so neighbouring lobes read as one mass
 function fieldAt(x, y, lobes) {
   let sum = 0;
   for (const lobe of lobes) {
-    const q = ((x - lobe.x) / lobe.rx) ** 2 + ((y - lobe.y) / lobe.ry) ** 2;
+    let cx = lobe.x;
+    let cy = lobe.y;
+    if (lobe.trail) {
+      const t = middleAlong(lobe, x, y);
+      cx += (lobe.trail.x - lobe.x) * t;
+      cy += (lobe.trail.y - lobe.y) * t;
+    }
+    const q = ((x - cx) / lobe.rx) ** 2 + ((y - cy) / lobe.ry) ** 2;
     sum += Math.exp(-BLEND * (q - 1));
   }
   return sum;
+}
+
+/**
+ * The field at a point and the way it rises there, as `[field, dx, dy]`. A
+ * trailing lobe rises as the oval nearest the point does: the place along the
+ * trail was chosen to be the best there is, so moving the point a little does
+ * not change what that place is worth.
+ */
+function slopeAt(x, y, lobes) {
+  let sum = 0;
+  let gx = 0;
+  let gy = 0;
+  for (const lobe of lobes) {
+    let cx = lobe.x;
+    let cy = lobe.y;
+    if (lobe.trail) {
+      const t = middleAlong(lobe, x, y);
+      cx += (lobe.trail.x - lobe.x) * t;
+      cy += (lobe.trail.y - lobe.y) * t;
+    }
+    const ux = (x - cx) / lobe.rx;
+    const uy = (y - cy) / lobe.ry;
+    const here = Math.exp(-BLEND * (ux * ux + uy * uy - 1));
+    sum += here;
+    gx -= (here * 2 * BLEND * ux) / lobe.rx;
+    gy -= (here * 2 * BLEND * uy) / lobe.ry;
+  }
+  return [sum, gx, gy];
 }
 
 /** How far the field reaches from the domain centre. */
@@ -1390,18 +1506,148 @@ function surfaceRadius(lobes, angle, reach) {
 }
 
 /**
- * The outline, sampled along rays out of `centre`. That is the middle of the
- * body rather than the domain's own point: the lobes pull the body off it, and
- * the body's middle is the one place every ray is sure to start inside.
+ * One step along the surface from a point on it, the blob kept on the same
+ * hand all the way round: a step along the surface as it runs there, then back
+ * onto the surface from wherever that landed. Back is found in the logarithm
+ * of the field, which for one lobe is the plain quadratic the lobe was made
+ * from, so the first correction lands close and the second lands on it. Null
+ * where the field is flat and says nothing about which way the surface is.
  */
-function outlinePoints(shapes, centre) {
-  const local = shapes.map((shape) => ({ ...shape, x: shape.x - centre.x, y: shape.y - centre.y }));
-  const reach = fieldReach(local);
+function stepAlong(lobes, at, step) {
+  const [, rx, ry] = slopeAt(at.x, at.y, lobes);
+  const rise = Math.hypot(rx, ry);
+  if (!(rise > 1e-12)) return null;
+  let x = at.x + (ry / rise) * step;
+  let y = at.y - (rx / rise) * step;
+  for (let fix = 0; fix < 6; fix++) {
+    const [field, gx, gy] = slopeAt(x, y, lobes);
+    const steep = gx * gx + gy * gy;
+    if (!(field > 0) || !(steep > 1e-24)) return null;
+    const off = (Math.log(field) * field) / steep;
+    // Never further than the step itself: well off the surface the slope
+    // here says little about where the surface is.
+    const far = Math.sqrt(steep) * Math.abs(off);
+    const held = far > step ? step / far : 1;
+    x -= gx * off * held;
+    y -= gy * off * held;
+    if (Math.abs(Math.log(field)) < 1e-6) break;
+  }
+  return { x, y };
+}
+
+/** `count` points evenly spaced round a closed run of them, the first where the run starts. */
+function evenly(run, count) {
+  const next = (i) => run[(i + 1) % run.length];
+  const lengths = run.map((p, i) => Math.hypot(next(i).x - p.x, next(i).y - p.y));
+  const total = lengths.reduce((a, b) => a + b, 0);
+  const points = [];
+  let at = 0;
+  let walked = 0;
+  for (let k = 0; k < count; k++) {
+    const wanted = (total * k) / count;
+    while (at < run.length - 1 && walked + lengths[at] < wanted) walked += lengths[at++];
+    const share = lengths[at] === 0 ? 0 : Math.min(1, (wanted - walked) / lengths[at]);
+    points.push({
+      x: run[at].x + (next(at).x - run[at].x) * share,
+      y: run[at].y + (next(at).y - run[at].y) * share,
+    });
+  }
+  return points;
+}
+
+/**
+ * The outline walked: from where the surface is met going right from the
+ * middle, step by step along the surface itself until the walk is back where
+ * it began. It follows the surface wherever that goes — into a bay under the
+ * end of a title, back out round the title — which rays from the middle cannot:
+ * a ray that crosses the surface three times can report only one crossing, and
+ * the outline it gave leapt from the far one to the near one along the ray,
+ * leaving a blob with a bite taken out of it.
+ *
+ * Null where the walk fails — the field went flat under it, it did not come
+ * back round, or what it went round was not the middle — and the outline is
+ * then sampled along rays, as it always was.
+ */
+function walkedOutline(lobes, reach) {
+  const first = surfaceRadius(lobes, 0, reach);
+  if (!(first > 0)) return null;
+  const step = Math.max(1, Math.min(...lobes.map((lobe) => Math.min(lobe.rx, lobe.ry))) / TRACE_SHARE);
+  const start = { x: first, y: 0 };
+  const run = [start];
+  for (let at = start, taken = 0; ; taken++) {
+    if (taken === TRACE_LIMIT) return null;
+    at = stepAlong(lobes, at, step);
+    if (!at) return null;
+    // Back within a step of the start, a few steps out: the walk has closed.
+    if (taken > 3 && Math.hypot(at.x - start.x, at.y - start.y) < step) break;
+    run.push(at);
+  }
+  if (!insideOutline(run, 0, 0)) return null;
+
+  const length = run.reduce((sum, p, i) => {
+    const q = run[(i + 1) % run.length];
+    return sum + Math.hypot(q.x - p.x, q.y - p.y);
+  }, 0);
+  return evenly(run, Math.max(BLOB_STEPS, Math.min(MOST_BLOB_STEPS, Math.round(length / BLOB_SPACING))));
+}
+
+/** The outline sampled along rays out of the middle: the outermost crossing on each. */
+function rayedOutline(lobes, reach) {
   return Array.from({ length: BLOB_STEPS }, (_, i) => {
     const angle = (i * 2 * Math.PI) / BLOB_STEPS;
-    const radius = surfaceRadius(local, angle, reach);
-    return { x: centre.x + radius * Math.cos(angle), y: centre.y + radius * Math.sin(angle) };
+    const radius = surfaceRadius(lobes, angle, reach);
+    return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
   });
+}
+
+/**
+ * The outline, as the points it is drawn through, found from `centre`. That is
+ * the middle of the body rather than the domain's own point: the lobes pull
+ * the body off it, and the body's middle is the one place sure to be inside.
+ */
+function outlinePoints(shapes, centre) {
+  const local = shapes.map((shape) => ({
+    ...shape,
+    x: shape.x - centre.x,
+    y: shape.y - centre.y,
+    trail: shape.trail ? { x: shape.trail.x - centre.x, y: shape.trail.y - centre.y } : null,
+  }));
+  const reach = fieldReach(local);
+  return (walkedOutline(local, reach) ?? rayedOutline(local, reach))
+    .map((p) => ({ x: centre.x + p.x, y: centre.y + p.y }));
+}
+
+/** How finely the way from the body out to a title is searched for where it leaves the blob. */
+const TRAIL_SCAN = 24;
+
+/**
+ * Where the lobe of a title that hangs off the blob trails back to, or null
+ * for a title whose middle is on the blob — which is every title until it is
+ * dragged off, and those are drawn exactly as they were.
+ *
+ * A title may be put past the edge, and its lobe was then an oval joined to
+ * the blob by however much of the two happened to overlap: a neck, with a bay
+ * either side of it under the ends of the title, deeper the further out the
+ * title went. So the lobe is swept instead, from the title back along the way
+ * to the middle of the body, as far as the last place that is on the blob. The
+ * title then stands on a shoulder as wide as itself, and the outline runs
+ * round the pair of them without a bay to go into.
+ */
+function titleTrail(titleLobe, body, mass) {
+  if (fieldAt(titleLobe.x, titleLobe.y, mass) >= 1) return null;
+  const at = (t) => ({ x: body.x + (titleLobe.x - body.x) * t, y: body.y + (titleLobe.y - body.y) * t });
+  const within = (t) => fieldAt(at(t).x, at(t).y, mass) >= 1;
+  // The middle of the body is on the blob, so the search always has an end.
+  let inside = 0;
+  let outside = 1;
+  for (let i = TRAIL_SCAN - 1; i >= 1; i--) {
+    if (within(i / TRAIL_SCAN)) { inside = i / TRAIL_SCAN; outside = (i + 1) / TRAIL_SCAN; break; }
+  }
+  for (let i = 0; i < 12; i++) {
+    const middle = (inside + outside) / 2;
+    if (within(middle)) inside = middle; else outside = middle;
+  }
+  return at(inside);
 }
 
 /** Catmull-Rom through the samples, emitted as cubic beziers. */
@@ -1681,7 +1927,9 @@ export function layoutDomain(domain, children, moving = null, ui = {}) {
   };
 
   // --- outline ---------------------------------------------------------------
-  const outline = [body, ...lobes, titleLobe];
+  const mass = [body, ...lobes];
+  titleLobe.trail = titleTrail(titleLobe, body, mass);
+  const outline = [...mass, titleLobe];
   const points = outlinePoints(outline, body);
   const extentWidth = Math.max(...points.map((p) => Math.abs(p.x)));
   const extentHeight = Math.max(...points.map((p) => Math.abs(p.y)));
@@ -1881,10 +2129,20 @@ export function insideOutline(outline, x, y) {
   return inside;
 }
 
+/** How far past either end of a run of an outline a ray still counts as crossing it, as a share of the run. */
+const RIM_SLACK = 1e-9;
+
 /**
  * Where a ray leaving `centre` at `degrees` crosses an outline it is inside of —
  * clockwise from the right, as the screen has it, so 270 is straight up. The
  * furthest crossing, which for a band is the only one.
+ *
+ * A ray that leaves through a corner of the outline meets two of its runs, each
+ * at its very end, and the arithmetic may put it a hair past the end of both.
+ * Read strictly that is no crossing at all, and the point came back as the
+ * centre itself — which on a domain, whose connection points lie on rays its
+ * outline has corners on, drew a line into the middle of the blob. So the end
+ * of a run counts with a little to spare.
  */
 export function rimPoint(outline, centre, degrees) {
   const angle = (degrees * Math.PI) / 180;
@@ -1901,7 +2159,7 @@ export function rimPoint(outline, centre, degrees) {
     if (Math.abs(across) < 1e-9) continue;
     const t = ((a.x - centre.x) * ey - (a.y - centre.y) * ex) / across;
     const u = ((a.x - centre.x) * dy - (a.y - centre.y) * dx) / across;
-    if (t > reach && u >= 0 && u <= 1) reach = t;
+    if (t > reach && u >= -RIM_SLACK && u <= 1 + RIM_SLACK) reach = t;
   }
   return { x: centre.x + dx * reach, y: centre.y + dy * reach };
 }

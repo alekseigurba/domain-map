@@ -21,10 +21,11 @@ import * as files from './files.js';
 import { mayAs, showIdentity, signingIn, whoAmI } from './identity.js';
 import * as api from './versions.js';
 import { initPeople, listPeople } from './people.js';
+import { initAssistantSettings } from './assistant-settings.js';
 import { diagramSvg } from './svg-export.js';
 import {
   initDiagram, render, fitToScreen, zoomBy, centerOn, cancelDraft, viewportCenter, resolvedPoints,
-  contentBounds, setEditing, isEditing, kebabAnchor, startRename, cancelRename,
+  contentBounds, setEditing, isEditing, kebabAnchor, lineMenuAnchor, startRename, cancelRename,
   setEditMode as setDiagramEditMode, glideInto, glideToFit, setLineLevel, currentLineLevel,
 } from './diagram.js';
 import { LEVELS } from './zoom.js';
@@ -35,7 +36,7 @@ import { initThemeChoice, onTheme } from './theme.js';
 import { renderMenu, collapseAll } from './menu.js';
 import {
   initDetails, renderDetails, fitAreas, setEditMode as setDetailsEditMode,
-  freshenOwners, reloadPeople,
+  freshenOwners, reloadPeople, lineShapeFields,
 } from './details.js';
 import { initPalette, openPalette, renderPalette, paletteOpen } from './palette.js';
 import {
@@ -49,7 +50,7 @@ import {
   capabilitySize, sizeOf, layoutDomain, layoutArea, newLobeSpot, setPalette, swatchFor,
 } from './geometry.js';
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
-import { BASE_LAYER, AREA_SHAPE, MAX_FEATURES, TERRAIN_KINDS } from './rules.js';
+import { BASE_LAYER, AREA_SHAPE, MAX_FEATURES, TERRAIN_KINDS, DEFAULT_FEATURE_STRETCH } from './rules.js';
 import * as undoStack from './history.js';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
@@ -202,6 +203,7 @@ function setEditMode(next) {
     selectLayer(BASE_LAYER, { saved: true });
   } else {
     closeKebab();
+    closeLineMenu();
     // Nothing is being added, so no layer is being worked on.
     selectLayer(null);
   }
@@ -1912,6 +1914,80 @@ function openKebab(domainId) {
   kebabMenu.style.top = `${Math.round(anchor.y - stage.top)}px`;
 }
 
+// --- a line's shape, set beside the line ---------------------------------------
+
+// Curved or straight, anchored or not: most of what there is to change about a
+// line, and in the panel it is under a heading at the far side of the screen
+// from the line being looked at. So the selected line carries a handle, and the
+// handle — or I — opens the same two fields beside it. They are the panel's own
+// fields, built by the same function, so the two cannot drift apart.
+
+const lineMenu = document.getElementById('line-menu');
+/** The line whose pop-up is open, by id, or null. */
+let lineMenuFor = null;
+/** How far under its handle the pop-up hangs, and how near the edge of the stage it may come, in pixels. */
+const LINE_MENU_DROP = 16;
+const LINE_MENU_MARGIN = 8;
+
+function closeLineMenu() {
+  lineMenuFor = null;
+  lineMenu.hidden = true;
+  lineMenu.replaceChildren();
+}
+
+/**
+ * Put the pop-up beside its line, saying what the line says now. Called again
+ * whenever the map changes: a press in it changes the line, and it is rebuilt
+ * from the line rather than trusted to have kept up. A line no longer picked,
+ * no longer there, or no longer open to change has no pop-up.
+ */
+function showLineMenu() {
+  const { type, id } = store.selection;
+  const record = lineMenuFor && editMode && type === 'connector' && id === lineMenuFor
+    ? find('connector', id)
+    : null;
+  const anchor = record ? lineMenuAnchor(record.id) : null;
+  if (!anchor) return closeLineMenu();
+
+  // Rebuilt whole, so whichever control had the focus is given it back.
+  const held = lineMenu.contains(document.activeElement) ? document.activeElement.dataset.control : null;
+  lineMenu.replaceChildren(...lineShapeFields(record));
+  lineMenu.hidden = false;
+  if (held) [...lineMenu.querySelectorAll('[data-control]')].find((one) => one.dataset.control === held)?.focus();
+
+  // Under the handle; over it where there is no room under, and never off the stage.
+  const stage = document.getElementById('stage').getBoundingClientRect();
+  const box = lineMenu.getBoundingClientRect();
+  const x = anchor.x - stage.left;
+  const y = anchor.y - stage.top;
+  const left = Math.max(LINE_MENU_MARGIN,
+    Math.min(stage.width - box.width - LINE_MENU_MARGIN, x - box.width / 2));
+  const under = y + LINE_MENU_DROP;
+  const top = under + box.height > stage.height - LINE_MENU_MARGIN ? y - LINE_MENU_DROP - box.height : under;
+  lineMenu.style.left = `${Math.round(left)}px`;
+  lineMenu.style.top = `${Math.round(Math.max(LINE_MENU_MARGIN, top))}px`;
+  return null;
+}
+
+/** Open the pop-up of a line, or shut it if it is that line's already. */
+function toggleLineMenu(id) {
+  if (lineMenuFor === id) return closeLineMenu();
+  lineMenuFor = id;
+  return showLineMenu();
+}
+
+// A press anywhere else on the stage, or a turn of the wheel, is the map being
+// worked on again: the pop-up was hung where the line was, and the line may be
+// about to move from under it.
+for (const gesture of ['pointerdown', 'wheel']) {
+  document.getElementById('stage').addEventListener(gesture, (event) => {
+    if (!lineMenuFor || lineMenu.contains(event.target)) return;
+    if (event.target.closest?.('[data-type="line-info"]')) return;
+    closeLineMenu();
+  }, { capture: true, passive: true });
+}
+window.addEventListener('resize', () => { if (lineMenuFor) showLineMenu(); });
+
 // --- permalinks --------------------------------------------------------------
 
 /** `#/capability/payment-authorization` — the title, normalized, not the id. */
@@ -2013,6 +2089,7 @@ function renderAll(reason) {
   }
   render();
   syncConnectors(); // render() resolved the positions this reads
+  if (lineMenuFor) showLineMenu(); // and so does this: the pop-up hangs off the line as it was just drawn
   // A feature picked in the menu may be inside a capability that is shut, where
   // it is not drawn at all — so the map closes in on it. Picked on the map it
   // was pressed, and is already in view.
@@ -2195,6 +2272,7 @@ initTextDialog('about');
 initTextDialog('profile');
 initTextDialog('versions');
 initTextDialog('people');
+initTextDialog('assistant-model');
 
 // Light or dark is the browser's, not the map's: nothing is written and there
 // is nothing to undo. The stylesheet turns the page by itself; what is drawn
@@ -2263,6 +2341,7 @@ initDiagram({
   shapeConnector: (id, bendPoints) => patch(
     'connector', id, { bendPoints, anchored: true }, 'Bending the line'),
   openKebab,
+  toggleLineMenu,
   moveElement: (kind, id, x, y, how) => moveShape(kind, id, x, y, how),
   createConnector: async (from, to) => {
     // A line inside one domain is short and reads better straight; one that
@@ -2487,6 +2566,9 @@ window.addEventListener('keydown', async (event) => {
 
   if (event.key === 'Escape') {
     closeKebab();
+    // Esc shuts what is open before it lets go of what is picked: the line
+    // whose pop-up it was is still the line being worked on.
+    if (lineMenuFor) return closeLineMenu();
     if (!cancelRename() && !cancelDraft()) select(null, null);
     return;
   }
@@ -2500,6 +2582,15 @@ window.addEventListener('keydown', async (event) => {
 
   const { type, id } = store.selection;
   const record = type ? find(type, id) : null;
+
+  // I opens the shape of the selected line beside it, and shuts it again.
+  if (event.key.toLowerCase() === 'i' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    event.preventDefault();
+    if (type !== 'connector') return status('Pick a line first.', true);
+    toggleLineMenu(id);
+    return;
+  }
+
   // A touchpoint and an actor carry the same type, size and colour a capability
   // does, so the shape keys reach all three. An actor is the one exception:
   // it is a circle, so there is nothing for the lean keys to do to it.
@@ -2544,9 +2635,10 @@ window.addEventListener('keydown', async (event) => {
   const lean = { '<': -1, '>': 1 }[event.key] ?? { Comma: -1, Period: 1 }[event.code];
   if ((event.metaKey || event.ctrlKey) && lean) {
     event.preventDefault();
-    // An actor is a circle: there is no lean to step.
-    if (type !== 'capability' && type !== 'touchpoint')
-      return status('Pick a capability or a touchpoint first.', true);
+    // An actor is a circle: there is no lean to step. A feature has one, on
+    // the same five steps: it is the one thing about its bubble that is its own.
+    if (type !== 'capability' && type !== 'touchpoint' && type !== 'feature')
+      return status('Pick a capability, a feature or a touchpoint first.', true);
     stepStretch(type, record, lean);
     return;
   }
@@ -2618,8 +2710,11 @@ function stepSizeScale(type, record, direction) {
 
 /** One step between tall and wide — which way the shape leans, not how big it is. */
 function stepStretch(type, record, direction) {
-  const at = OVAL_STRETCHES.indexOf(record.stretch ?? DEFAULT_STRETCH);
-  const now = at < 0 ? OVAL_STRETCHES.indexOf(DEFAULT_STRETCH) : at;
+  // A shape that has never been leaned is its kind's usual: a brand's own for
+  // a capability or a touchpoint, and wide for a feature, whatever the brand.
+  const usual = type === 'feature' ? DEFAULT_FEATURE_STRETCH : DEFAULT_STRETCH;
+  const at = OVAL_STRETCHES.indexOf(record.stretch ?? usual);
+  const now = at < 0 ? OVAL_STRETCHES.indexOf(usual) : at;
   const next = Math.min(OVAL_STRETCHES.length - 1, Math.max(0, now + direction));
   if (next === now) return status(direction > 0 ? 'Widest already' : 'Tallest already');
   patch(type, record.id, { stretch: OVAL_STRETCHES[next] },
@@ -2677,6 +2772,14 @@ Promise.all([applySettings(), whoAmI()])
     assistantModel = me.assistant ?? null;
     showIdentity(me, (message) => status(message, true));
     initPeople({ id: me.id, role: me.role }, { onChange: reloadPeople });
+    // An administrator who switches the model, or gives it a key, sees the
+    // Assistant follow at once: it is their own column too.
+    initAssistantSettings({ role: me.role }, {
+      onChange: (view) => {
+        assistantModel = view.connected ? { host: view.host, model: view.model } : null;
+        setAssistantMode({ editMode, contributor: mayEdit(), model: assistantModel });
+      },
+    });
     applyEditMode();
     await loadMap();
     fitToScreen();

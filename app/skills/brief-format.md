@@ -21,11 +21,15 @@ meaning, and that meaning is the owner's.
 - An **area** is who owns what: the part of the organisation — a team, a
   tribe, a product line — that holds a set of domains, touchpoints and loose
   capabilities. A shape is in one area or in none, and a capability inside a
-  domain belongs to its domain's area. Areas say how the organisation is cut,
-  which is worth holding against how the business is cut: a domain whose
-  capabilities talk mostly to another team's is a boundary to ask about. Who
-  owns what is the owner's to decide, as position is — no operation adds an
-  area or hands a shape to one; say it in a note.
+  domain belongs to its domain's area. Areas say how the organisation is cut
+  today, which is a different thing from how the business is cut and changes
+  sooner: read them as a lens laid over the map, not as part of its structure.
+  They are worth holding against the domains — a domain whose capabilities
+  talk mostly to another team's is a boundary to ask about — but an area never
+  defines a domain: do not argue for where a capability belongs, or for how a
+  domain is cut, from who holds it. Who owns what is the owner's to decide, as
+  position is — no operation adds an area or hands a shape to one; say it in a
+  note.
 - A **line** joins two of the first four. It has two ends and no direction. Lines run
   strictly down the stack, and nothing else can be drawn:
   - an actor joins a touchpoint,
@@ -40,6 +44,13 @@ inside one area. One between capabilities in different domains is
 `cross-domain`: a public event, something one area of the business promises
 another. Many cross-domain lines between the same two domains is a sign that the
 boundary between them is in the wrong place.
+
+A line's description says what its two ends rely on each other for: the promise
+one makes the other, or the fact that passes between them — "Provides the
+active credit-agreement status to checkout." It is not a step in a flow. A line
+has no direction, so a description that says who triggers, calls, stores or
+consumes claims something the line itself does not, and turns the map into a
+call graph. Whenever you write one, write the promise.
 
 ## The fields
 

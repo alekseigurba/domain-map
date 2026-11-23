@@ -268,17 +268,23 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   gap: var(--gap-1);
 }
 
-/* No auto margin: the actions above already take the slack, and a second one
-   would split it and float them mid-rail once the body is folded away. */
+/* The foot is the last thing in a panel, and the Collapse toggle in it is found
+   in one place whatever the panel is showing: it holds itself to the bottom.
+   It used to lean on what was over it to be held there, and the hierarchy
+   panel has only its tree over the foot — folded, the tree is gone, and the
+   toggle rose to the top of the rail, away from where it had just been
+   pressed. */
 .panel__foot {
   display: flex;
+  margin-top: auto;
   padding: var(--space-050);
   border-top: 1px solid var(--line);
 }
 
-/* View mode hides the actions, and with them the margin that held the foot
-   down; folded, nothing else would, and the toggle would rise to the top. */
-.panel__actions[hidden] + .panel__foot { margin-top: auto; }
+/* Under a strip of actions the strip takes the slack instead. Two auto margins
+   would split it between them, and float the actions mid-rail once the body is
+   folded away. A strip that is hidden, as View mode hides it, takes none. */
+.panel__actions:not([hidden]) + .panel__foot { margin-top: 0; }
 
 .main[data-menu="collapsed"] .panel--menu .panel__foot,
 .main[data-details="collapsed"] .panel--details .panel__foot {
@@ -613,6 +619,31 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 }
 
 .field--inline .field__select { flex: 0 0 55%; width: auto; }
+
+/* A choice of two or three words: a row of chips sharing the room a list would
+   have had, so it lines up with the lists round it. Both words are in sight
+   and either is one press. The one in force is filled in with the selection,
+   for the reason the palette's sizes are: among identical chips a border alone
+   does not say which you are on. */
+.toggle {
+  display: flex;
+  gap: var(--gap-1);
+}
+
+.field--inline .toggle { flex: 0 0 55%; }
+
+.toggle__chip { flex: 1 1 0; }
+
+/* Unpressed it is still a thing to press, so it keeps its ink. */
+.toggle__chip[aria-pressed="false"] { color: var(--ink); }
+
+.toggle__chip[aria-pressed="true"],
+.toggle__chip[aria-pressed="true"]:hover {
+  background: var(--selection);
+  border-color: var(--selection);
+  color: var(--selection-ink);
+  font-weight: var(--fw-semibold);
+}
 
 .field__check {
   margin: 0;
@@ -1089,6 +1120,31 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   box-shadow: 0 2px 8px rgb(40 40 40 / calc(12% * var(--shadow-weight)));
 }
 
+/* --- a line's shape, beside the line ---------------------------------------- */
+
+/* Hangs off the handle on the selected line; main.js positions it. The same
+   two fields the panel's Shape section holds, as a column of their own: a
+   label and its control to the row, as they are there. */
+.line-menu {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  width: 200px;
+  padding: var(--gap-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--paper);
+  box-shadow: 0 2px 8px rgb(40 40 40 / calc(12% * var(--shadow-weight)));
+  font-size: var(--fs-200);
+}
+
+/* Its rows are spaced by the column, not by the margin a field keeps under
+   itself in the panel. */
+.line-menu .field { margin: 0; }
+.line-menu .field--inline .toggle { flex: 0 0 68%; }
+
 /* --- the palette editor ---------------------------------------------------- */
 
 /* A modal rather than a popover in the panel: the palette belongs to the map,
@@ -1226,8 +1282,46 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--selection-ink);
 }
 
-/* Close keeps the right-hand end whether or not Sign out is there. */
+/* Close keeps the right-hand end whether or not Sign out is there. With an
+   administrator's two buttons before it the row is too long for the popup, so
+   it wraps, and Close is still the last thing in it. */
+.dialog--profile .dialog__foot { flex-wrap: wrap; }
 .dialog--profile .dialog__foot > :last-child { margin-left: auto; }
+
+/* The Assistant's model: centred, like the dialogs that are about the whole
+   map, and narrow — it is one switch and one box. What it says about the model
+   is a sentence in the ordinary ink; the key's line is set in figures of one
+   width, so the dots that stand for the key read as a value and not as prose. */
+.dialog--model {
+  inset: 0;
+  margin: auto;
+  width: min(420px, calc(100vw - 2 * var(--dialog-inset)));
+  height: fit-content;
+}
+
+.model__says,
+.model__key {
+  margin: 0;
+  line-height: var(--lh-m);
+}
+
+.model__key {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+}
+
+/* The new key and its button on one row, the box taking what the button leaves. */
+.model__change {
+  display: flex;
+  gap: var(--gap-2);
+}
+
+.model__change .field__input { flex: 1 1 auto; min-width: 0; }
+
+.dialog--model .field--inline .toggle { flex: 0 0 45%; }
+.dialog--model .dialog__foot > :last-child { margin-left: auto; }
+.dialog--model .dialog__foot { justify-content: flex-start; }
 
 /* Versions is centred, like Getting around, and wide enough for a row to read
    as one line: the name, when and by whom, and what can be done with it. The
@@ -1378,18 +1472,91 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 
 /* Users & access is the Versions dialog's twin: centred, and the same table,
    a row a person. The roster shares the table's rules above by name rather
-   than by class, so a row of people is never called a version. It stays at
-   the width Versions had, since a row here carries one action, not five. */
+   than by class, so a row of people is never called a version. It is wider
+   than Versions now: at 760px a row with a long address in it, a role to
+   choose and a button to press ran past the edge, and the list was read by
+   scrolling it sideways. */
 .dialog--people {
   inset: 0;
   margin: auto;
-  width: min(760px, calc(100vw - 2 * var(--dialog-inset)));
+  width: min(1000px, calc(100vw - 2 * var(--dialog-inset)));
 }
 
-/* The key at the head of the roster: each role and what it may do, lowest
+/* The one column that can be any length gives way before the table does: a
+   name or an address too long for its share of the row wraps inside it, where
+   it used to hold the whole row on one line and push the buttons out of sight. */
+.roster td:first-child { white-space: normal; }
+
+/* Finding someone: the look-up takes the room, and the two filters keep the
+   width of what they say. On a phone they wrap under it. */
+.roster__find {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-2);
+}
+
+.roster__find .field__input { flex: 1 1 14rem; }
+.roster__find .field__select { flex: 0 1 auto; width: auto; }
+
+/* How many there are and which are on show, at the left; the way to the next
+   page at the right, where the actions of the rows above it are. */
+.roster__pages {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--gap-2);
+  min-height: var(--chip-h);
+}
+
+.roster__count {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.roster__pages .roster__count { margin-right: auto; }
+
+/* The clear-out: a sentence that is also a form — remove everyone not signed
+   in, for how long, how many that is, and the button. The count sits before
+   the button so it is read on the way to pressing it. */
+.roster__sweep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-2);
+}
+
+.roster__sweep .field__label { margin: 0; }
+.roster__sweep .field__select,
+.roster__sweep .field__input { flex: 0 1 auto; width: auto; }
+.roster__sweep .btn { margin-left: auto; }
+
+/* A clear-out being looked over: a bar over the rows, which are then the
+   people it would take. It says what removing them costs, and holds the only
+   button that removes anyone, beside the one that leaves them all. On chrome,
+   with a strong border, so it reads as a question put over the list rather
+   than as another row of it. */
+.roster__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: var(--gap-2) var(--gap-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: var(--chrome);
+}
+
+.roster__warning {
+  flex: 1 1 24rem;
+  margin: 0;
+  line-height: var(--lh-m);
+}
+
+/* The key at the foot of the roster: each role and what it may do, lowest
    first, the name set against its sentence the way the Getting around tables
    set a key against what it does. It is read once and then glanced back at,
-   so the sentences stay in the quiet ink and the names carry the weight. */
+   so the sentences stay in the quiet ink and the names carry the weight — and
+   it comes after the list, which is what the dialog is opened for. */
 .roster__key {
   display: grid;
   grid-template-columns: max-content 1fr;

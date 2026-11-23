@@ -36,6 +36,9 @@ change nothing that is already good.
   the map already uses: what the thing is *for* and where it stops.
 - Rewrite the ones that restate their title, name systems, or sell.
 
+The descriptions on lines are not this task's. **Word the lines** rewrites
+those, as what one side provides the other.
+
 Return one suggestion per shape, holding the `rename`, the `describe`, or both
 where both change. In `why`, say what was wrong with the old wording in a few
 words. If the wording is already consistent, say so in the summary and return

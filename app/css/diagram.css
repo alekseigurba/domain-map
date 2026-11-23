@@ -665,6 +665,20 @@
   --connector-shown: calc(var(--fold-width) / var(--k, 1));
 }
 
+/* A folded line is broken, where a line someone drew is whole. It is the level
+   that drew it — nobody put it there, and it cannot be taken hold of — and at
+   the domain level the two sit side by side: a line drawn from one domain to
+   another, and a line standing for whatever joins the capabilities inside
+   them. Colour could not tell them apart, since both cross a boundary and wear
+   the colour that says so; weight could not, since a fold of one line weighs
+   what a line does. The breaks go by the line's own width, three widths drawn
+   to two left out, so a heavy fold is not a string of dots nor a light one a
+   row of bars, and they are cut square: a round end on a short dash is a bead. */
+.connector--folded .connector {
+  stroke-linecap: butt;
+  stroke-dasharray: calc(var(--connector-shown) * 3) calc(var(--connector-shown) * 2);
+}
+
 .connector--folded[data-type="fold"] .connector__hit { cursor: default; }
 
 /* What takes the pointer is wider than what is seen, and is measured on
@@ -831,6 +845,41 @@
   stroke-opacity: 0.55;
   stroke-dasharray: 10 8;
 }
+
+/* --- the handle on a picked line -------------------------------------------- */
+
+/* A small "i" beside the middle of the selected line: it opens what the line's
+   shape is set with. Drawn like the line's other handles — paper, rimmed in
+   the selection — so it reads as one of them, and lettered so it does not read
+   as a bend. Sized in the render, which counter-scales it by the zoom. */
+.line-info { cursor: pointer; }
+
+.line-info__hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.line-info__dot {
+  fill: var(--paper);
+  stroke: var(--selection);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.line-info__mark {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 600;
+  fill: var(--selection);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  user-select: none;
+}
+
+.line-info:hover .line-info__dot { fill: var(--selection); }
+.line-info:hover .line-info__mark { fill: var(--selection-ink); }
 
 /* --- moving a line's ends -------------------------------------------------- */
 

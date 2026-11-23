@@ -19,6 +19,9 @@ Look for:
 - **Lines that do not say what they carry.** A cross-domain line is a promise
   one area of the business makes another; with no description nobody can tell
   what the promise is. Write one, cross-domain lines first.
+- **Lines worded as a call.** A description that says who triggers, stores,
+  consumes or checks reads the map as a call graph, and a line has no
+  direction to bear it out. Rewrite it as what one side provides the other.
 - **Two domains joined by many lines.** Count the cross-domain lines between
   each pair of domains. A pair with many is coupled: either a capability is on
   the wrong side, or the two are one domain. Say which, and move the

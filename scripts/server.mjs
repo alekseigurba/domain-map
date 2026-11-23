@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { validate } from '../app/js/document.js';
 import { validateVersionName } from '../app/js/rules.js';
 import { createAssistant } from './assistant.mjs';
+import { assistantSettings } from './assistant-settings.mjs';
 import { createAuth } from './auth.mjs';
 import { describeDatabase, migrate, openDatabase, waitForDatabase, withLock } from './database.mjs';
 import { fileStore } from './file-store.mjs';
@@ -178,6 +179,8 @@ export function createDomainMapServer(options = {}) {
   const pool = openDatabase(databaseUrl);
   const versions = versionStore(pool);
   const people = peopleStore(pool);
+  // Sealed with the server's own secret, which is in the deployment and not in the database.
+  const kept = assistantSettings(pool, { secret: env.AUTH_SESSION_SECRET });
 
   /**
    * The door a session came in by, as the people table knows it. An auth of
@@ -235,6 +238,56 @@ export function createDomainMapServer(options = {}) {
     warnings.push(`The Assistant is connected to ${assistant.host}: everyone ${required ? 'who signs in is a contributor until an administrator says otherwise, and any contributor' : 'who can reach this server'} `
       + 'can send the map to it, on the key this server holds.');
   }
+
+  /**
+   * The Assistant's model as it stands this moment: what the deployment
+   * connected, as an administrator has left it in the app. Read for every
+   * request that asks, so switching the model off, or giving it a new key,
+   * applies at the next message anyone sends and needs no restart.
+   *
+   * A key kept in the app is used before the deployment's: it is there because
+   * somebody put it there, most likely because the deployment's stopped
+   * working. A model of the consumer's own (`options.assistant`) has no key
+   * this server can swap, so the switch is all the app has over it.
+   */
+  async function assistantNow() {
+    const said = await kept.read();
+    const swappable = typeof assistant.chatWith === 'function';
+    const source = swappable && said.key ? 'app' : assistant.connected ? 'deployment' : 'none';
+    return {
+      enabled: said.enabled,
+      host: assistant.host ?? null,
+      model: assistant.model ?? null,
+      /** Whether there is anywhere to send a message, key or no key. */
+      reachable: assistant.connected || swappable,
+      swappable,
+      source,
+      /** A key is kept and cannot be opened: the server's secret is not the one it was sealed under. */
+      unreadable: said.kept && said.key === null,
+      keySetAt: said.keySetAt,
+      keySetBy: said.keySetBy,
+      connected: said.enabled && source !== 'none',
+      chat: source === 'app'
+        ? (conversation, options) => assistant.chatWith(said.key, conversation, options)
+        : assistant.chat,
+    };
+  }
+
+  /** What an administrator is shown of the above. Everything but the key, and nothing made from it. */
+  const settingsView = (now) => ({
+    enabled: now.enabled,
+    connected: now.connected,
+    host: now.host,
+    model: now.model,
+    reachable: now.reachable,
+    key: now.source,
+    keyUnreadable: now.unreadable,
+    keySetAt: now.source === 'app' || now.unreadable ? now.keySetAt : null,
+    keySetBy: now.source === 'app' || now.unreadable ? now.keySetBy : null,
+    /** Whether a key can be set here at all: the model is one a key can be swapped on, and there is a secret to seal it with. */
+    keyChangeable: now.swappable,
+    sealable: kept.seals,
+  });
 
   /**
    * Who is asking, and what they may do. The role is the person's row, read
@@ -401,9 +454,10 @@ export function createDomainMapServer(options = {}) {
         role: who.role,
         // Where a contributor's messages would go, so the page can say so
         // before one is sent. A viewer has no chat, and is told nothing about it.
-        assistant: contributes && assistant.connected
-          ? { host: assistant.host ?? null, model: assistant.model ?? null }
-          : null,
+        assistant: contributes ? await (async () => {
+          const now = await assistantNow();
+          return now.connected ? { host: now.host, model: now.model } : null;
+        })() : null,
       });
     }
 
@@ -529,6 +583,24 @@ export function createDomainMapServer(options = {}) {
       return notAllowed(response, 'GET, POST');
     }
 
+    // The clear-out: everyone not seen since a day, and of one role if one is
+    // said. It is asked in two steps on purpose. GET answers with who would go,
+    // as the list stands; POST removes, and only from among the people it is
+    // handed the ids of — so what an administrator was shown is the most that
+    // is ever taken, however the list has moved on since they looked.
+    if (path === '/api/people/inactive') {
+      if (method !== 'GET' && method !== 'POST') return notAllowed(response, 'GET, POST');
+      if (!may(who, ADMINISTRATOR)) return administratorOnly();
+      if (method === 'GET') {
+        const found = await people.inactive(url.searchParams.get('notSeenSince'), { by, role: url.searchParams.get('role') });
+        return sendJson(response, 200, { people: found });
+      }
+      const { notSeenSince, role, ids } = await readJson(request);
+      if (!Array.isArray(ids)) throw failure(400, 'Say who, as the ids of the people shown.');
+      const removed = await people.removeInactive(notSeenSince, { by, role, only: ids });
+      return sendJson(response, 200, { removed });
+    }
+
     const id = decodeURIComponent(path.slice('/api/people/'.length));
     if (!path.startsWith('/api/people/') || id === '' || id.includes('/')) {
       return sendJson(response, 404, { error: `Nothing at ${path}.` });
@@ -558,6 +630,9 @@ export function createDomainMapServer(options = {}) {
   // model's text relayed back. The page wrote the prompt and will check the
   // reply; all this adds is a key the browser never holds.
   async function handleAssistant(request, response, url, who) {
+    if (url.pathname === '/api/assistant/settings' || url.pathname === '/api/assistant/settings/check') {
+      return handleAssistantSettings(request, response, url, who);
+    }
     if (url.pathname !== '/api/assistant/chat') {
       return sendJson(response, 404, { error: `Nothing at ${url.pathname}.` });
     }
@@ -566,7 +641,14 @@ export function createDomainMapServer(options = {}) {
       return response.end();
     }
     if (!may(who, CONTRIBUTOR)) return sendJson(response, 403, { error: 'Only a contributor can talk to the Assistant\'s model.' });
-    if (!assistant.connected) return sendJson(response, 404, { error: 'No model is connected to the Assistant.' });
+    const assistantNow_ = await assistantNow();
+    if (!assistantNow_.connected) {
+      return sendJson(response, 404, {
+        error: assistantNow_.enabled || assistantNow_.source === 'none'
+          ? 'No model is connected to the Assistant.'
+          : 'An administrator has switched the Assistant\'s model off.',
+      });
+    }
 
     const body = await readBody(request);
     if (body === null || body.length > MAX_CHAT_BYTES) {
@@ -592,11 +674,63 @@ export function createDomainMapServer(options = {}) {
     const gone = new AbortController();
     response.on('close', () => { if (!response.writableEnded) gone.abort(); });
 
-    const text = await assistant.chat(
+    const text = await assistantNow_.chat(
       { system, messages: messages.map(({ role, content }) => ({ role, content })) },
       { signal: gone.signal },
     );
     sendJson(response, 200, { text });
+  }
+
+  // The Assistant's model as an administrator sets it from the app: on or
+  // off, and a key of the app's own. The key goes one way. It is taken here,
+  // sealed and kept, and nothing this server answers with ever holds it —
+  // not the settings, not an error, not the result of trying it out.
+  async function handleAssistantSettings(request, response, url, who) {
+    const { method } = request;
+    if (!may(who, ADMINISTRATOR)) {
+      return sendJson(response, 403, { error: 'Only an administrator can change the Assistant\'s model.' });
+    }
+
+    if (url.pathname === '/api/assistant/settings/check') {
+      if (method !== 'POST') return notAllowed(response, 'POST');
+      // Asked whatever the switch says: trying a key is what comes before
+      // switching the model on. The fewest words that make a turn, since
+      // somebody pays for each one.
+      const now = await assistantNow();
+      if (now.source === 'none') {
+        return sendJson(response, 200, {
+          ok: false,
+          reason: now.reachable ? 'There is no key to try: set one first.' : 'No model address is set: ASSISTANT_API_URL says where the model is.',
+        });
+      }
+      try {
+        await now.chat({ system: 'Reply with the single word OK.', messages: [{ role: 'user', content: 'OK?' }] });
+        return sendJson(response, 200, { ok: true });
+      } catch (error) {
+        // The model's own words for why not. They name the host, never the key.
+        return sendJson(response, 200, { ok: false, reason: error.message });
+      }
+    }
+
+    if (method === 'GET') return sendJson(response, 200, settingsView(await assistantNow()));
+    if (method !== 'PUT') return notAllowed(response, 'GET, PUT');
+
+    const { enabled, key } = await readJson(request);
+    if (enabled === undefined && key === undefined) {
+      throw failure(400, 'Say what to change: whether the model is on, or its key.');
+    }
+    if (key !== undefined) {
+      if (!assistant.chatWith) {
+        throw failure(409, assistant.connected
+          ? 'This model is one the server was built with, and brings its own key: there is none to change here.'
+          : 'No model address is set, so a key would have nowhere to be used: ASSISTANT_API_URL says where the model is.');
+      }
+      // Null lets go of the app's key, and the model is back on the deployment's.
+      if (key === null) await kept.forgetKey();
+      else await kept.setKey(key, who.person);
+    }
+    if (enabled !== undefined) await kept.setEnabled(enabled);
+    return sendJson(response, 200, settingsView(await assistantNow()));
   }
 
   /**

@@ -295,6 +295,68 @@ try {
   check('nobody takes themselves off', self.status === 409 && /another administrator/.test(self.body.error), JSON.stringify(self.body));
   check('someone who is not there cannot be taken off', (await as(app, ALICE, 'DELETE', `/api/people/${frank.body.id}`)).status === 404);
 
+  // --- the clear-out: everyone not seen since a day ---
+  const daysAgo = (days) => encodeURIComponent(new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString());
+  const longGone = {};
+  for (const [name, email, role] of [['Gone Gary', 'gary@contoso.example', 'contributor'], ['Lapsed Lena', 'lena@contoso.example', 'publisher'],
+    ['Old Olga', 'olga@contoso.example', 'administrator'], ['Recent Rob', 'rob@contoso.example', 'viewer']]) {
+    longGone[name] = (await as(app, ALICE, 'POST', '/api/people', { name, email, role })).body.id;
+  }
+  // Dated in the database, since the API rightly lets nobody say when someone
+  // was last here. All four were added long ago; Gary never came, Lena and
+  // Olga last came four months back, and Rob six weeks back.
+  await inDatabase(database.url, 'update people set created_at = now() - interval \'200 days\' where id = any($1)', [Object.values(longGone)]);
+  await inDatabase(database.url, 'update people set last_signed_in = now() - interval \'120 days\' where id = any($1)', [[longGone['Lapsed Lena'], longGone['Old Olga']]]);
+  await inDatabase(database.url, 'update people set last_signed_in = now() - interval \'40 days\' where id = $1', [longGone['Recent Rob']]);
+
+  const INACTIVE = '/api/people/inactive';
+  const since = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  check('a contributor cannot ask who is away, nor clear them out',
+    (await as(app, CAROL, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(90)}`)).status === 403
+    && (await as(app, CAROL, 'POST', INACTIVE, { notSeenSince: since(90), ids: [longGone['Gone Gary']] })).status === 403);
+  check('a day has to be said, and has to be one',
+    (await as(app, ALICE, 'GET', INACTIVE)).status === 400
+    && (await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=whenever`)).status === 400);
+  const tooSoon = await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(5)}`);
+  check('a day within the month is refused: nobody is inactive that soon, whatever was picked',
+    tooSoon.status === 400 && /last 30 days/.test(tooSoon.body.error)
+    && (await as(app, ALICE, 'POST', INACTIVE, { notSeenSince: since(5), ids: [longGone['Gone Gary']] })).status === 400, JSON.stringify(tooSoon.body));
+
+  const away = await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(90)}`);
+  check('asked who is away, the answer is whoever last came before the day, and whoever was added before it and never came',
+    away.status === 200 && away.body.people.map((person) => person.name).join('|') === 'Gone Gary|Lapsed Lena', JSON.stringify(away.body));
+  check('as the rows the list shows: a role, a last sign-in, how much a sandbox holds',
+    away.body.people.every((person) => 'role' in person && 'lastSignedIn' in person && 'drafts' in person));
+  check('and asking removes nobody', (await as(app, ALICE, 'GET', '/api/people')).body.people.some((person) => person.name === 'Gone Gary'));
+  const publishersAway = await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(90)}&role=publisher`);
+  check('it can be kept to one role', publishersAway.body.people.map((person) => person.name).join('|') === 'Lapsed Lena');
+  check('which is never the administrators: one is removed by hand',
+    (await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(90)}&role=administrator`)).status === 400
+    && (await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(90)}&role=owner`)).status === 400);
+
+  check('a clear-out has to name who goes: there is no taking everyone unseen',
+    (await as(app, ALICE, 'POST', INACTIVE, { notSeenSince: since(90) })).status === 400
+    && (await as(app, ALICE, 'POST', INACTIVE, { notSeenSince: since(90), ids: ['not-an-id'] })).status === 400);
+  // Shown Gary and Rob, say: Rob has been here since, so only Gary goes — and Lena, who was not shown, stays.
+  const partly = await as(app, ALICE, 'POST', INACTIVE, { notSeenSince: since(90), ids: [longGone['Gone Gary'], longGone['Recent Rob'], longGone['Old Olga']] });
+  const afterPartly = (await as(app, ALICE, 'GET', '/api/people')).body.people.map((person) => person.name);
+  check('only those named go, and of them only who is still away',
+    partly.status === 200 && partly.body.removed.map((person) => person.name).join('|') === 'Gone Gary'
+    && !afterPartly.includes('Gone Gary'), JSON.stringify(partly.body));
+  check('someone away who was not named is left for the next time', afterPartly.includes('Lapsed Lena'));
+  check('someone seen since stays, however long ago they were added', afterPartly.includes('Recent Rob'));
+  check('an administrator is never swept, however long away, even when named', afterPartly.includes('Old Olga'));
+  const viewersOnly = await as(app, ALICE, 'POST', INACTIVE, { notSeenSince: since(90), role: 'viewer', ids: [longGone['Lapsed Lena']] });
+  check('a role said with the names holds too: a publisher is not taken in a clear-out of viewers',
+    viewersOnly.body.removed.length === 0);
+  const swept = await as(app, ALICE, 'POST', INACTIVE, { notSeenSince: since(90), ids: away.body.people.map((person) => person.id) });
+  check('the rest of who was shown goes when they are named', swept.body.removed.map((person) => person.name).join('|') === 'Lapsed Lena');
+  const afterSweep = (await as(app, ALICE, 'GET', '/api/people')).body.people.map((person) => person.name);
+  check('and nobody who has been here lately went with them', ['Alice Example', 'Bob Builder', 'Carol Chen'].every((name) => afterSweep.includes(name)), afterSweep.join('|'));
+  check('asked again, nobody is away', (await as(app, ALICE, 'GET', `${INACTIVE}?notSeenSince=${daysAgo(90)}`)).body.people.length === 0);
+  await as(app, ALICE, 'DELETE', `/api/people/${longGone['Old Olga']}`);
+  await as(app, ALICE, 'DELETE', `/api/people/${longGone['Recent Rob']}`);
+
   // --- the script, for the day every administrator has gone ---
   const rescued = await makeAdministrator(database.url, 'erin@contoso.example');
   check('the script makes someone an administrator', rescued.code === 0 && /Erin Example <erin@contoso.example> is an administrator now/.test(rescued.out), rescued.out);
@@ -326,6 +388,15 @@ try {
     && answers.at(-1).status === 409 && /only administrator/.test(answers.at(-1).body.error), JSON.stringify(answers.map((answer) => answer.body)));
   check('and is not taken off the list either',
     (await as(open, null, 'DELETE', `/api/people/${administrators.at(-1).id}`)).status === 409);
+  // Local runs the list by the configuration, whatever its own row says, and
+  // is whoever asks: a sweep does not take the row its sandbox hangs off.
+  await inDatabase(database.url, 'update people set role = \'contributor\', created_at = now() - interval \'400 days\', last_signed_in = now() - interval \'400 days\' where id = $1', [local.body.id]);
+  const awayOpen = await as(open, null, 'GET', `/api/people/inactive?notSeenSince=${daysAgo(365)}`);
+  const sweptOpen = await as(open, null, 'POST', '/api/people/inactive', { notSeenSince: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(), ids: [local.body.id] });
+  check('whoever asks for a clear-out is not shown among the away, and is not taken by it though named',
+    awayOpen.status === 200 && !awayOpen.body.people.some((person) => person.id === local.body.id)
+    && sweptOpen.status === 200 && sweptOpen.body.removed.length === 0
+    && (await as(open, null, 'GET', '/api/people')).body.people.some((person) => person.id === local.body.id), JSON.stringify(sweptOpen.body));
   await open.stop();
 
   // --- the development bypass, on an empty list ---

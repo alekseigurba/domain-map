@@ -1161,6 +1161,58 @@ const farOut = geo.featurePlace(handOval, inRows.bubbles[0], { x: 900, y: 0 });
 check('one let go outside the oval is kept where the bubble comes to rest, inside it',
   farOut.x <= 100 && farOut.x > 50 && farOut.y === 0, JSON.stringify(farOut));
 
+// --- a feature that leans ---
+const leanOval = geo.capabilitySize({ title: 'Payment processing', sizeScale: 2 });
+/** Three features side by side, with the middle one leaning as told. */
+const leanTo = (stretch, count = 3, at = 1) => geo.layoutFeatures(leanOval,
+  featuresOf(count).map((one, i) => (i === at ? { ...one, stretch } : one)), 'Payment processing');
+const lying = geo.layoutFeatures(leanOval, featuresOf(3), 'Payment processing');
+const seat = lying.bubbles[1];
+const near = (a, b) => Math.abs(a - b) < 1e-9;
+check('a feature left alone lies wide, as its row makes it, and so does one told to',
+  seat.rx > seat.ry && leanTo(2).bubbles[1].rx === seat.rx && leanTo(2).bubbles[1].ry === seat.ry
+  && leanTo(2).bubbles[1].x === seat.x && leanTo(2).bubbles[1].y === seat.y);
+check('stood up it is the bubble it was, a quarter turn round',
+  near(leanTo(-2).bubbles[1].rx, seat.ry) && near(leanTo(-2).bubbles[1].ry, seat.rx));
+check('half way there it is round, the mean of its two radii',
+  near(leanTo(0).bubbles[1].rx, (seat.rx + seat.ry) / 2) && near(leanTo(0).bubbles[1].ry, (seat.rx + seat.ry) / 2));
+check('and the steps between are even, as a capability\'s are',
+  near(leanTo(1).bubbles[1].rx - leanTo(0).bubbles[1].rx, leanTo(0).bubbles[1].rx - leanTo(-1).bubbles[1].rx)
+  && near(leanTo(-1).bubbles[1].ry - leanTo(0).bubbles[1].ry, leanTo(0).bubbles[1].ry - leanTo(1).bubbles[1].ry));
+check('a lean off the scale is held to its nearer end',
+  near(leanTo(-9).bubbles[1].ry, seat.rx) && leanTo(9).bubbles[1].rx === seat.rx);
+check('its neighbours keep their seats and the shape their row gave them',
+  [0, 2].every((at) => ['x', 'y', 'rx', 'ry'].every((field) => leanTo(-2).bubbles[at][field] === lying.bubbles[at][field])));
+for (const count of [1, 3, 8, 20]) {
+  for (const stretch of [1, 0, -1, -2]) {
+    const stood = leanTo(stretch, count, 0).bubbles[0];
+    check(`one of ${count} leaning to ${stretch} is still inside its capability, under the name`,
+      within(leanOval, stood) && stood.y - stood.ry >= -0.45 * leanOval.ry - 1e-6,
+      `${stood.x},${stood.y} ${stood.rx}x${stood.ry}`);
+  }
+}
+check('standing one up leaves the size the rest are set in alone',
+  [1, 0, -1, -2].every((stretch) => leanTo(stretch).fontSize === lying.fontSize
+    && [0, 2].every((at) => leanTo(stretch).bubbles[at].fontSize === lying.fontSize)));
+check('its own name is set no larger than theirs, and smaller where the shape it was given is too narrow for it',
+  [1, 0, -1, -2].every((stretch) => leanTo(stretch).bubbles[1].fontSize <= lying.fontSize)
+  && leanTo(-2).bubbles[1].fontSize < lying.fontSize
+  && leanTo(-2).bubbles[1].lines.every((line) =>
+    geo.measure(line, leanTo(-2).bubbles[1].fontSize, 'regular') <= leanTo(-2).bubbles[1].rx * 2),
+  `${leanTo(-2).bubbles[1].fontSize} against ${lying.fontSize}: ${JSON.stringify(leanTo(-2).bubbles[1].lines)}`);
+const stoodByHand = geo.layoutFeatures(leanOval,
+  featuresOf(3).map((one, i) => (i === 1 ? { ...one, stretch: -2, x: 0, y: 100 } : one)), 'P').bubbles[1];
+check('one stood up and put at the rim is held inside by the height it now has',
+  within(leanOval, stoodByHand) && near(stoodByHand.ry, seat.rx), `${stoodByHand.y}`);
+check('a bubble squeezed no wider than it is tall has no length to stand up on, and is left as it is', (() => {
+  const crowd = geo.capabilitySize({ title: 'Payment processing', stretch: -2 });
+  const plain = geo.layoutFeatures(crowd, featuresOf(30), 'P');
+  const at = plain.bubbles.findIndex((one) => one.rx <= one.ry);
+  if (at < 0) return true; // no row here is that crowded: nothing to hold
+  const stood = geo.layoutFeatures(crowd, featuresOf(30).map((one, i) => (i === at ? { ...one, stretch: -2 } : one)), 'P');
+  return stood.bubbles[at].rx === plain.bubbles[at].rx && stood.bubbles[at].ry === plain.bubbles[at].ry;
+})());
+
 // --- the points round a domain's blob ---
 const snapDomain = { title: 'Billing', x: 0, y: 0 };
 const snapChildren = [
@@ -1194,6 +1246,110 @@ const ovalAt = { x: 900, y: 0, rx: 130, ry: 84 };
 const pair = geo.closestSnapPair(blobAt, blobAt, ovalAt, ovalAt);
 check('a line between a blob and an oval hangs off the points that face each other',
   blobSnaps[pair.fromPoint].x > 0 && pair.toPoint >= 10 && pair.toPoint <= 14, JSON.stringify(pair));
+
+// A domain's points lie on the very rays its outline was sampled along, so each
+// ray leaves through a corner of the outline — and one that was read as leaving
+// through none put its point on the middle of the body. Which did depended on
+// the last digits of the outline, so a lobe is resized through a run of sizes.
+check('however its lobes are sized, none of a domain\'s points falls back onto the middle of it', (() => {
+  for (let scale = 0.25; scale < 6; scale += 0.05) {
+    const sized = geo.layoutDomain({ title: 'Billing', x: 0, y: 0, titleX: -40, titleY: 300 }, [
+      { id: 'a', title: 'Invoicing', lobeX: 20, lobeY: -150, lobeScale: scale },
+      { id: 'b', title: 'Collections and dunning', lobeX: -120, lobeY: 20, sizeScale: 1.4 },
+      { id: 'c', title: 'Credit notes', lobeX: 150, lobeY: 90, lobeScale: 1 + scale / 3 },
+    ]);
+    const outline = sized.outline.map((p) => ({ x: p.x - sized.body.x, y: p.y - sized.body.y }));
+    if (geo.snapPoints({ shape: 'blob', outline }).some((p) => Math.hypot(p.x, p.y) < 1)) return false;
+  }
+  return true;
+})());
+check('a ray through a corner of an outline finds the corner',
+  [0, 90, 180, 270].every((degrees) => {
+    const diamond = [{ x: 100, y: 0 }, { x: 0, y: 100 }, { x: -100, y: 0 }, { x: 0, y: -100 }];
+    const at = geo.rimPoint(diamond, { x: 0, y: 0 }, degrees);
+    return Math.abs(Math.hypot(at.x, at.y) - 100) < 1e-6;
+  }));
+
+// The point of a shape nearest a place is found by how far off it is. Round a
+// long shape that is not the point that faces the place: undoing the stretch
+// to find the facing one puts it well along from where the eye would.
+const longOval = { x: 0, y: 0, rx: 300, ry: 50 };
+check('the point of a shape nearest a place on the map is the nearest, which need not be the one facing it',
+  geo.closestSnapTo(longOval, longOval, { x: 150, y: 80 }) === 4
+  && geo.nearestSnapIndex(longOval, 150, 80) === 5);
+check('each of a blob\'s points is the nearest to a place just outside it',
+  blobSnaps.every((p) => geo.closestSnapTo(blobAt, blobAt, { x: blobAt.x + p.x * 1.03, y: blobAt.y + p.y * 1.03 }) === p.index));
+// Two domains side by side, the second the first again a gap to its right: the
+// line between them crosses the gap, and is no longer than any other pair of
+// their points would make it.
+const beside = { ...blobAt, x: blobAt.x + (blob.bounds.maxX - blob.bounds.minX) + 80 };
+const bridge = geo.closestSnapPair(blobAt, blobAt, beside, beside);
+const facing = {
+  from: blobSnaps[geo.nearestSnapIndex(blobAt, beside.x - blobAt.x, beside.y - blobAt.y)],
+  to: blobSnaps[geo.nearestSnapIndex(beside, blobAt.x - beside.x, blobAt.y - beside.y)],
+};
+const span = (from, to) => Math.hypot(beside.x + to.x - blobAt.x - from.x, beside.y + to.y - blobAt.y - from.y);
+check('two blobs side by side are joined across the gap between them, by a pair no further apart than the two that face each other\'s middles',
+  span(blobSnaps[bridge.fromPoint], blobSnaps[bridge.toPoint]) <= span(facing.from, facing.to) + 1e-9
+  && blobSnaps[bridge.fromPoint].x > 0 && blobSnaps[bridge.toPoint].x < 0,
+  `${span(blobSnaps[bridge.fromPoint], blobSnaps[bridge.toPoint])} against ${span(facing.from, facing.to)}`);
+
+// --- a title dragged off its blob ---
+const hungChildren = [
+  { id: 'a', title: 'Picking', lobeX: -260, lobeY: 60 },
+  { id: 'b', title: 'Packing', lobeX: -60, lobeY: 40 },
+  { id: 'c', title: 'Carrier booking and tracking', lobeX: 240, lobeY: 80, sizeScale: 1.8 },
+  { id: 'd', title: 'Returns', lobeX: -360, lobeY: 230, sizeScale: 1.5 },
+  { id: 'e', title: 'Stock control', lobeX: -70, lobeY: 250, sizeScale: 1.8 },
+  { id: 'f', title: 'Dispatch', lobeX: 240, lobeY: 290, sizeScale: 1.3 },
+];
+const hung = (place = {}) => geo.layoutDomain(
+  { title: 'Order fulfilment\nand delivery', x: 0, y: 0, fontSize: 64, ...place }, hungChildren);
+/**
+ * How an outline keeps to the surface: the stretches of it that do not lie on
+ * it — both sides of the middle of one inside the blob, or both outside — and
+ * how its longest stretch compares with the usual one. An outline that leaps
+ * from the far side of a title to the body has one stretch that is neither.
+ */
+const keeping = (layout) => {
+  const run = layout.outline;
+  const lengths = run.map((p, i) => Math.hypot(run[(i + 1) % run.length].x - p.x, run[(i + 1) % run.length].y - p.y));
+  const astray = run.filter((p, i) => {
+    const q = run[(i + 1) % run.length];
+    const [nx, ny] = [-(q.y - p.y) / lengths[i], (q.x - p.x) / lengths[i]];
+    const [mx, my] = [(p.x + q.x) / 2, (p.y + q.y) / 2];
+    return layout.contains(mx + nx * 5, my + ny * 5) === layout.contains(mx - nx * 5, my - ny * 5);
+  }).length;
+  return { astray, longest: Math.max(...lengths), usual: lengths.reduce((a, b) => a + b, 0) / lengths.length };
+};
+for (const [titleX, titleY] of [[100, -420], [-500, -300], [700, -100], [-700, 200], [500, 600]]) {
+  const kept = keeping(hung({ titleX, titleY }));
+  check(`with the title dragged to ${titleX},${titleY} the outline keeps to the surface all the way round, in even steps`,
+    kept.astray === 0 && kept.longest < kept.usual * 1.2, JSON.stringify(kept));
+}
+check('a title whose middle is on the blob trails nothing, and is drawn as it always was',
+  hung().titleLobe.trail === null && keeping(hung()).astray === 0);
+const offTheEdge = hung({ titleX: 700, titleY: -100 });
+check('one dragged off the edge trails back to the blob',
+  offTheEdge.titleLobe.trail !== null && offTheEdge.contains(offTheEdge.titleLobe.trail.x, offTheEdge.titleLobe.trail.y));
+check('so the whole of the way from the title back to the body is on the blob, as wide as the title',
+  Array.from({ length: 21 }, (_, i) => i / 20).every((t) => {
+    const { titleLobe, body } = offTheEdge;
+    const x = titleLobe.x + (body.x - titleLobe.x) * t;
+    const y = titleLobe.y + (body.y - titleLobe.y) * t;
+    // Half the title's lobe to either side of the way, across it.
+    const along = Math.hypot(body.x - titleLobe.x, body.y - titleLobe.y);
+    const [ax, ay] = [-(body.y - titleLobe.y) / along, (body.x - titleLobe.x) / along];
+    const reach = 0.5 / Math.hypot(ax / titleLobe.rx, ay / titleLobe.ry);
+    return offTheEdge.contains(x, y) && offTheEdge.contains(x + ax * reach, y + ay * reach)
+      && offTheEdge.contains(x - ax * reach, y - ay * reach);
+  }));
+check('and the title\'s own lobe is inside the outline that was drawn',
+  rimOf({ ...offTheEdge.titleLobe, rx: offTheEdge.titleLobe.rx * 0.9, ry: offTheEdge.titleLobe.ry * 0.9 })
+    .every((p) => geo.insideOutline(offTheEdge.outline, p.x, p.y)));
+check('an outline is drawn through more points the longer it runs, and never through fewer than it was',
+  hung().outline.length >= 96 && offTheEdge.outline.length > geo.layoutDomain({ title: 'Billing', x: 0, y: 0 }, []).outline.length
+  && geo.layoutDomain({ title: 'Billing', x: 0, y: 0 }, []).outline.length === 96);
 
 // --- a lobe resized ---
 const plainLobe = geo.lobeSizeFor({ title: 'Invoicing' });

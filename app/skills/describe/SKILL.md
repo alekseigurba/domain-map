@@ -29,7 +29,8 @@ vague, circular or out of step with its neighbours.
 - For a **domain**, say what the capabilities inside it have in common that
   the ones outside it do not.
 - For a **line**, say what passes along it and why: "Approved orders, so that
-  a loan can be opened for each."
+  a loan can be opened for each." What is provided, not who calls whom: a line
+  has no direction.
 
 Return one suggestion holding one `describe`. If the title is too ambiguous to
 describe honestly, return a note that says what you would need to know.

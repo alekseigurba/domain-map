@@ -334,11 +334,20 @@ export const CAPABILITY_DEFAULTS = {
 };
 
 /**
+ * How a feature's bubble leans, on the scale a capability's oval leans on.
+ * Wide is how a feature has always been drawn, so it is what one is until it
+ * is stood up — and it is no brand's to restyle, as a capability's is: a
+ * feature is drawn in the room its row has for it, and wide is that room.
+ */
+export const DEFAULT_FEATURE_STRETCH = STRETCHES[STRETCHES.length - 1];
+
+/**
  * A feature is one thing a capability does, named. It lives inside its
  * capability and nowhere else, with no colour and no size of its own, because
  * it is drawn in whatever room the capability's oval has for it: in the order
- * the capability holds it, or where in the oval it has been put by hand. A
- * line may end on one, as on a capability or a domain.
+ * the capability holds it, or where in the oval it has been put by hand. What
+ * it does have is a lean, as a capability has. A line may end on one, as on a
+ * capability or a domain.
  */
 export const FEATURE_DEFAULTS = {
   capabilityId: null,
@@ -348,6 +357,8 @@ export const FEATURE_DEFAULTS = {
   ownerId: null,
   type: '',
   sortIndex: 0,
+  /** Which way its bubble leans: -2 tall, 0 round, 2 wide — the size is still its row's. */
+  stretch: DEFAULT_FEATURE_STRETCH,
   /**
    * Where in its capability's oval it has been put by hand, as a share of the
    * oval's two radii in hundredths — so it keeps its place when the capability
@@ -572,9 +583,7 @@ export function validateCapability(fields) {
     ?? color(fields.colorIndex)
     ?? font(fields.fontSize, fields.fontWeight, CAPABILITY_FONT_SIZES)
     ?? scale(fields.sizeScale, 'sizeScale', MAX_SIZE_SCALE)
-    ?? (given(fields.stretch) && !STRETCHES.includes(fields.stretch)
-      ? `stretch must be one of ${STRETCHES.join(', ')}.`
-      : null)
+    ?? leans(fields.stretch)
     ?? faded(fields.opacity)
     ?? validateIcon(fields.icon)
     ?? placed(fields.iconPlacement)
@@ -588,10 +597,17 @@ export function validateCapability(fields) {
       : null);
 }
 
-/** A feature's words, and where in its capability it has been put, if anywhere. */
+/** How a shape leans: one of the five steps between standing tall and lying wide. */
+const leans = (stretch) =>
+  (given(stretch) && !STRETCHES.includes(stretch)
+    ? `stretch must be one of ${STRETCHES.join(', ')}.`
+    : null);
+
+/** A feature's words, how its bubble leans, and where in its capability it has been put, if anywhere. */
 export function validateFeature(fields) {
   return text(fields.title, fields.description, fields.owner, fields.ownerId)
     ?? typed(fields.type)
+    ?? leans(fields.stretch)
     ?? ([fields.x, fields.y].some((value) => given(value)
       && !(Number.isFinite(value) && Math.abs(value) <= MAX_FEATURE_REACH))
       ? `A feature's position must be within ${MAX_FEATURE_REACH} either way of its capability's middle.`

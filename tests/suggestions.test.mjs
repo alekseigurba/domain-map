@@ -114,7 +114,7 @@ for (const name of names) {
 }
 
 const bySkill = (name) => skills.find((one) => one.name === name);
-check('there are the thirteen standard skills and the free-form one', skills.length === 14);
+check('there are the fifteen standard skills and the free-form one', skills.length === 16);
 check('the one that says what the business is comes first', names[0] === 'describe-the-business');
 check('Describe may describe and nothing else', bySkill('describe').mayUse.join() === 'describe');
 check('the free-form skill may use every operation',

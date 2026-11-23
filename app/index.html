@@ -201,6 +201,9 @@
       </div>
       <!-- Hangs off the kebab on the selected domain: edit, then save or cancel. -->
       <div class="kebab-menu" id="kebab-menu" role="menu" hidden></div>
+      <!-- Hangs off the handle on the selected line: how the line is drawn, set
+           beside the line rather than a panel away from it. -->
+      <div class="line-menu" id="line-menu" role="group" aria-label="Line shape" hidden></div>
     </section>
 
     <!-- Details: properties of whatever is selected, anywhere. -->
@@ -440,6 +443,11 @@
         <button class="btn btn--chip" type="button" id="people"
                 title="Who may open the map, and what each may do"
                 aria-haspopup="dialog" aria-controls="people-dialog" hidden>Users &amp; access</button>
+        <!-- An administrator's: the model behind the Assistant, on or off, and
+             its key. assistant-settings.js shows it to nobody else. -->
+        <button class="btn btn--chip" type="button" id="assistant-model"
+                title="Switch the Assistant's model on or off, and change its key"
+                aria-haspopup="dialog" aria-controls="assistant-model-dialog" hidden>Assistant model</button>
         <button class="btn btn--chip" type="button" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
         <button class="btn btn--chip" type="button" id="profile-close">Close</button>
       </div>
@@ -448,14 +456,45 @@
 
   <!-- Users & access: who may open the map and what each may do. Everyone who
        works on the map reads it; an administrator gives out roles, adds
-       someone by email and takes someone off the list, on every row but their
-       own. people.js writes the key from the role words in identity.js, and
-       fills the rows each time it opens. -->
+       someone by email, takes someone off the list — on every row but their
+       own — and clears out whoever has not been back. people.js reads the list
+       each time it opens, shows it a page at a time under the look-up and the
+       two filters, and writes the key at the foot from the role words in
+       identity.js. -->
   <dialog class="dialog dialog--people" id="people-dialog" aria-labelledby="people-title">
     <div class="dialog__body">
       <h2 class="dialog__title" id="people-title">Users &amp; access</h2>
-      <dl class="roster__key" id="people-key" aria-label="What each role may do"></dl>
-      <p class="versions__note" id="people-note" hidden></p>
+      <!-- Finding someone on a list that only grows: by name or address, by what
+           they may do, by when they were last here. people.js narrows the rows
+           to what these say, a page at a time. -->
+      <div class="roster__find" id="people-find-row" role="search">
+        <input class="field__input" id="people-find" type="search" placeholder="Find by name or email"
+               aria-label="Find by name or email" maxlength="200" autocomplete="off" spellcheck="false">
+        <select class="field__select" id="people-role" aria-label="Show a role">
+          <option value="">Any role</option>
+          <option value="viewer">Viewers</option>
+          <option value="contributor">Contributors</option>
+          <option value="publisher">Publishers</option>
+          <option value="administrator">Administrators</option>
+        </select>
+        <select class="field__select" id="people-seen" aria-label="Show by last sign-in">
+          <option value="">Signed in at any time</option>
+          <option value="within:7">In the last 7 days</option>
+          <option value="within:30">In the last 30 days</option>
+          <option value="within:90">In the last 90 days</option>
+          <option value="before:90">Not in the last 90 days</option>
+          <option value="never">Not yet</option>
+        </select>
+      </div>
+      <!-- A clear-out being looked over, in place of the look-up: the rows
+           under it are then exactly the people who would go, and nobody is
+           removed until Remove is pressed here. -->
+      <div class="roster__confirm" id="people-sweep-confirm" hidden>
+        <p class="roster__warning" id="people-sweep-says"></p>
+        <button class="btn btn--chip" type="button" id="people-sweep-cancel" title="Remove nobody, and go back to the whole list">Cancel</button>
+        <button class="btn btn--chip btn--danger" type="button" id="people-sweep-remove">Remove</button>
+      </div>
+      <p class="versions__note" id="people-note" role="status" hidden></p>
       <div class="versions__scroll">
         <table class="roster">
           <thead>
@@ -470,6 +509,12 @@
           <tbody id="people-rows"></tbody>
         </table>
       </div>
+      <!-- How many there are, which of them are on show, and the way to the rest. -->
+      <div class="roster__pages">
+        <span class="roster__count" id="people-count"></span>
+        <button class="btn btn--chip" type="button" id="people-prev" title="The page before">Previous</button>
+        <button class="btn btn--chip" type="button" id="people-next" title="The page after">Next</button>
+      </div>
       <!-- An administrator's: someone added by email is on the list before
            they have signed in, and their first sign-in finds them here. -->
       <form class="roster__add" id="people-add" hidden>
@@ -483,8 +528,78 @@
         </select>
         <button class="btn btn--chip" type="submit" title="Add someone by email, ahead of their first sign-in">Add</button>
       </form>
+      <!-- An administrator's: the clear-out. Everyone who signs in once is on
+           the list for good, so this takes off whoever has not been back —
+           ninety days unless another length, or a day, is chosen, and of one
+           role if one is. It says how many that is as it is set, and its button
+           removes nobody: it shows who they are, and the removing is done from
+           there. -->
+      <form class="roster__sweep" id="people-sweep" hidden>
+        <label class="field__label" for="people-sweep-age">Remove everyone not signed in</label>
+        <select class="field__select" id="people-sweep-age" name="age">
+          <option value="90" selected>for 90 days</option>
+          <option value="180">for 180 days</option>
+          <option value="365">for a year</option>
+          <option value="day">since a day…</option>
+        </select>
+        <input class="field__input" id="people-sweep-day" name="day" type="date" aria-label="Not signed in since" hidden>
+        <select class="field__select" id="people-sweep-role" name="role" aria-label="Of which role">
+          <option value="" selected>of any role</option>
+          <option value="viewer">viewers only</option>
+          <option value="contributor">contributors only</option>
+          <option value="publisher">publishers only</option>
+        </select>
+        <span class="roster__count" id="people-sweep-count"></span>
+        <button class="btn btn--chip" type="submit" id="people-sweep-go"
+                title="Show who that is. Nobody is removed until you say so on the list.">Preview…</button>
+      </form>
+      <!-- What each role may do, at the foot: it is read once and then glanced
+           back at, and the list is what the dialog is opened for. -->
+      <dl class="roster__key" id="people-key" aria-label="What each role may do"></dl>
       <div class="dialog__foot dialog__foot--end">
         <button class="btn btn--chip" type="button" id="people-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The Assistant's model, as an administrator sets it: on or off, and a key
+       of the app's own. assistant-settings.js fills it each time it opens. The
+       key is typed in and sent, and is never read back: there is nothing here to
+       show of it but that there is one, as a row of dots that is always the
+       same length. -->
+  <dialog class="dialog dialog--model" id="assistant-model-dialog" aria-labelledby="assistant-model-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="assistant-model-title">Assistant model</h2>
+      <p class="model__says" id="model-says"></p>
+      <div class="field field--inline">
+        <span class="field__label" id="model-switch-label">Model</span>
+        <span class="toggle" id="model-switch" role="group" aria-labelledby="model-switch-label">
+          <button class="btn btn--chip toggle__chip" type="button" data-enabled="true" aria-pressed="false"
+                  title="Send contributors' messages to the model">On</button>
+          <button class="btn btn--chip toggle__chip" type="button" data-enabled="false" aria-pressed="false"
+                  title="Send the model nothing: the Assistant writes prompts to copy out by hand">Off</button>
+        </span>
+      </div>
+      <div class="field">
+        <span class="field__label">Key</span>
+        <p class="model__key" id="model-key"></p>
+      </div>
+      <!-- A password box, so the key is dots as it is typed, and one a browser
+           is asked not to offer to remember: it is a key, not a sign-in. -->
+      <form class="model__change" id="model-key-form" autocomplete="off" hidden>
+        <input class="field__input" id="model-new-key" name="assistant-model-key" type="password"
+               autocomplete="new-password" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true"
+               placeholder="New key" aria-label="New key" minlength="8" maxlength="4096" required>
+        <button class="btn btn--chip" type="submit" title="Seal the new key and keep it in place of the old one">Save key</button>
+      </form>
+      <p class="versions__note" id="model-unsealed" hidden>This server has no secret to seal a key with, so it will not keep one: set AUTH_SESSION_SECRET in its environment and start it again.</p>
+      <p class="versions__note" id="model-note" role="status" hidden></p>
+      <div class="dialog__foot">
+        <button class="btn btn--chip" type="button" id="model-check"
+                title="Send the model one word, to see that it takes the key">Try it</button>
+        <button class="btn btn--chip" type="button" id="model-forget" hidden
+                title="Let go of the key set here: the model goes back to the deployment's own">Forget this key</button>
+        <button class="btn btn--chip" type="button" id="assistant-model-close">Close</button>
       </div>
     </div>
   </dialog>
@@ -506,7 +621,7 @@
         <p>The <strong>slider over the zoom buttons</strong> sets the level the lines are drawn at, without moving the map. <strong>F</strong>, where a map opens: every line where it really ends, on a feature, a capability or a domain. <strong>C</strong>: a line that ends on a feature leaves from its capability. <strong>D</strong>: every line leaves from a domain, the lines between two domains are one line, heavier the more it stands for, and each domain keeps its two strongest — point at one to read what it joins and how many it carries, and pick a domain to see every line it has. The level is the same in <strong>Edit</strong> mode, and is your tab's alone. A line drawn short of its own ends cannot be reshaped until the level, or the zoom, draws it whole.</p>
         <p>The <strong>layer control</strong> in the bottom left corner lists the three layers, topmost first: Presentation, Domains, and Areas underneath them both. The eye hides Presentation or Areas; Domains, the base layer, cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
         <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds — domains, capabilities and features, touchpoints and actors, or areas. A feature goes into the capability that is selected, after the ones it already holds. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
-        <p>An <strong>area</strong> is who owns what: a band drawn round the domains, touchpoints and loose capabilities one team holds. It has no size of its own — it follows what it holds. Its title rides the border like a legend; Shift+Enter while renaming it breaks the title into rows, which stack outside the band. Drag a shape in from outside the line to put it in the area; to take it out, set <strong>Area</strong> to — in its details. Dragging a shape clear of its team only stretches the band after it, so tidying the map never reorganises the company. A shape is in one area or in none.</p>
+        <p>An <strong>area</strong> is who owns what: a band drawn round the domains, touchpoints and loose capabilities one team holds. It has no size of its own — it follows what it holds. Its title rides the border like a legend; Shift+Enter while renaming it breaks the title into rows, which stack outside the band. Drag a shape in from outside the line to put it in the area; to take it out, set <strong>Area</strong> to — in its details. Dragging a shape clear of its team only stretches the band after it, so tidying the map never reorganises the company. A shape is in one area or in none. An area says who answers for a part of the map today, and is there to be held against the domains, not to define them: a domain is cut by what the business does, whoever holds it.</p>
         <p><strong>Assistant</strong>, in the header, takes the place of the details panel: pick what to ask, and either send it to the model this map is connected to or, where there is none, copy the prompt into the AI chat you use and paste its reply back. What comes back is a list of cards. Nothing on one touches the map until you apply it in <strong>Edit</strong> mode, and each card is one Ctrl+Z. <strong>Ask your own</strong> opens a box for your question, and Ctrl+Enter there sends it.</p>
         <p><strong>Draw</strong>, in the header, puts a marker in your hand and locks the map under it: nothing on it is selected or moved while you draw, so a flow can be traced across the terrain without disturbing it. The tray in the top left corner holds five markers, an eraser, undo and clear. What you draw belongs to this tab — it is in no version, nobody else sees it, and it survives a refresh but not the tab being closed — and it goes when another version is opened in its place. <strong>Export SVG</strong> carries it into the picture. Draw stands down while <strong>Edit</strong> is on.</p>
         <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
@@ -538,9 +653,10 @@
               <tr><td>Ctrl+B</td><td>Turn bold on or off for the selected shape</td></tr>
               <tr><td>Ctrl and + / Ctrl and &minus;</td><td>Step the selected capability's font size up or down (= works as +)</td></tr>
               <tr><td>Shift and + / Shift and &minus;</td><td>Step the selected capability's shape size up or down</td></tr>
-              <tr><td>Ctrl and &lt; / Ctrl and &gt;</td><td>Make the selected capability's oval narrower or wider, in five steps: tall, a little tall, round, a little wide, wide. New capabilities start wide. (Ctrl+, and Ctrl+. work too)</td></tr>
+              <tr><td>Ctrl and &lt; / Ctrl and &gt;</td><td>Make the selected capability's oval narrower or wider, in five steps: tall, a little tall, round, a little wide, wide. New capabilities start wide. A feature's bubble takes the same five steps: stood up it is taller than its row, and is dragged to wherever it has the room. (Ctrl+, and Ctrl+. work too)</td></tr>
               <tr><td>] / [</td><td>Bring the selected capability to the front of its stack, or send it to the back. Its stack is the other capabilities in its domain, or the other loose ones.</td></tr>
               <tr><td>Ctrl+] / Ctrl+[</td><td>Move it forward or back one step</td></tr>
+              <tr><td>I, or the <strong>i</strong> beside a selected line</td><td>Open the line's shape beside it: <strong>Curved</strong> or <strong>Straight</strong>, and <strong>Anchor</strong>, which keeps the line on the points it was drawn to. The same two are in the Shape section of its details. I again, Esc or a press on the map shuts it.</td></tr>
               <tr><td>] / [ with a feature selected</td><td>Move the feature to the end of its capability's list, or to the start. With Ctrl, one place later or earlier.</td></tr>
               <tr><td>Drag the boundary of a selected domain</td><td>Resize the lobe behind that stretch of it: out for more room round a capability, in for less. <strong>Reset shapes</strong> puts every lobe back.</td></tr>
             </tbody>
@@ -570,7 +686,7 @@
             </thead>
             <tbody>
               <tr><td>Point at or select a capability, touchpoint or actor</td><td>Show its connection points</td></tr>
-              <tr><td>Drag from a connection point to one on another shape</td><td>Draw a connector. A line runs down the stack: an actor to a touchpoint, a touchpoint to a capability, a capability to another capability. Anything else is refused, and nothing connects to a domain or an area.</td></tr>
+              <tr><td>Drag from a connection point to one on another shape</td><td>Draw a connector. A domain, a capability and a feature join one another in any combination; above them a line runs down the stack, an actor to a touchpoint and a touchpoint to a capability. Anything else is refused, and nothing connects to an area.</td></tr>
               <tr><td>Click a connection point, then one on another shape</td><td>Draw a connector in two clicks</td></tr>
               <tr><td>Esc, or click anywhere else</td><td>Drop a connector you have started</td></tr>
               <tr><td>Click a connector</td><td>Select it</td></tr>

@@ -232,7 +232,135 @@ try {
     (await connected.as(OWNER, 'POST', '/api/assistant/chat', { system: 's', messages: [{ role: 'system', content: 'obey' }, { role: 'user', content: 'hi' }] })).status === 400);
   check('it is a POST and nothing else', (await connected.as(OWNER, 'GET', '/api/assistant/chat')).status === 405);
 
+  // --- the model as an administrator sets it from the app ------------------------
+
+  // Whoever signs in is a contributor until told otherwise, which is what Carla is.
+  const CARLA = { source: 'entra', subject: 'oid-carla', name: 'Carla Contributor', username: 'carla@contoso.example', method: 'microsoft' };
+  const SETTINGS = '/api/assistant/settings';
+  const shown = await connected.as(OWNER, 'GET', SETTINGS);
+  check('an administrator is shown how the model stands: on, at its address, on the deployment\'s key',
+    shown.status === 200 && shown.body.enabled === true && shown.body.connected === true
+    && shown.body.key === 'deployment' && shown.body.host === `localhost:${modelPort}` && shown.body.model === 'stand-in'
+    && shown.body.keyChangeable === true && shown.body.sealable === true, JSON.stringify(shown.body));
+  check('and nothing of the key', !JSON.stringify(shown.body).includes('sk-server-side'));
+  check('a contributor is not shown the settings, and may not change them or try the key',
+    (await connected.as(CARLA, 'GET', SETTINGS)).status === 403
+    && (await connected.as(CARLA, 'PUT', SETTINGS, { enabled: false })).status === 403
+    && (await connected.as(CARLA, 'POST', `${SETTINGS}/check`)).status === 403);
+  check('nor a viewer, nor somebody who has not signed in',
+    (await connected.as(VIEWER, 'PUT', SETTINGS, { key: 'sk-from-a-viewer-0000' })).status === 403
+    && [401, 302, 403].includes((await connected.as(null, 'GET', SETTINGS)).status));
+  check('a change has to say what it changes', (await connected.as(OWNER, 'PUT', SETTINGS, {})).status === 400);
+
+  const heardBefore = heard.length;
+  const off = await connected.as(OWNER, 'PUT', SETTINGS, { enabled: false });
+  check('switched off, the settings say so', off.status === 200 && off.body.enabled === false && off.body.connected === false);
+  check('a contributor is told of no model, as with none connected', (await connected.as(CARLA, 'GET', '/api/me')).body.assistant === null);
+  const turnedAway = await connected.as(CARLA, 'POST', '/api/assistant/chat', turn);
+  check('and a turn is refused in words that say why, the model hearing nothing of it',
+    turnedAway.status === 404 && turnedAway.body.error.includes('switched') && heard.length === heardBefore, JSON.stringify(turnedAway.body));
+  await connected.as(OWNER, 'PUT', SETTINGS, { enabled: true });
+  check('switched on again, it answers the next turn without a restart',
+    (await connected.as(CARLA, 'POST', '/api/assistant/chat', turn)).status === 200
+    && (await connected.as(CARLA, 'GET', '/api/me')).body.assistant?.model === 'stand-in');
+
+  const rekeyed = await connected.as(OWNER, 'PUT', SETTINGS, { key: '  sk-set-in-the-app-0001\n' });
+  check('a key set in the app is kept, and said to be the app\'s: when it was set, and by whom',
+    rekeyed.status === 200 && rekeyed.body.key === 'app' && rekeyed.body.keySetBy === 'Olivia Owner'
+    && !Number.isNaN(Date.parse(rekeyed.body.keySetAt)), JSON.stringify(rekeyed.body));
+  check('the answer to setting it does not hold it, and neither do the settings read back',
+    !JSON.stringify(rekeyed.body).includes('set-in-the-app')
+    && !JSON.stringify((await connected.as(OWNER, 'GET', SETTINGS)).body).includes('set-in-the-app'));
+  await connected.as(CARLA, 'POST', '/api/assistant/chat', turn);
+  check('the next turn goes out on the new key, with what a paste brought round it trimmed off',
+    heard.at(-1).headers.authorization === 'Bearer sk-set-in-the-app-0001');
+  {
+    const { default: pg } = await import('pg');
+    const client = new pg.Client({ connectionString: database.url });
+    await client.connect();
+    const { rows } = await client.query('select api_key from assistant_settings');
+    await client.end();
+    const [form, , , body] = rows[0].api_key.split('.');
+    check('in the database the key is sealed: the row holds nothing a reader could use',
+      rows.length === 1 && form === 'v1' && !rows[0].api_key.includes('sk-set')
+      && !Buffer.from(body, 'base64url').toString('latin1').includes('sk-set'));
+  }
+  const tried = await connected.as(OWNER, 'POST', `${SETTINGS}/check`);
+  check('the key can be tried out, with the fewest words that make a turn',
+    tried.status === 200 && tried.body.ok === true && heard.at(-1).body.messages.at(-1).content === 'OK?'
+    && heard.at(-1).headers.authorization === 'Bearer sk-set-in-the-app-0001');
+
+  for (const [why, bad] of [['too short to be one', 'short'], ['two things pasted as one', 'sk-with a space in it'],
+    ['a placeholder nobody pasted over', 'changeme'], ['not text', 42]]) {
+    const refused = await connected.as(OWNER, 'PUT', SETTINGS, { key: bad });
+    check(`a key that is ${why} is refused, and the one kept stays`,
+      refused.status === 400 && (await connected.as(OWNER, 'GET', SETTINGS)).body.key === 'app', JSON.stringify(refused.body));
+  }
+
+  // The same database behind a server whose secret is another one: a move, or a secret rotated.
+  const OTHER_SECRET = 'a-secret-the-key-was-not-sealed-under';
+  const moved = await boot({
+    AUTH_SESSION_SECRET: OTHER_SECRET,
+    ASSISTANT_API_URL: `http://localhost:${modelPort}/v1/chat/completions`,
+    ASSISTANT_API_KEY: 'sk-server-side',
+  });
+  const movedView = await fetch(`http://localhost:${moved.server.address().port}${SETTINGS}`, {
+    headers: { cookie: `domainmap.auth=${seal(OTHER_SECRET, { ...OWNER, iat: Date.now(), exp: Date.now() + 3_600_000 })}` },
+  }).then((response) => response.json());
+  check('a server whose secret has changed cannot open the key: it says so, and runs on the deployment\'s',
+    movedView.keyUnreadable === true && movedView.key === 'deployment' && movedView.connected === true, JSON.stringify(movedView));
+
+  const forgotten = await connected.as(OWNER, 'PUT', SETTINGS, { key: null });
+  await connected.as(CARLA, 'POST', '/api/assistant/chat', turn);
+  check('the app\'s key can be let go of, and the model is back on the deployment\'s',
+    forgotten.body.key === 'deployment' && forgotten.body.keySetAt === null && forgotten.body.keySetBy === null
+    && heard.at(-1).headers.authorization === 'Bearer sk-server-side');
+
+  // An address and no key: the deployment never had one, or was given a placeholder.
+  const keyless = await boot({ ASSISTANT_API_URL: `http://localhost:${modelPort}/v1/chat/completions`, ASSISTANT_API_KEY: 'paste-me' });
+  const waiting = await keyless.as(OWNER, 'GET', SETTINGS);
+  check('with an address and no key there is no model, and the settings say a key is what it wants',
+    waiting.body.connected === false && waiting.body.key === 'none' && waiting.body.reachable === true
+    && waiting.body.keyChangeable === true && (await keyless.as(OWNER, 'GET', '/api/me')).body.assistant === null);
+  check('trying it says there is nothing to try', (await keyless.as(OWNER, 'POST', `${SETTINGS}/check`)).body.ok === false);
+  const supplied = await keyless.as(OWNER, 'PUT', SETTINGS, { key: 'sk-the-only-key-it-has' });
+  await keyless.as(OWNER, 'POST', '/api/assistant/chat', turn);
+  check('a key set in the app is all it takes to connect it',
+    supplied.body.connected === true && supplied.body.key === 'app'
+    && heard.at(-1).headers.authorization === 'Bearer sk-the-only-key-it-has');
+  await keyless.as(OWNER, 'PUT', SETTINGS, { key: null });
+
+  // A model that refuses the key, quoting it back the way some do.
+  const fussy = createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      response.writeHead(401, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: { message: `Incorrect API key provided: sk-expi***********ired. Was it ${request.headers.authorization}?` } }));
+    });
+  });
+  const fussyPort = await listening(fussy);
+  cleanup.push(() => new Promise((resolve) => { fussy.close(resolve); }));
+  const expired = await boot({ ASSISTANT_API_URL: `http://localhost:${fussyPort}/v1/chat/completions`, ASSISTANT_API_KEY: 'sk-expired-long-ago-and-retired' });
+  const failed = await expired.as(OWNER, 'POST', `${SETTINGS}/check`);
+  check('a key the model refuses is said to be refused, in the model\'s words',
+    failed.status === 200 && failed.body.ok === false && failed.body.reason.includes('refused the key'), JSON.stringify(failed.body));
+  check('with the key taken out of them, whole or starred',
+    !failed.body.reason.includes('sk-expired-long-ago-and-retired') && !failed.body.reason.includes('sk-expi') && !failed.body.reason.includes('ired.'));
+
+  // No secret, no sealing: sign-in off and nothing set.
+  const unsealed = await boot({ AUTH_ENABLED: 'false', AUTH_SESSION_SECRET: '', ASSISTANT_API_URL: `http://localhost:${modelPort}/v1/chat/completions`, ASSISTANT_API_KEY: 'sk-server-side' });
+  const noSecret = await unsealed.as(null, 'PUT', SETTINGS, { key: 'sk-nowhere-safe-to-keep' });
+  check('a server with no secret to seal with will not keep a key, and says what to set',
+    noSecret.status === 409 && noSecret.body.error.includes('AUTH_SESSION_SECRET')
+    && (await unsealed.as(null, 'GET', SETTINGS)).body.sealable === false, JSON.stringify(noSecret.body));
+  check('though it can still be switched off and on',
+    (await unsealed.as(null, 'PUT', SETTINGS, { enabled: false })).body.connected === false
+    && (await unsealed.as(null, 'PUT', SETTINGS, { enabled: true })).body.connected === true);
+
   const bare = await boot({});
+  check('with no address a key has nowhere to be used, and is not taken',
+    (await bare.as(OWNER, 'PUT', SETTINGS, { key: 'sk-with-nowhere-to-go' })).status === 409
+    && (await bare.as(OWNER, 'GET', SETTINGS)).body.reachable === false);
   check('with no model connected an owner is told so', (await bare.as(OWNER, 'GET', '/api/me')).body.assistant === null);
   check('and the route is simply not there', (await bare.as(OWNER, 'POST', '/api/assistant/chat', turn)).status === 404);
 
@@ -254,6 +382,15 @@ try {
     method: 'POST', headers: { cookie: cookieFor(OWNER), 'Content-Type': 'application/json' }, body: JSON.stringify(turn),
   }).then((response) => response.json());
   check('options.assistant replaces the adapter outright', answer.text === 'heard: Grill it.');
+  const own = (method, path, body) => fetch(`http://localhost:${customPort}${path}`, {
+    method, headers: { cookie: cookieFor(OWNER), 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
+  }).then(async (response) => ({ status: response.status, body: await response.json().catch(() => null) }));
+  check('a model of the consumer\'s own brings its own key: there is none to change, and the settings say so',
+    (await own('PUT', SETTINGS, { key: 'sk-not-for-this-model' })).status === 409
+    && (await own('GET', SETTINGS)).body.keyChangeable === false);
+  await own('PUT', SETTINGS, { enabled: false });
+  check('but the switch is the app\'s all the same', (await own('POST', '/api/assistant/chat', turn)).status === 404);
+  await own('PUT', SETTINGS, { enabled: true });
 } finally {
   for (const step of cleanup.reverse()) await step().catch(() => {});
 }

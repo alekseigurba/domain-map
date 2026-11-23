@@ -75,7 +75,10 @@ Dragging a shape clear of its team only stretches the band after it; leaving is
 said in the Area field, so that tidying the map never reorganises the company.
 Drag the border to move a whole team's territory at once, and the title to
 slide it round the border; Shift+Enter while renaming it breaks the title into
-rows, which stack outside the band.
+rows, which stack outside the band. An area says who answers for a part of the
+map today, and is there to be held against the domains rather than to define
+them: a domain is cut by what the business does, whoever holds it, and a
+reorganisation moves the bands without moving anything under them.
 
 **Connectors.** Point at a domain, a capability or a feature and its connection
 points appear. Drag from one to a point on another shape — or click one, then
@@ -85,7 +88,10 @@ the detail is known. Drag an end to move it, Shift-click a curved line to add a
 bend, double-click a bend to take it out. A line that stays inside one domain
 is drawn quietly, as internal plumbing; one that crosses a boundary is a public
 event, and reads louder. A curved line you have not shaped goes round a domain
-that lies in its way rather than across it.
+that lies in its way rather than across it. A line has two ends and no
+direction, so its description says what one side provides the other — "provides
+invoice-status updates to the ledger" — and not who calls whom: worded as
+steps in a flow, the map is read as a call graph.
 
 **Colour.** *Edit palette* opens the map's own 24 colours in the bottom corner,
 over an overlay that leaves the map in view. Every shape wears a swatch from
@@ -139,8 +145,9 @@ where it is.
 
 **Assistant**, in the header, takes the details panel's place. Pick a skill:
 *Describe* the capability you have selected, *Fill the blanks* across a domain,
-*Grill the boundaries*, *Find missing connections*, *Compare with a standard*,
-*Trace a flow*, or *Ask your own*.
+*Word the lines* as what one side provides the other, *Grill the boundaries*,
+*Question the ownership* the areas show, *Find missing connections*, *Compare
+with a standard*, *Trace a flow*, or *Ask your own*.
 
 **With a model connected**, a contributor presses a skill and **Send**; *Ask your
 own* opens a box for a question of your own. The answer comes back under the
@@ -158,7 +165,9 @@ ASSISTANT_MODEL=llama3.1
 — and the URL can be anything that answers chat completions, free or corporate,
 or Anthropic's Messages API. [docs/BRANDING.md](docs/BRANDING.md#what-it-needs-to-run)
 has the rest. The key stays on the server, and the page says which host your
-messages go to.
+messages go to. When the key expires, an administrator gives the model a new one
+in the page — the avatar, then **Assistant model** — or switches the model off
+there. The key is typed in and kept sealed; nothing shows it again.
 
 **Without one**, **Copy prompt** puts the task, the map and the format to answer
 in on the clipboard; take it to the AI chat you use, and in **Edit** mode paste
@@ -200,7 +209,13 @@ avatar: a role on each row, someone added by email ahead of their first
 sign-in, and someone taken off the list — on every row but their own, so there
 is always an administrator left. There can be several. A **viewer** sees the
 published map and nothing else — nobody is one until an administrator says so.
-The dialog opens on a sentence for each role saying what it may do.
+The list is shown a page at a time, and narrowed by a name or an address, by
+role, or by when someone was last here. Everyone who signs in once is on it for
+good, so an administrator can also clear out whoever has not been back — for
+ninety days, or since a day of their choosing, of every role or of one.
+**Preview…** shows exactly who that is before anyone is removed, and only the
+people shown are taken; administrators are left where they are. At the foot is
+a sentence for each role saying what it may do.
 `OWNER_EMAILS` seeds the list the first time the server starts, the first
 address as the administrator; after that the list rules. With sign-in off, as
 in `dev.env`, whoever is there is an administrator, which is what makes `npm

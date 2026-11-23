@@ -37,9 +37,19 @@ export function setEditMode(next) {
   renderDetails();
 }
 
+/**
+ * The key a line's Shape section is kept open under. It is headed Shape like
+ * any other, and is a section of its own to `opened`: a line has no name to
+ * come first, and how it is drawn — curved or straight, pinned or not — is most
+ * of what there is to set on one, so it starts open where a shape's starts shut.
+ */
+const LINE_SHAPE = 'Line shape';
+/** The sections that only say how a thing is drawn, and so have nothing to offer while browsing. */
+const SHAPE_KEYS = new Set(['Shape', LINE_SHAPE]);
+
 /** Which accordion panels are open. Sticky across selections, like a preference.
  *  Shape starts shut: what a thing is called matters before how it is drawn. */
-const opened = new Set(['Metadata', 'Holds']);
+const opened = new Set(['Metadata', 'Holds', LINE_SHAPE]);
 
 /**
  * `key` names the panel in `opened` wherever its heading changes with the
@@ -49,7 +59,7 @@ const opened = new Set(['Metadata', 'Holds']);
  * a control to collapse it would just be one more click to see the map.
  */
 function section(title, fields, key = title) {
-  if (!editMode && key === 'Shape') return null;
+  if (!editMode && SHAPE_KEYS.has(key)) return null;
 
   const wrapper = document.createElement('section');
   wrapper.className = 'section';
@@ -598,9 +608,63 @@ function checkbox(name, hint, checked, onChange) {
   input.className = 'field__check';
   input.checked = checked;
   input.title = hint;
+  input.dataset.control = name;
   input.setAttribute('aria-label', name);
   input.addEventListener('change', () => onChange(input.checked));
   return input;
+}
+
+/**
+ * A choice between two or three words, as a row of chips with the one in force
+ * filled in: both are in sight and either is one press, where a list has to be
+ * opened to see what else there is. For a choice of a handful — a font size, a
+ * shape size — a list is still the control.
+ */
+function toggle(name, options, value, onChange) {
+  const group = document.createElement('span');
+  group.className = 'toggle';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', name);
+  for (const option of options) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'btn btn--chip toggle__chip';
+    chip.textContent = option.label;
+    chip.dataset.control = `${name}:${option.value}`;
+    chip.setAttribute('aria-pressed', String(option.value === value));
+    chip.addEventListener('click', () => { if (option.value !== value) onChange(option.value); });
+    group.appendChild(chip);
+  }
+  return group;
+}
+
+/** A word with its first letter raised, for a chip: the values are kept in lower case. */
+const capitalised = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+
+/**
+ * How a line is drawn: curved or straight, and whether it keeps the points it
+ * was drawn on. The same two fields wherever a line's shape is set — in the
+ * panel's Shape section and in the pop-up beside the line on the map — so the
+ * two can never offer different things.
+ */
+export function lineShapeFields(record) {
+  // Curved first: it is what a line is until it is told otherwise.
+  const styles = [...LINE_STYLES].sort((a, b) => Number(b === 'curved') - Number(a === 'curved'));
+  return [
+    field('Line', toggle(
+      'Line',
+      styles.map((value) => ({ value, label: capitalised(value) })),
+      record.lineStyle ?? 'curved',
+      (value) => patch('connector', record, { lineStyle: value }),
+    ), { inline: true }),
+    // Anchored lines keep the points they were drawn on, come what may.
+    field('Anchor', checkbox(
+      'Anchor',
+      'Keep these snap points',
+      record.anchored === true,
+      (value) => patch('connector', record, { anchored: value }),
+    ), { inline: true }),
+  ];
 }
 
 /**
@@ -843,9 +907,11 @@ export function renderDetails() {
   const nodes = [];
 
   if (type === 'feature') {
-    // A feature is its words and where it belongs. It has no shape of its own
-    // to set: it is drawn in the room its capability has for it, in the order
-    // the capability holds it — which the bracket keys change.
+    // A feature is its words and where it belongs. It has no Shape section:
+    // it is drawn in the room its capability has for it, in the order the
+    // capability holds it — which the bracket keys change — and the one thing
+    // about its bubble that is its own, which way it leans, is stepped from the
+    // keyboard as a capability's lean is.
     const capability = find('capability', record.capabilityId);
     nodes.push(metadataSection(type, record, {
       lead: [field('Capability', staticText(capability ? oneLine(capability.title) : '—'))],
@@ -990,20 +1056,7 @@ export function renderDetails() {
       field('Layer', staticText(layerNameOf(type, record))),
       field('Description', liveText(type, record, 'description', { multiline: true })),
     ], 'Metadata'));
-    nodes.push(section('Shape', [
-      field('Line', select(
-        LINE_STYLES.map((value) => ({ value, label: value })),
-        record.lineStyle ?? 'curved',
-        (value) => patch(type, record, { lineStyle: value }),
-      ), { inline: true }),
-      // Anchored lines keep the points they were drawn on, come what may.
-      field('Anchor', checkbox(
-        'Anchor',
-        'Keep these snap points',
-        record.anchored === true,
-        (value) => patch(type, record, { anchored: value }),
-      ), { inline: true }),
-    ]));
+    nodes.push(section('Shape', lineShapeFields(record), LINE_SHAPE));
   }
 
   // Whatever section is left (Shape has already dropped out) shows its

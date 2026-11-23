@@ -35,7 +35,11 @@ To try the Assistant with a model behind it, export `ASSISTANT_API_URL` and
 `ASSISTANT_API_KEY` before `npm start` — a local Ollama at
 `http://localhost:11434/v1/chat/completions` wants any key at all — and the
 startup lines say what it is connected to. Without them the Assistant writes
-prompts to copy, which is what the tests and the demo run with.
+prompts to copy, which is what the tests and the demo run with. With the URL
+alone, the key can be given in the page instead: the avatar, then **Assistant
+model**. `dev.env` carries an `AUTH_SESSION_SECRET` for that — a key set in the
+page is sealed with it, and a server with no secret will not keep one — which is
+a laptop's, and no deployment's.
 
 The file store — the icons, the logo and `data/settings.json` — lands in
 `storage/` beside the checkout, seeded from `seed/` the first time. The seed
@@ -81,7 +85,9 @@ node tests/geometry.test.mjs
 | `scripts/roles.mjs` | The four roles, lowest first, and what each may do. |
 | `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, someone taken off the list, never the last administrator, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
 | `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made an administrator from outside the app. |
-| `app/js/people.js` | Users & access: the roster, and what the administrator can do on it. |
+| `app/js/people.js` | Users & access: the roster a page at a time, the look-up and the two filters over it, and what the administrator can do on it — a role, a person added or removed, and the clear-out of whoever has not been back. |
+| `scripts/assistant-settings.mjs` | What an administrator sets about the Assistant's model from the app: on or off, and a key of the app's own, sealed with a key derived from `AUTH_SESSION_SECRET` before it is written and never read back out to a person. One row in Postgres (`005-assistant.sql`). |
+| `app/js/assistant-settings.js` | The **Assistant model** dialog an administrator opens from the profile popup: the switch, the box a new key is typed into, and trying the key out. |
 | `scripts/serve.mjs` | The CLI over it, for running the stock app from this checkout. |
 | `scripts/create-app.mjs` | `create-domain-map-app`: writes a consumer repo from `scaffold/`. |
 | `scripts/migrations/` | Numbered `.sql`, applied in name order at startup and recorded in a table of their own. There is nothing to run by hand. |

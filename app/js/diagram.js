@@ -92,7 +92,7 @@ let shownLines = { drawn: new Set(), folded: [] };
 let outlines = new Map();
 /** How far clear of a shape a line is bent round it, in map units: about half the ground between two domains. */
 const ROUTE_CLEARANCE = 36;
-/** How each capability that holds features lays them out, kept until its oval or their names change. */
+/** How each capability that holds features lays them out, kept until its oval, their names, their places or their leans change. */
 const featureLayouts = new Map();
 /** The capabilities open onto their features at this zoom. */
 let openCapabilities = new Set();
@@ -341,7 +341,7 @@ function readZoom(views) {
     // tries a type size for every name, and a zoom renders every frame.
     const size = geo.capabilitySize(capability);
     const key = [size.rx, size.ry, capability.title,
-      ...features.map((one) => `${one.id}:${one.title}:${one.x},${one.y}`)].join('\u0001');
+      ...features.map((one) => `${one.id}:${one.title}:${one.x},${one.y}:${one.stretch}`)].join('\u0001');
     if (featureLayouts.get(capability.id)?.key !== key) {
       featureLayouts.set(capability.id, { key, laid: geo.layoutFeatures(size, features, capability.title) });
     }
@@ -473,6 +473,7 @@ export function render() {
     ...views.flatMap(renderLobeHandles),
     ...views.flatMap(renderTitleWidth),
     ...renderConnectorEnds(),
+    ...renderLineInfo(),
     ...views.flatMap(renderKebab));   // last, so it stays on top of the grips
   zOrder.draft.replaceChildren(...(draft ? [renderDraft()] : []));
   zOrder.hover.replaceChildren(...renderConnectorLabel());
@@ -800,6 +801,80 @@ function renderConnectorEnds() {
     : [];
 
   return [...bends, ...handles];
+}
+
+/** How far off the middle of a picked line its handle stands, and how large it is drawn, in screen pixels. */
+const LINE_INFO_OFFSET = 24;
+const LINE_INFO_RADIUS = 9;
+
+/**
+ * Where the handle on a picked line stands, in map units: beside the middle of
+ * the line as it is drawn. Beside it and not on it, since a curved line carries
+ * a bend there to be taken hold of; and on whichever side is lower on the
+ * screen, since the line's name is lifted over the middle when it is pointed
+ * at. Read off the path that was just drawn, as the name is, so a line with
+ * bends in it is measured along its true run. Null where the line has no path
+ * on the stage.
+ */
+function lineInfoSpot(id) {
+  const path = zOrder.stacks.querySelector(`.connector-group[data-id="${id}"] .connector`)
+    ?? zOrder.stacks.querySelector('.connector--folded.connector--selected .connector');
+  const length = path?.getTotalLength() ?? 0;
+  if (!(length > 0)) return null;
+  const at = path.getPointAtLength(length / 2);
+  const before = path.getPointAtLength(Math.max(0, length / 2 - 1));
+  const after = path.getPointAtLength(Math.min(length, length / 2 + 1));
+  const run = Math.hypot(after.x - before.x, after.y - before.y) || 1;
+  // Square to the line, turned to point down the screen — or to the right of
+  // a line that runs straight down it.
+  let outX = -(after.y - before.y) / run;
+  let outY = (after.x - before.x) / run;
+  if (outY < 0 || (outY === 0 && outX < 0)) { outX = -outX; outY = -outY; }
+  const off = LINE_INFO_OFFSET / view.k;
+  return { x: at.x + outX * off, y: at.y + outY * off };
+}
+
+/**
+ * The handle on the selected line: a small "i" beside its middle that opens
+ * what the line's shape is set with, there on the map. How a line is drawn is
+ * most of what there is to change about one, and its fields are otherwise a
+ * panel away from the line being looked at. Counter-scaled by the zoom, as the
+ * line's name is: it is chrome, and stays the size it was drawn at. It stands
+ * down while an end or a bend is in hand, so as not to be in the way of where
+ * that is going.
+ */
+function renderLineInfo() {
+  if (!editMode || store.selection.type !== 'connector') return [];
+  if (drag?.kind === 'connector-end' || drag?.kind === 'bend') return [];
+  const at = lineInfoSpot(store.selection.id);
+  if (!at) return [];
+
+  const handle = el('g', {
+    class: 'line-info',
+    'data-type': 'line-info',
+    'data-id': store.selection.id,
+    transform: `translate(${at.x} ${at.y}) scale(${1 / view.k})`,
+  });
+  const says = el('title');
+  says.textContent = 'Line shape: curved or straight, anchored or not (I)';
+  const mark = el('text', { class: 'line-info__mark', x: 0, y: 0 });
+  mark.textContent = 'i';
+  handle.append(
+    says,
+    el('circle', { class: 'line-info__hit', r: LINE_INFO_RADIUS + 5 }),
+    el('circle', { class: 'line-info__dot', r: LINE_INFO_RADIUS }),
+    mark,
+  );
+  return [handle];
+}
+
+/** Where on the page the pop-up a line's handle opens is hung: the handle itself. */
+export function lineMenuAnchor(id) {
+  const at = lineInfoSpot(id);
+  if (!at) return null;
+  const rect = svg.getBoundingClientRect();
+  const on = vp.worldToScreen(view, at);
+  return { x: rect.left + on.x, y: rect.top + on.y };
 }
 
 // --- renaming, on the shape itself -------------------------------------------
@@ -1317,10 +1392,32 @@ function renderConnector(connector) {
   return group;
 }
 
-/** Where a folded line ends: on the rim of the place it was lifted to, facing the way the line leaves. */
-function foldEnd(place, towards) {
-  const at = positions.get(place.id);
-  return at ? pointOn(at, geo.nearestSnapIndex(at, towards.x - at.x, towards.y - at.y)) : null;
+/**
+ * Where a folded line runs: its two ends, and the bends between them. It hangs
+ * off whichever pair of connection points lies closest, as a line nobody has
+ * pinned does, so two domains side by side are joined across the gap between
+ * them. Each end used to be the point facing the other shape's middle, chosen
+ * with no regard to the other end — and round a blob, where the points are a
+ * long way apart, the two could be a lobe out of step, and a line that had a
+ * hand's width to cross set off sideways along the boundary instead.
+ *
+ * Bent round a shape in its way, an end is the point nearest the first bend it
+ * makes for, not the one nearest a far end it no longer runs straight to.
+ */
+function foldRun(line) {
+  const a = middleOf(line.from);
+  const b = middleOf(line.to);
+  if (!a || !b) return null;
+  const nearest = geo.closestSnapPair(a, a, b, b);
+  const from = pointOn(a, nearest.fromPoint);
+  const to = pointOn(b, nearest.toPoint);
+  const around = geo.routeAround(from, to, inTheWayOf(line.from, line.to), { clearance: ROUTE_CLEARANCE });
+  if (around.length === 0) return { from, to, around };
+  return {
+    from: pointOn(a, geo.closestSnapTo(a, a, around[0])),
+    to: pointOn(b, geo.closestSnapTo(b, b, around.at(-1))),
+    around,
+  };
 }
 
 /**
@@ -1336,13 +1433,9 @@ function foldEnd(place, towards) {
  * many it carries.
  */
 function renderFold(line) {
-  const a = middleOf(line.from);
-  const b = middleOf(line.to);
-  if (!a || !b) return null;
-  const around = geo.routeAround(a, b, inTheWayOf(line.from, line.to), { clearance: ROUTE_CLEARANCE });
-  const from = foldEnd(line.from, around[0] ?? b);
-  const to = foldEnd(line.to, around.at(-1) ?? a);
-  if (!from || !to) return null;
+  const run = foldRun(line);
+  if (!run) return null;
+  const { from, to, around } = run;
 
   const only = line.parts.length === 1 ? line.parts[0] : null;
   const selected = line.picked || (only && store.selection.type === 'connector' && store.selection.id === only.id);
@@ -1815,6 +1908,13 @@ function onPointerDown(event) {
     select('domain', target.id);
     if (!editMode) { render(); return; }
     actions.openKebab?.(target.id);
+    return;
+  }
+
+  // The handle is only drawn on the selected line in Edit mode, so a press on
+  // it is always a press to open that line's shape, or to shut it again.
+  if (target?.type === 'line-info') {
+    actions.toggleLineMenu?.(target.id);
     return;
   }
 

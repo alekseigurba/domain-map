@@ -39,6 +39,17 @@ the server. Every message carries the whole map to that URL, drafts included, an
 every contributor may send one — which is everyone who signs in, until an
 administrator says otherwise.
 
+The URL is the deployment's to say. The key need not be: an administrator can
+give the model a key in the page — the avatar, then **Assistant model** — which
+is used in place of `ASSISTANT_API_KEY` from the next message on, and can switch
+the model off and on there without a redeploy. A key expires; a release should
+not be what replaces it. A key set in the page is sealed before it is kept in
+Postgres, with a key derived from `AUTH_SESSION_SECRET`, so it wants that
+variable set and held steady: change the secret and the kept key can no longer
+be opened, which the dialog says, and it is set again. No route answers with the
+key, the environment's or the page's. A model of your own (`assistant`, below)
+brings whatever key it needs, and only the switch applies to it.
+
 `OWNER_EMAILS` — read **once**, into an empty people table the first time the
 server starts: the first address becomes the administrator and the rest
 contributors. After that, who may do what is managed in the app, in *Users &

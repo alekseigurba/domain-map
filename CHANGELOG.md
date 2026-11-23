@@ -7,6 +7,129 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+A feature that leans, a line's shape set beside the line, the Assistant's model
+and its key managed in the app, a people list that can be searched and cleared
+out, and the lines of the domain level put right. Map files stay version 5; one
+migration, applied at startup as they all are. Full notes:
+[docs/releases/2.6.1.md](docs/releases/2.6.1.md).
+
+### Added
+
+- **A feature leans, as a capability does.** Ctrl with < or > on a selected
+  feature steps its bubble through the five shapes a capability's oval has:
+  wide, a little wide, round, a little tall, tall. Wide is the shape a feature
+  has always had, made by the row it sits in; a step at a time its two radii
+  trade places, so stood up it is the same bubble a quarter turn round, and
+  taller than its row. Its neighbours are not moved for it — drag it to where
+  it has the room, as a capability stood up in a crowded domain is — and it
+  sets its own name no larger than the rest, smaller where its new shape is
+  too narrow for it, without resetting theirs. The lean is a field the file
+  may leave out, written only when a feature is not wide, so map files stay
+  version 5 and a 2.6.0 deployment still opens one, drawing the feature wide.
+- **A line's shape, beside the line.** A selected line in Edit mode carries a
+  small **i** beside its middle. Press it, or press I, and the two things there
+  are to set about how a line is drawn open next to it: **Curved** or
+  **Straight**, and **Anchor**, which keeps the line on the points it was drawn
+  to. They are the same two the details panel holds, and the two stay in step.
+  I again, Esc, a press on the map or a turn of the wheel shuts it.
+- **The Assistant's model, switched and keyed from the app.** An administrator
+  has **Assistant model** under the avatar: the model **On** or **Off**, which
+  takes effect at the next message with no redeploy, and a **new key** for it.
+  The address is still the deployment's — `ASSISTANT_API_URL` — but a key
+  expires, and replacing one no longer takes a release: the key typed here is
+  used in place of `ASSISTANT_API_KEY`, and a deployment given an address and
+  no key at all can be connected from the page. The key goes one way. It is
+  typed into a box that shows dots, sent once, and kept sealed — encrypted
+  with a key derived from `AUTH_SESSION_SECRET`, which is not in the database
+  — and no route answers with it: the dialog shows a fixed row of dots for it,
+  when it was set and by whom. **Try it** asks the model for one word and says
+  whether it took the key; what an API says when it refuses one is passed on
+  with the key taken out, whole or starred. A server with no
+  `AUTH_SESSION_SECRET` will not keep a key, and says so; one whose secret has
+  changed says the kept key can no longer be opened, and runs on the
+  deployment's until it is set again. `dev.env` carries a secret for trying
+  this locally, which is a laptop's and no deployment's.
+- **Two skills for the Assistant.** *Word the lines* rewrites the descriptions
+  on lines that read as steps in a flow — "triggers", "is stored in", "checks
+  whether" — as what one side provides the other: a line has two ends and no
+  direction, and a map whose lines say who calls whom is read as a call graph.
+  *Question the ownership* looks at the map through its areas, as who answers
+  for what today: where a domain leans on another team's, where two areas are
+  joined by many lines, what nobody holds. It reports; it does not redraw a
+  domain to fit a team.
+- **Users & access finds people.** A box looks someone up by name or address as
+  it is typed, and two lists narrow the rows by role and by when someone was
+  last here — the last 7, 30 or 90 days, not in the last 90, or not yet. The
+  list is shown twenty-five to a page, with how many there are and which are on
+  show. A last sign-in from another year says which year.
+- **A clear-out for people who have not been back.** Everyone who signs in once
+  is on the list for good, so an administrator can remove whoever has not
+  signed in for 90 days, 180 days or a year, or since a day of their choosing —
+  everyone, or the viewers, contributors or publishers alone. It counts them as
+  it is set, and its button removes nobody: **Preview…** turns the list into
+  exactly the people who would go, each with their role, their sandbox and when
+  they were last here, under a bar that says what removing them costs. **Remove**
+  is pressed there, or **Cancel**. Only the people shown are ever taken, and of
+  them only those still away: someone who signs in while the list is being read
+  is spared. Someone added by email who never came counts from the day they
+  were added. Administrators are never taken this way, nor whoever is asking,
+  and a day within the last 30 is refused: nobody that recent is inactive,
+  whatever was picked. Anyone removed who can still sign in comes back as a
+  contributor, as anyone new does.
+
+### Changed
+
+- **Curved or Straight is a toggle, and a line's Shape section starts open.**
+  Both words are in sight and either is one press, where the list had to be
+  opened to see the other. The section is open when a line is first selected:
+  a line has no name to come first, and its shape is most of what there is to
+  set on one.
+- **A folded line is drawn broken.** At the domain and capability levels a line
+  the level drew — every line lifted to the same two places, as one — is dashed,
+  and a line someone drew is whole. Both wear the cross-domain colour and a
+  fold of one line weighs what a line does, so on a map where a domain is
+  joined to a domain by hand the two could not be told apart. Export SVG draws
+  the same.
+- **Users & access is wider, and its key is at the foot.** The dialog is 1000px
+  on a screen that has the room, and a long name or address wraps inside its
+  own column, so a row is read without scrolling sideways. What each role may
+  do comes after the list, which is what the dialog is opened for.
+- **The Assistant is told what an area is for, and how a line is worded.** Every
+  skill reads the same account of the map, and it now says that an area is how
+  the organisation is cut today — a lens over the map that never defines a
+  domain — and that a line's description is a promise or a fact exchanged, not
+  a step in a flow. *Question the connections* rewrites a line worded as a
+  call.
+
+### Fixed
+
+- **A line at the domain level no longer ends in the middle of a domain.** A
+  domain's connection points are found where rays from the middle of its body
+  leave its outline, and a ray that left exactly through a corner of the
+  outline could be read as leaving through none, which put the point on the
+  middle of the body: a line then ran into the blob and stopped on whatever
+  capability sat there. Which rays did depended on the last digits of the
+  outline, so it came and went as a lobe was resized.
+- **A folded line crosses the gap between the two shapes it joins.** Each end
+  was the point facing the other shape's middle, chosen without regard to the
+  other end, and round a large domain the two could be a lobe out of step: a
+  line with a hand's width to cross set off sideways along the boundary. It
+  now runs between the pair of points that lie closest, as a line nobody has
+  anchored does.
+- **A domain keeps a smooth outline when its title is dragged off it.** The
+  outline was found along rays from the middle of the body, and a ray that
+  crossed the surface more than once — under the end of a title hanging off the
+  edge — could report only one crossing, so the outline leapt along the ray
+  and the blob had a bite taken out of it. It is walked along the surface
+  itself now, wherever that goes; and a title whose middle is off the blob
+  stands on a shoulder as wide as itself rather than hanging by a neck. A
+  domain whose title is on it is drawn as it was.
+- **Collapse stays at the foot of both panels.** Folded, the hierarchy panel
+  had nothing left over its Collapse button to hold it down, and the button
+  rose to the top of the rail, away from where it had just been pressed.
+- **Getting around says what a line may join.** It still said nothing connects
+  to a domain, which 2.6.0 changed.
+
 ## 2.6.0 — 2026-11-20
 
 Features inside a capability, lines between domains, capabilities and features

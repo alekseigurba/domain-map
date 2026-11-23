@@ -56,6 +56,10 @@ disconnects anything, and none that touches position, colour, size or layers.
 | `move-capability` | `{ "op": "move-capability", "capability": "<ref>", "domain": "<ref>" }` |
 | `connect` | `{ "op": "connect", "from": "<ref>", "to": "<ref>", "description": "…" }` — only the pairs the map can draw: actor–touchpoint, touchpoint–capability, capability–capability. Two shapes already joined cannot be joined again. |
 
+A `describe` or a `connect` that words a line says what one end provides the
+other, as the brief format has it — a promise or a fact exchanged, never who
+calls whom.
+
 `as` is optional. It names a shape the suggestion makes — `"new:fraud-scoring"`
 — so that a later operation **in the same suggestion** can use it where a ref
 would go: a capability added to a domain the suggestion has just added, a line

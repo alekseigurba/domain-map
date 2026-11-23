@@ -17,6 +17,15 @@ const MAX_LENGTH = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * How long somebody has to have been away before a clear-out may count them
+ * inactive. A clear-out takes sandboxes with it and cannot be undone, and a
+ * day picked a week back by a slip of the hand would take most of the list:
+ * nobody here within the month is inactive, whatever day is asked for.
+ */
+export const LEAST_INACTIVE_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
  * The key every change to a role or to the list takes a lock on, for the
  * length of its transaction. Two administrators taking each other down at the
  * same moment would each see the other still there and both go through; one
@@ -58,6 +67,29 @@ function checkEmail(email) {
     return 'An email address is needed, to know them by when they sign in.';
   }
   return null;
+}
+
+/**
+ * Who counts as away since a day ($1): not an administrator, not whoever asks
+ * ($2), last here before the day — or added before it and never here — and of
+ * the one role asked for ($3), when one is.
+ */
+const INACTIVE = `p.role <> '${ADMINISTRATOR}'
+  and p.id is distinct from $2
+  and coalesce(p.last_signed_in, p.created_at) < $1
+  and ($3::text is null or p.role = $3)`;
+
+/** The day and the role a clear-out was asked for, checked: `[since, role or null]`. */
+function inactiveBy(before, role) {
+  const since = typeof before === 'string' ? new Date(before) : new Date(NaN);
+  if (Number.isNaN(since.getTime())) throw failure(400, 'Say the day: everyone not seen since then is removed.');
+  if (since.getTime() > Date.now() - LEAST_INACTIVE_DAYS * DAY_MS) {
+    throw failure(400, `Nobody here within the last ${LEAST_INACTIVE_DAYS} days is inactive: pick a day further back.`);
+  }
+  if (role == null || role === '') return [since, null];
+  if (role === ADMINISTRATOR) throw failure(400, 'Administrators are not cleared out: one is removed by hand, by another.');
+  if (!isRole(role)) throw failure(400, `A role is one of ${ROLES.join(', ')}.`);
+  return [since, role];
 }
 
 export function peopleStore(pool) {
@@ -236,6 +268,63 @@ export function peopleStore(pool) {
   }
 
   /**
+   * Take everyone off the list who has not been here since a day: the
+   * clear-out of a list that only ever grows, since everyone who signs in once
+   * is on it for good. Not been here means not signed in since then — or, for
+   * someone added by email who never came, added before then. Each goes as one
+   * removed by hand does, sandbox and logins with them, and comes back as
+   * anyone new does if they sign in again.
+   *
+   * Two kinds of person are never taken this way, whatever the day.
+   * Administrators, so the list cannot be left with nobody to run it by a
+   * sweep that happened to catch them all: one is removed by hand, by another.
+   * And `by`, whoever is asking, as nobody takes themselves off the list.
+   *
+   * `role` keeps it to one role — the viewers, say, and leave whoever worked
+   * on the map. `only` keeps it to the people named, by id: whoever asked was
+   * shown a list of who would go, and that list is the most that does.
+   * Someone on it who has signed in since is spared; someone not on it who has
+   * since crossed the day is left for the next time.
+   *
+   * @returns who went, as `[{ id, name }]`, by name.
+   */
+  async function removeInactive(before, { by = null, role = null, only = null } = {}) {
+    const [since, of] = inactiveBy(before, role);
+    if (only !== null && !(Array.isArray(only) && only.every((id) => UUID.test(id ?? '')))) {
+      throw failure(400, 'Say who, as the ids of the people shown.');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('select pg_advisory_xact_lock($1)', [ROLES_LOCK]);
+      const { rows } = await client.query(
+        `delete from people p where ${INACTIVE} and ($4::uuid[] is null or p.id = any($4)) returning p.id, p.name`,
+        [since, UUID.test(by ?? '') ? by : null, of, only]);
+      await client.query('commit');
+      return rows.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      await client.query('rollback').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Who a clear-out would take, as the list stands now: the same people, by
+   * the same rule, that `removeInactive` would remove if asked this moment.
+   * It is what an administrator is shown before anything is removed.
+   */
+  async function inactive(before, { by = null, role = null } = {}) {
+    const [since, of] = inactiveBy(before, role);
+    const { rows } = await pool.query(
+      `select ${COLUMNS} from people p where ${INACTIVE} order by lower(p.name), p.created_at`,
+      [since, UUID.test(by ?? '') ? by : null, of]);
+    return rows.map(toPerson);
+  }
+
+  /**
    * Correct a name or an address typed by an administrator. Only until the
    * person has signed in: after that the provider's name is the name, and the
    * address is what their login was matched by.
@@ -278,5 +367,5 @@ export function peopleStore(pool) {
     return emails;
   }
 
-  return { list, read, byEmail, byLogin, hasAdministrator, signIn, touch, add, setRole, remove, edit, seedIfEmpty };
+  return { list, read, byEmail, byLogin, hasAdministrator, signIn, touch, add, setRole, remove, inactive, removeInactive, edit, seedIfEmpty };
 }

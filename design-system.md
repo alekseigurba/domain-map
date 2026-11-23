@@ -283,7 +283,9 @@ Last in the row, the **avatar**: initials in a circle, or a silhouette when
 sign-in is off. It opens the **profile popup**, pinned under it like About and
 narrower: the name, the address, one line saying the role and what it may do —
 *Viewer — sees the published map, and nothing else* — then **Theme**, and, in the foot, **Users & access**
-for everyone who works on the map, **Sign out**, and Close on the right.
+for everyone who works on the map, **Assistant model** for an administrator,
+**Sign out**, and Close on the right. With all four the row wraps, and Close is
+still the last thing in it.
 Theme is an `--ink-soft` label and three chips on one row — **System**, **Light**,
 **Dark** — sharing what the label leaves; the one in force is filled with
 `--selection`, as the palette's size is. It is here rather than in the header
@@ -311,22 +313,51 @@ action is on its way, and the lists are read again after.
 ### Users & access
 
 Who may open the map and what each may do: the roster, a dialog laid out like
-Versions — centred, a table with a row a person, but 760px, since a row here
-carries one action — and reached from the profile popup, which shuts as it
-opens, since who may do what belongs with who you are. Under the title, the
-**key**: the four roles lowest first, a two-column grid of each name in
-`--fw-semibold` against its sentence in `--ink-soft`, the same sentence the
-profile popup and a role's pointer carry. A row is the name in `--fw-semibold`
+Versions — centred, a table with a row a person — and reached from the profile
+popup, which shuts as it opens, since who may do what belongs with who you are.
+It is 1000px wide, wider than Versions: a row holds an address of any length, a
+role to choose and a button, and at 760px was read by scrolling sideways. The
+person's column is the one that gives way, wrapping a long name or address
+inside itself.
+
+Under the title, **finding someone** (`.roster__find`): a look-up box that takes
+the room, matching a name or an address as it is typed, then two selects the
+width of what they say — a role, and when someone was last here (the last 7, 30
+or 90 days, not in the last 90, not yet). Under the table, `.roster__pages`: how
+many people there are and which are on show, in `--ink-soft` tabular figures at
+the left — *26–50 of 137 people*, or *3 people found, of 137* once narrowed —
+and **Previous** and **Next** at the right, which are not there while a page
+holds everyone. Twenty-five to a page; narrowing goes back to the first.
+
+At the foot, above Close, the **key**: the four roles lowest first, a two-column
+grid of each name in `--fw-semibold` against its sentence in `--ink-soft`, the
+same sentence the profile popup and a role's pointer carry. It is after the list
+because it is read once and glanced back at, and the list is what the dialog is
+opened for. A row is the name in `--fw-semibold`
 with a quiet **You** badge beside it when it is, the address under the name in
 `--ink-soft`, the role, when they were last here (*Not yet* before a first
-sign-in), and the row's actions. The row that is you takes `--chrome`, as the
+sign-in; a day in another year carries its year in place of the hour), and the
+row's actions. The row that is you takes `--chrome`, as the
 open version does. Between the role and the last sign-in, **Sandbox**: how many
 versions theirs holds, or *Empty* — never what. For an administrator the role is
 a `<select>` the height of a chip offering all four, on every row but their own,
 which reads as it is; picking Administrator asks first. The action is
 **Remove**, a danger chip like Delete, which asks first about someone who has
-signed in and names what their sandbox holds. At the foot, before Close, an
-administrator's form: a name box, an address box and a role select in one row,
+signed in and names what their sandbox holds. Under the pager, an
+administrator's two forms. The **clear-out** (`.roster__sweep`) reads as a
+sentence: *Remove everyone not signed in* — a select, 90 days first, then 180
+days, a year, or *since a day…*, which shows a date box — *of any role*, or of
+one — then how many people that is and what their sandboxes hold, in
+`--ink-soft`, and **Preview…**, an ordinary chip held down while the answer is
+*Nobody*. It removes nobody. Pressed, the dialog becomes the preview: the
+look-up and both forms stand down, the rows are exactly the people who would
+go — read-only, with no role select and no Remove of their own — and over them
+sits `.roster__confirm`, a bar on `--chrome` with a `--line-strong` border
+holding a sentence on what removing them costs, **Cancel**, and **Remove 11
+people**, the danger chip. The count under the table reads *11 people to
+remove, of 65*. There is no `confirm()`: the list is the question. Before the
+clear-out, adding someone: a name box, an address box and a role select in one
+row,
 and **Add** — the same `.field__input` and `.field__select` the details panel
 uses, wrapping to a short form on a phone. Contributors and publishers see the
 same rows with words where the controls are, and no form. A viewer is not shown
@@ -339,7 +370,10 @@ in the page's own field style.
 ### Panels
 
 Both are the same frame: the body, then `panel__actions` and a `panel__foot`,
-pushed together to the bottom. The hierarchy panel adds a `panel__head` above
+pushed together to the bottom. The foot holds itself there — the collapse
+toggle in it is in one place whether the panel is open or folded, with a strip
+of actions over it or with none, as the hierarchy panel has none — and gives
+the slack to the strip only where there is one showing. The hierarchy panel adds a `panel__head` above
 the body, with no divider under it: the uppercase title, **Domains**, and at the
 far end of the row the controls acting on the whole tree — **Collapse all**, an
 icon chip. The chip overhangs the row, so the title sets its height and the tree
@@ -377,6 +411,13 @@ wide as the panel less its padding; in the domains panel they sit at the right
 and swap round, label first and icon last.
 `.btn--icon` is the larger 32px control the stage uses, and the only one that is
 not a chip.
+
+A choice of two or three words is a **toggle** (`.toggle`): a row of chips
+sharing the room a select would have had, the one in force filled with
+`--selection` as the palette's size is, the others in `--ink`. Both words are in
+sight and either is one press — a line's **Curved** or **Straight**, the
+Assistant's model **On** or **Off**. A choice of a handful, a font size or a
+shape size, is still a select.
 
 The tree below the head is rows of the same 13px: an 18px caret column kept even
 where there is nothing to fold so labels line up, a swatch in the shape's own
@@ -421,6 +462,11 @@ team or someone outside — and a **hint** under it in `--ink-soft` at
 are no longer on the list. Nothing under a typed name. Browsing, it is the same
 quiet box every field is, and a viewer's has no list behind it.
 
+A **line**'s Shape section starts open, where a shape's starts shut: a line has
+no name to come first, and how it is drawn is most of what there is to set. It
+holds two rows — **Line**, the toggle, and **Anchor**, a checkbox — and they
+are the same two the pop-up beside the line holds, built by one function.
+
 With **nothing selected** the panel is about the map itself. A **Map** section
 holds **What the business is** — the map's own description, a text area like any
 other description — above the sentence that says nothing is selected. It opens
@@ -444,6 +490,21 @@ it lands, as a single undo step. The swatches and the picker show the palette as
 the map holds it, which is how the light theme draws it; on a dark page the
 shapes behind are drawn in dark counterparts, and an `--ink-soft` line above the
 foot says so, there and only there.
+
+### Assistant model
+
+An administrator's, from the profile popup: the model behind the Assistant,
+switched on or off, and its key. A centred dialog, 420px, since it is one switch
+and one box. A sentence in the ordinary ink says how the model stands and where
+it is; then **Model**, the On / Off toggle; then **Key**, a line in `--ink-soft`
+that stands a fixed row of eight dots for the key — always eight, whatever the
+key, so the dots say nothing of it — and says whose it is: set here, when and by
+whom, or the deployment's own. The key is never fetched, so there is nothing
+else to show. Under it a password box, **New key**, and **Save key**: what is
+typed is dots, is sent once and the box emptied. A note in the quiet ink says
+what happened, in the error ink when it did not. In the foot, **Try it**, which
+asks the model for one word and says whether it took the key, **Forget this
+key** while one is set here, and Close on the right.
 
 ### Assistant
 
@@ -537,6 +598,16 @@ that hangs off a selected domain — a floating row of chips on paper, positione
 by the diagram. The cursor carries the mode: grab, grabbing while panning,
 crosshair while connecting.
 
+A selected line in Edit mode carries a handle of its own, `.line-info`: an
+18px disc of paper rimmed in `--selection` with an italic **i**, beside the
+middle of the line — off it, since a curved line has a bend there, and on the
+lower side, since the line's name is lifted over the middle. It fills with
+`--selection` under the pointer. Pressing it, or **I**, opens `.line-menu`
+under it: the kebab menu's paper, border and shadow, 200px wide, holding the
+Line toggle and the Anchor box as a column of two rows. It hangs over the
+handle where there is no room under, is kept on the stage, and shuts on I, Esc,
+a press on the map or a turn of the wheel.
+
 While **Draw** is on, the **marker tray** has the top left corner — the one the
 Add buttons hold in Edit mode, which it is never on together with. It is one row
 on the layer control's see-through paper, with a `--line-strong` border: the
@@ -573,7 +644,11 @@ these are the elements that come of it.
 - **A folded line** — every line lifted to the same two places, as one. It is
   a `.connector-group` like any line and wears `--connector-public`. Its weight
   is its own and is set in screen pixels, 2.5 to 7 by how many lines it carries
-  (`--fold-width`, set on the line by the diagram). Over open ground it is
+  (`--fold-width`, set on the line by the diagram). It is **broken**, where a
+  line someone drew is whole — three of its own widths drawn to two left out,
+  cut square — because both wear the cross-domain colour and a fold of one line
+  weighs what a line does: the breaks are what says the level drew it. It runs
+  between the pair of connection points that lie closest. Over open ground it is
   straight; with a shape in its way it is curved round it. Standing for one
   line it is picked as that line and wears the selected state; standing for
   several it takes only the hover rim, and names itself in the chip with a
@@ -587,7 +662,10 @@ these are the elements that come of it.
   passes behind a bubble and never through its name. A bubble of white at
   `--feature-fill-opacity` over the capability's fill, with a one-pixel rim in
   `--capability-border` that does not scale with the zoom, and its name in the
-  capability's ink at the one size the capability's layout chose. Hover lifts
+  capability's ink at the one size the capability's layout chose. It leans as
+  a capability's oval does, in the same five steps from wide to tall, its seat's
+  two radii trading places; one that leans sets its own name no larger than the
+  rest, and smaller where it has to. Hover lifts
   the fill to 80%; selected, the rim is `--selection` at two pixels; in hand it
   is at 85%, and the one it would trade places with is ringed in `--selection`.
   It borrows its colour from what is under it, so it needs none and follows any

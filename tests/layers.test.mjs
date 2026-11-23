@@ -654,6 +654,27 @@ check('reading a file with features and writing it leaves it unchanged',
   stringify(featuredOut) === stringify(toDocument({ ...fromDocument(featuredOut), palette: [] })));
 check('a feature writes only what it says',
   JSON.stringify(Object.keys(keyed(featuredOut.capabilities, 'collections').features[0])) === '["key","title"]');
+const leant = structuredClone(featured);
+leant.capabilities[0].features[0].shape = { stretch: 0 };
+leant.capabilities[0].features[1].shape = { position: '10,-20', stretch: -2 };
+check('a file may say which way a feature leans', validate(leant) === null, validate(leant) ?? '');
+const leantMap = fromDocument(leant);
+check('a feature that says nothing lies wide, as every feature did',
+  rules.DEFAULT_FEATURE_STRETCH === 2 && titled(leantMap.features, 'Reminders').stretch === 2
+  && titled(featuredMap.features, 'Dunning').stretch === 2);
+check('and one that says is read as it says, beside a place given by hand',
+  titled(leantMap.features, 'Issue an invoice').stretch === 0
+  && titled(leantMap.features, 'Credit note').stretch === -2 && titled(leantMap.features, 'Credit note').x === 10);
+const leantOut = keyed(toDocument({ ...leantMap, palette: [] }).capabilities, 'invoicing').features;
+check('a lean is written only where there is one, so a map that never leaned a feature writes the file it wrote',
+  JSON.stringify(leantOut[0].shape) === '{"stretch":0}'
+  && JSON.stringify(leantOut[1].shape) === '{"position":"10,-20","stretch":-2}'
+  && !('shape' in leantOut[2]));
+refuses('a lean off the scale is refused', (() => {
+  const bad = structuredClone(featured);
+  bad.capabilities[0].features[0].shape = { stretch: 3 };
+  return bad;
+})(), "Feature 'issue-an-invoice': stretch must be one of");
 check('two features of one name get keys of their own across the whole file', (() => {
   const twice = structuredClone(featured);
   twice.capabilities[1].features.push({ key: 'reminders-x', title: 'Reminders' });
@@ -797,6 +818,9 @@ check('a feature is put where it is dragged, in whole hundredths and no further 
   creditNote.x === 61 && creditNote.y === -100, `${creditNote.x},${creditNote.y}`);
 store_.updateFeature(creditNote.id, { clearPosition: true });
 check('and sent back to its row', creditNote.x === null && creditNote.y === null);
+store_.updateFeature(creditNote.id, { stretch: 0 });
+check('a feature is leaned as a capability is, and keeps its lean through a change to anything else',
+  creditNote.stretch === 0 && store_.updateFeature(creditNote.id, { title: 'Credit note' }).stretch === 0);
 store_.updateFeature(creditNote.id, { x: 10, y: 10 });
 store_.deleteConnector(store.connectors.find((line) => line.fromId === creditNote.id).id);
 store_.updateFeature(creditNote.id, { capabilityId: scoringNow.id });

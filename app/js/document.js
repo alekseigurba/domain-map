@@ -88,6 +88,16 @@ const weightOf = (record) =>
 const compact = (record) =>
   Object.fromEntries(Object.entries(record).filter(([, value]) => value != null));
 
+/** How a feature's bubble leans, written only when it is not lying wide, as one always did. */
+const leanOf = (feature) =>
+  (feature.stretch != null && feature.stretch !== rules.DEFAULT_FEATURE_STRETCH ? feature.stretch : null);
+
+/** A shape with only what was set in it, or none at all where nothing was. */
+const shapeOf = (fields) => {
+  const set = compact(fields);
+  return Object.keys(set).length === 0 ? null : set;
+};
+
 // --- layers ------------------------------------------------------------------
 
 /**
@@ -229,6 +239,7 @@ export function fromDocument(document_) {
           ownerId: feature.ownerId,
           type: feature.type,
           sortIndex: at_,
+          stretch: feature.shape?.stretch,
           x: put && Math.round(put.x),
           y: put && Math.round(put.y),
         }),
@@ -472,11 +483,14 @@ export function toDocument(state) {
         owner: blank(feature.owner),
         ownerId: blank(feature.ownerId),
         type: blank(feature.type),
-        // Only one that has been put somewhere by hand: left in its row, a
-        // feature has no shape to write.
-        shape: feature.x == null && feature.y == null
-          ? null
-          : { position: position(feature.x ?? 0, feature.y ?? 0) },
+        // Only what was set by hand: left in its row and lying wide, a feature
+        // has no shape to write, and writes the file it wrote before it could
+        // lean. One that leans still opens in an app from before, which reads
+        // past the field and draws it wide.
+        shape: shapeOf({
+          position: feature.x == null && feature.y == null ? null : position(feature.x ?? 0, feature.y ?? 0),
+          stretch: leanOf(feature),
+        }),
       });
     });
   const capabilities = state.capabilities.map((capability) => {
@@ -857,6 +871,7 @@ export function validate(document_) {
         owner: feature.owner,
         ownerId: feature.ownerId,
         type: feature.type,
+        stretch: feature.shape?.stretch,
         x: put?.x,
         y: put?.y,
       });
