@@ -7,6 +7,8 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.7.0 — 2026-11-23
+
 Who leads what, as two layers of people over the map; teams, and the map lit
 up by who works on it; a slideshow made of the map, to work on and to present;
 and a version shared with a few rather than with everyone, with the groups
