@@ -26,8 +26,11 @@ const titled = (list, title) => list.find((one) => one.title === title);
 
 // --- the model ---------------------------------------------------------------
 
-check('there are three layers, bottom first',
-  rules.LAYERS.map((one) => one.key).join(',') === 'areas,core,presentation');
+check('there are five layers, bottom first: the terrain, and over it who leads it',
+  rules.LAYERS.map((one) => one.key).join(',') === 'areas,core,presentation,engineering,product');
+check('the people of each discipline are on a layer of their own, and nothing else is',
+  rules.LAYER_OF.productRole === 'product' && rules.LAYER_OF.engineeringRole === 'engineering'
+  && rules.KINDS_ON.product.join(',') === 'productRole' && rules.KINDS_ON.engineering.join(',') === 'engineeringRole');
 // Who owns the business can be put away; what it does cannot. So the base is
 // named, and is not simply whichever layer is at the bottom.
 check('the base layer is Domains, though areas are painted under it',
@@ -93,7 +96,7 @@ const v1 = {
 check('a version 1 file is still valid', validate(v1) === null, validate(v1) ?? '');
 
 const read = fromDocument(v1);
-check('it gets the model’s own stack', read.layers.length === 3);
+check('it gets the model’s own stack', read.layers.length === rules.LAYERS.length);
 check('with the layer it never knew shown, and nothing on it',
   read.layers[0].key === 'areas' && read.layers[0].hidden === false && read.areas.length === 0);
 check('no element carries a layer of its own',
@@ -246,8 +249,8 @@ check('and only what was chosen: the touchpoint wrote no weight',
 // Placement and weight were fields an older app could read past. Areas are
 // not: read past, they would be lost on the next save, so the number moved --
 // and again for the owner's id, which is dropped the same way, and again for
-// the features a capability holds.
-check('every save writes version 5', dressedOut.version === 5 && CURRENT_VERSION === 5);
+// the features a capability holds, and again for the teams.
+check('every save writes version 6', dressedOut.version === 6 && CURRENT_VERSION === 6);
 check('a map with no areas writes no list of them', !('areas' in dressedOut));
 
 // --- what a file may not say -------------------------------------------------
@@ -881,6 +884,324 @@ check('nor one handed over from another', (() => {
 })());
 check('a Type choice in use by a feature is counted, as for any kind',
   store_.typeUsage('feature', 'Back office') === 1);
+
+// --- teams: who works on what -------------------------------------------------
+
+{
+const teamed = {
+  version: 6,
+  title: 'Teams',
+  types: { team: ['Product team', 'Enabling team'] },
+  areas: [{ key: 'payments', title: 'Payments' }],
+  domains: [{ key: 'billing', title: 'Billing', area: 'payments' }, { key: 'lending', title: 'Lending' }],
+  capabilities: [
+    { key: 'invoicing', domain: 'billing', title: 'Invoicing' },
+    { key: 'collections', domain: 'billing', title: 'Collections' },
+    { key: 'scoring', domain: 'lending', title: 'Scoring' },
+  ],
+  connectors: [],
+  teams: [
+    { key: 'payments-product', title: 'Payments product', type: 'Product team', owner: 'Jane Doe', areas: ['payments'] },
+    { key: 'billing-crew', title: 'Billing crew', description: 'Runs billing day to day.', domains: ['billing'] },
+    { key: 'platform', title: 'Platform', type: 'Enabling team', domains: ['billing', 'lending'], capabilities: ['scoring'] },
+    { key: 'bench', title: 'Bench' },
+  ],
+};
+check('a file that says who works on what is valid', validate(teamed) === null, validate(teamed) ?? '');
+check('a team is typed from a list of its own, as every kind is', rules.TYPED_KINDS.includes('team') && !rules.ELEMENT_KINDS.includes('team'));
+
+const teamedMap = fromDocument(teamed);
+const on = (title) => store_.teamMembers(titled(store_.store.teams, title)).map((one) => `${one.kind}:${one.record.title}`).join(',');
+store_.setMap(teamedMap);
+check('every team is read, with its words', teamedMap.teams.length === 4
+  && titled(teamedMap.teams, 'Payments product').type === 'Product team' && titled(teamedMap.teams, 'Payments product').owner === 'Jane Doe'
+  && titled(teamedMap.teams, 'Billing crew').description === 'Runs billing day to day.');
+check('a team is on what the file says: a product area, a domain, a capability',
+  on('Payments product') === 'area:Payments' && on('Billing crew') === 'domain:Billing');
+check('or on several at once, of more than one kind, which is what a team across domains is',
+  on('Platform') === 'domain:Billing,domain:Lending,capability:Scoring');
+check('or on nothing yet', on('Bench') === '');
+check('the Type choices for teams are kept with the rest', teamedMap.types.team.join('|') === 'Product team|Enabling team');
+
+const reach = (title) => {
+  const { on: direct, through } = store_.teamReach(titled(store_.store.teams, title));
+  const names = (ids) => [...ids].map((id) => ['area', 'domain', 'capability'].map((kind) => store_.find(kind, id)).find(Boolean).title).sort().join(',');
+  return `${names(direct)} / ${names(through)}`;
+};
+check('a team on an area reaches every domain in it, and every capability in those',
+  reach('Payments product') === 'Payments / Billing,Collections,Invoicing', reach('Payments product'));
+check('a team on a domain reaches its capabilities, and nothing beside it',
+  reach('Billing crew') === 'Billing / Collections,Invoicing', reach('Billing crew'));
+check('the teams on a shape are the ones that name it, not the ones that reach it through another',
+  store_.teamsOn('domain', titled(store_.store.domains, 'Billing').id).map((team) => team.title).join(',') === 'Billing crew,Platform'
+  && store_.teamsOn('capability', titled(store_.store.capabilities, 'Invoicing').id).length === 0);
+
+const teamedOut = toDocument({ ...teamedMap, palette: [] });
+check('teams are written back, last in the file, each with a list for every kind it is on and none for the rest',
+  Object.keys(teamedOut).at(-1) === 'teams'
+  && JSON.stringify(keyed(teamedOut.teams, 'platform')) === '{"key":"platform","title":"Platform","type":"Enabling team","domains":["billing","lending"],"capabilities":["scoring"]}'
+  && JSON.stringify(keyed(teamedOut.teams, 'bench')) === '{"key":"bench","title":"Bench"}');
+check('reading a file with teams and writing it leaves it unchanged',
+  stringify(teamedOut) === stringify(toDocument({ ...fromDocument(teamedOut), palette: [] })));
+check('a map with no teams writes no list of them', !('teams' in toDocument({ ...featuredMap, palette: [] })));
+check('a version 5 file reads as a map with no teams',
+  fromDocument({ version: 5, domains: [{ key: 'a', title: 'A' }] }).teams.length === 0);
+check('two teams of one name get keys of their own', (() => {
+  const twice = structuredClone(teamed);
+  twice.teams.push({ key: 'platform-x', title: 'Platform' });
+  return toDocument({ ...fromDocument(twice), palette: [] }).teams.at(-1).key === 'platform-2';
+})());
+
+const refusesTeam = (label, change, wanted) => {
+  const bad = structuredClone(teamed);
+  change(bad);
+  const said = validate(bad);
+  check(label, typeof said === 'string' && said.includes(wanted), said ?? 'accepted');
+};
+refusesTeam('teams that are not a list are refused', (bad) => { bad.teams = { key: 'a' }; }, 'Teams must be a list');
+refusesTeam('a team with no key is refused', (bad) => { delete bad.teams[0].key; }, 'Every team needs a key');
+refusesTeam('two teams sharing a key are refused', (bad) => { bad.teams[1].key = 'platform'; }, "Two teams share the key 'platform'");
+refusesTeam('a team with a blank name is refused', (bad) => { bad.teams[0].title = '  '; }, "Team 'payments-product': Title must be");
+refusesTeam('a team on a domain that is not in the file is refused', (bad) => { bad.teams[2].domains.push('nowhere'); }, "is on domain 'nowhere'");
+refusesTeam('and on an area that is not', (bad) => { bad.teams[0].areas = ['gone']; }, "is on area 'gone'");
+refusesTeam('what a team is on has to be a list', (bad) => { bad.teams[0].capabilities = 'scoring'; }, 'capabilities must be a list');
+refusesTeam('a Type list for something that carries none is still refused', (bad) => { bad.types.squad = ['x']; }, "'squad' is not a kind");
+
+// --- teams in the store ---
+const platform = titled(store_.store.teams, 'Platform');
+const scoring = titled(store_.store.capabilities, 'Scoring');
+const lending = titled(store_.store.domains, 'Lending');
+store_.setTeamMember(platform.id, 'capability', scoring.id);
+check('put on a shape twice, a team is on it once', platform.members.filter((one) => one.id === scoring.id).length === 1);
+store_.setTeamMember(platform.id, 'capability', scoring.id, false);
+check('and taken off, it is off', on('Platform') === 'domain:Billing,domain:Lending');
+check('a team is not put on what a team cannot be on, nor on what is not there',
+  store_.setTeamMember(platform.id, 'feature', 'x') === null && store_.setTeamMember(platform.id, 'domain', 'not-there') === null);
+const made = store_.createTeam({ title: '  ', type: 'Enabling team' });
+check('a new team is called something, and is on nothing', made.title === rules.TEAM_DEFAULTS.title && made.members.length === 0);
+check('a blank name leaves the one it had', store_.updateTeam(made.id, { title: '   ', description: 'New here.' }).title === rules.TEAM_DEFAULTS.title
+  && made.description === 'New here.');
+check('a Type choice in use by a team is counted, as for any kind', store_.typeUsage('team', 'Enabling team') === 2
+  && store_.removeTypeChoice('team', 'Enabling team').removed === false);
+store_.select('team', made.id);
+const goneTeam = store_.deleteTeam(made.id);
+check('a team deleted is gone, and nothing is left picked', store_.store.teams.length === 4 && store_.store.selection.id === null);
+store_.restore(goneTeam);
+check('and undoing it puts it back where it stood', store_.store.teams.at(-1).id === made.id);
+
+const goneLending = store_.deleteDomain(lending.id);
+check('a team on a domain that is deleted is on what is left', on('Platform') === 'domain:Billing');
+check('and the file written then does not name it',
+  JSON.stringify(keyed(toDocument({ ...store_.store, palette: [] }).teams, 'platform').domains) === '["billing"]');
+store_.restore(goneLending);
+check('undoing the delete puts the team back on it, with nothing having had to remember',
+  on('Platform') === 'domain:Billing,domain:Lending');
+
+// --- what a slide shows of a shape ---
+const pictured = structuredClone(teamed);
+pictured.domains[0].shape = { postcard: 'context' };
+pictured.capabilities[0].shape = { postcard: 'context' };
+check('a file may say what a slide shows of a domain or a capability', validate(pictured) === null, validate(pictured) ?? '');
+const picturedMap = fromDocument(pictured);
+check('one that says nothing shows the shape by itself', titled(picturedMap.domains, 'Lending').postcard === 'shape'
+  && titled(picturedMap.capabilities, 'Scoring').postcard === 'shape' && rules.DEFAULT_POSTCARD === 'shape');
+check('and one that says is read as it says', titled(picturedMap.domains, 'Billing').postcard === 'context'
+  && titled(picturedMap.capabilities, 'Invoicing').postcard === 'context');
+const picturedOut = toDocument({ ...picturedMap, palette: [] });
+check('it is written only where it is not the shape by itself',
+  keyed(picturedOut.domains, 'billing').shape.postcard === 'context' && !('postcard' in keyed(picturedOut.domains, 'lending').shape)
+  && keyed(picturedOut.capabilities, 'invoicing').shape.postcard === 'context' && !('postcard' in keyed(picturedOut.capabilities, 'scoring').shape));
+refusesTeam('a picture that is neither is refused', (bad) => { bad.domains[0].shape = { postcard: 'aerial' }; }, 'postcard must be one of');
+
+// --- a picture uploaded for a slide ---
+const uploaded = structuredClone(teamed);
+uploaded.areas[0].shape = { postcard: 'picture', picture: 'payments-floor.png' };
+uploaded.domains[0].shape = { picture: 'billing-screen.webp' };
+check('a file may name a picture uploaded for the slide of an area, a domain or a capability',
+  validate(uploaded) === null, validate(uploaded) ?? '');
+const uploadedMap = fromDocument(uploaded);
+check('an area has a slide, and so a postcard, as a domain has', rules.SLIDE_KINDS.join(',') === 'area,domain,capability'
+  && titled(uploadedMap.areas, 'Payments').postcard === 'picture' && titled(uploadedMap.areas, 'Payments').picture === 'payments-floor.png');
+const uploadedOut = toDocument({ ...uploadedMap, palette: [] });
+check('the picture is kept by name while the slide shows something else, so going back to it is not uploading it again',
+  keyed(uploadedOut.domains, 'billing').shape.picture === 'billing-screen.webp' && !('postcard' in keyed(uploadedOut.domains, 'billing').shape));
+check('and a shape with none says nothing of one', !('picture' in (keyed(uploadedOut.domains, 'lending').shape ?? {})));
+refusesTeam('a picture has to be a plain file name', (bad) => { bad.domains[0].shape = { picture: '../secrets.png' }; }, 'plain file name');
+refusesTeam('of a kind a browser draws', (bad) => { bad.domains[0].shape = { picture: 'notes.pdf' }; }, 'A picture must be one of');
+store_.setMap(uploadedMap);
+const billingNow = titled(store_.store.domains, 'Billing');
+store_.updateDomain(billingNow.id, { picture: '' });
+check('an empty name lets a picture go, as it does an icon', billingNow.picture === null);
+
+// --- the slideshow's deck, and where a slide's shape sits ---
+store_.setMap(fromDocument(teamed));
+const named = (slide) => `${slide.kind}:${store_.find(slide.kind, slide.id).title}`;
+// A domain's capabilities come in the order it stacks them, which this file leaves to chance.
+const deck = store_.slideDeck().map(named);
+check('the deck is the map read from the outside in: an area, its domains, their capabilities, then what is in no area',
+  deck.slice(0, 2).join(' ') === 'area:Payments domain:Billing'
+  && deck.slice(2, 4).sort().join(' ') === 'capability:Collections capability:Invoicing'
+  && deck.slice(4).join(' ') === 'domain:Lending capability:Scoring',
+  deck.join(' '));
+const pathTo = (kind, title) => store_.pathOf(kind, titled(store_.listOf(kind), title)).map((step) => step.record.title).join('/');
+check('a capability’s path is its area, its domain and itself', pathTo('capability', 'Invoicing') === 'Payments/Billing/Invoicing');
+check('what a shape is not in is left out of its path',
+  pathTo('capability', 'Scoring') === 'Lending/Scoring' && pathTo('domain', 'Lending') === 'Lending' && pathTo('area', 'Payments') === 'Payments');
+store_.createCapability({ title: 'Loose end', areaId: titled(store_.store.areas, 'Payments').id });
+check('a loose capability in an area comes after the area’s domains, and its path is the area and itself',
+  store_.slideDeck().map(named).indexOf('capability:Loose end') === 4 && pathTo('capability', 'Loose end') === 'Payments/Loose end',
+  store_.slideDeck().map(named).join(' '));
+}
+
+// --- people in roles: who leads what --------------------------------------------
+
+{
+const led = {
+  version: 6,
+  title: 'Roles',
+  types: { productRole: ['Product lead', 'Product manager'], engineeringRole: ['Tech lead', 'Architect'] },
+  areas: [{ key: 'payments', title: 'Payments' }],
+  domains: [{ key: 'billing', title: 'Billing', area: 'payments' }, { key: 'lending', title: 'Lending' }],
+  capabilities: [{ key: 'invoicing', domain: 'billing', title: 'Invoicing' }],
+  connectors: [],
+  productRoles: [
+    { key: 'ada-example', title: 'Ada Example', type: 'Product lead', icon: 'lead.svg', areas: ['payments'] },
+    { key: 'ben-sample', title: 'Ben Sample', type: 'Product manager', domains: ['billing', 'lending'] },
+  ],
+  engineeringRoles: [
+    { key: 'cy-specimen', title: 'Cy Specimen', description: 'Across both.', type: 'Architect', areas: ['payments'], domains: ['lending'] },
+  ],
+};
+check('a file that says who leads what is valid', validate(led) === null, validate(led) ?? '');
+check('a role is the Type of a person, typed in and picked from like any other',
+  rules.ROLE_KINDS.every((kind) => rules.TYPED_KINDS.includes(kind) && !rules.ELEMENT_KINDS.includes(kind)));
+check('a person owns an area or a domain, and nothing smaller', rules.ROLE_ON_KINDS.join(',') === 'area,domain');
+
+// --- the figures the app carries for a person's card ---
+const { readdir, readFile: readFigure } = await import('node:fs/promises');
+const figuresDir = new URL(`../app/${rules.FIGURES_PATH}`, import.meta.url);
+const carried = (await readdir(figuresDir)).filter((name) => !name.startsWith('.')).sort();
+check('every figure the picker offers is a file the app carries, and it carries no other',
+  JSON.stringify(carried) === JSON.stringify([...rules.FIGURES].sort()), carried.join(', '));
+check('a figure is named on a person as any icon is', rules.FIGURES.every((name) => rules.validateIcon(name) === null));
+check('and is told from a library file by its name alone',
+  rules.isFigure('female1.svg') && !rules.isFigure('lead.svg') && !rules.isFigure('Female1.svg'));
+check('the picker names a figure in words', rules.figureLabel('female2.svg') === 'Female 2' && rules.figureLabel('male1.svg') === 'Male 1');
+const scripted = [];
+for (const name of rules.FIGURES) {
+  if (rules.looksExecutable(await readFigure(new URL(name, figuresDir), 'utf8'))) scripted.push(name);
+}
+check('none of them carries script, which a file added to the library may not either', scripted.length === 0, scripted.join(', '));
+
+const ledMap = fromDocument(led);
+store_.setMap(ledMap);
+const owns = (roleKind, title) => store_.roleMembers(titled(store_.listOf(roleKind), title))
+  .map((one) => `${one.kind}:${one.record.title}`).join(',');
+check('everyone is read, in their own discipline, with their name, role and icon',
+  ledMap.productRoles.length === 2 && ledMap.engineeringRoles.length === 1
+  && titled(ledMap.productRoles, 'Ada Example').type === 'Product lead' && titled(ledMap.productRoles, 'Ada Example').icon === 'lead.svg'
+  && titled(ledMap.engineeringRoles, 'Cy Specimen').description === 'Across both.');
+check('a person owns what the file says: an area, a domain, or several',
+  owns('productRole', 'Ada Example') === 'area:Payments' && owns('productRole', 'Ben Sample') === 'domain:Billing,domain:Lending'
+  && owns('engineeringRole', 'Cy Specimen') === 'area:Payments,domain:Lending');
+const leads = (roleKind, kind, title) => store_.rolesOn(roleKind, kind, titled(store_.listOf(kind), title).id)
+  .map((role) => role.title).join(',');
+check('and a shape is led by whoever owns it, a discipline at a time',
+  leads('productRole', 'area', 'Payments') === 'Ada Example' && leads('engineeringRole', 'area', 'Payments') === 'Cy Specimen'
+  && leads('productRole', 'domain', 'Lending') === 'Ben Sample' && leads('engineeringRole', 'domain', 'Billing') === '');
+check('the roles the owner typed in are kept, a list a discipline',
+  ledMap.types.productRole.join('|') === 'Product lead|Product manager' && ledMap.types.engineeringRole.join('|') === 'Tech lead|Architect');
+
+const ledOut = toDocument({ ...ledMap, palette: [] });
+check('they are written as they were read',
+  JSON.stringify(ledOut.productRoles) === JSON.stringify(led.productRoles)
+  && JSON.stringify(ledOut.engineeringRoles) === JSON.stringify(led.engineeringRoles),
+  JSON.stringify([ledOut.productRoles, ledOut.engineeringRoles]));
+check('a map that names nobody says nothing of roles',
+  !('productRoles' in toDocument({ ...ledMap, productRoles: [], engineeringRoles: [], palette: [] })));
+
+const refusesRole = (label, edit, says) => {
+  const bad = structuredClone(led);
+  edit(bad);
+  const error = validate(bad);
+  check(label, typeof error === 'string' && error.includes(says), error ?? 'it was accepted');
+};
+refusesRole('two people of one discipline cannot share a key', (bad) => { bad.productRoles[1].key = 'ada-example'; }, 'share the key');
+refusesRole('a person cannot own a domain that is not in the file', (bad) => { bad.productRoles[1].domains = ['gone']; }, "owns domain 'gone'");
+refusesRole('nor carry an icon that is not a plain file name', (bad) => { bad.productRoles[0].icon = 'a/b.svg'; }, 'plain file name');
+refusesRole('the disciplines are lists', (bad) => { bad.engineeringRoles = { cy: {} }; }, 'engineeringRoles must be a list');
+
+// --- a card that was put somewhere ---
+const moved = structuredClone(led);
+moved.productRoles[1].domains = ['billing', { key: 'lending', x: 420, y: -310 }];
+check('a file may say where a card was put, beside the shape it is on', validate(moved) === null, validate(moved) ?? '');
+const movedMap = fromDocument(moved);
+const benRead = titled(movedMap.productRoles, 'Ben Sample');
+const onLending = benRead.members.find((member) => 'x' in member);
+check('it is read with the shape, and the card nobody moved has no place of its own',
+  benRead.members.length === 2 && onLending.x === 420 && onLending.y === -310
+  && benRead.members.filter((member) => 'x' in member).length === 1);
+check('and written back as it was read: a bare key for the card the map hangs',
+  JSON.stringify(toDocument({ ...movedMap, palette: [] }).productRoles[1].domains) === JSON.stringify(moved.productRoles[1].domains));
+refusesRole('a card cannot be put out of reach of its shape',
+  (bad) => { bad.productRoles[1].domains = [{ key: 'lending', x: rules.MAX_CARD_REACH + 1, y: 0 }]; }, 'within');
+refusesRole('nor half put: an x with no y', (bad) => { bad.productRoles[1].domains = [{ key: 'lending', x: 40 }]; }, 'an x and a y');
+refusesRole('a moved card still has to be on a shape in the file',
+  (bad) => { bad.productRoles[1].domains = [{ key: 'gone', x: 1, y: 2 }]; }, "owns domain 'gone'");
+
+// --- people in the store ---
+const billing = titled(store_.store.domains, 'Billing');
+const lending = titled(store_.store.domains, 'Lending');
+const dee = store_.createRole('productRole', { title: 'Dee Model', members: [{ kind: 'domain', id: billing.id }, { kind: 'capability', id: 'x' }] });
+check('a person is added owning what they were added on, and only what a person may own',
+  owns('productRole', 'Dee Model') === 'domain:Billing' && dee.members.length === 1);
+check('someone new to a role starts with the icon the last holder of it wears',
+  store_.iconForRole('productRole', 'Product lead') === 'lead.svg' && store_.iconForRole('productRole', 'Product manager') === null
+  && store_.iconForRole('engineeringRole', 'Product lead') === null);
+store_.updateRole('productRole', dee.id, { title: 'Dee Model-Example', type: 'Product lead', icon: 'lead-b.svg' });
+check('their name, role and icon are changed as any record’s are',
+  dee.title === 'Dee Model-Example' && dee.type === 'Product lead' && dee.icon === 'lead-b.svg'
+  && store_.iconForRole('productRole', 'Product lead') === 'lead-b.svg');
+store_.updateRole('productRole', dee.id, { icon: '' });
+check('and an empty name lets the icon go', dee.icon === null);
+store_.setRoleMember('productRole', dee.id, 'domain', lending.id);
+store_.setRoleMember('productRole', dee.id, 'domain', lending.id);
+check('given a domain twice, they own it once', owns('productRole', 'Dee Model-Example') === 'domain:Billing,domain:Lending');
+
+check('a card nobody has moved is the map’s to hang', store_.roleCardPlace(dee, 'domain', lending.id) === null);
+const asHung = dee.members;
+store_.updateRole('productRole', dee.id, { members: store_.membersWithCard(dee, 'domain', lending.id, { x: 250.4, y: -119.6 }) });
+check('put somewhere, it is kept with the shape it is on, to the nearest whole unit',
+  JSON.stringify(store_.roleCardPlace(dee, 'domain', lending.id)) === JSON.stringify({ x: 250, y: -120 })
+  && store_.roleCardPlace(dee, 'domain', billing.id) === null);
+store_.setRoleMember('productRole', dee.id, 'domain', lending.id);
+check('and being given the same domain again does not move it', store_.roleCardPlace(dee, 'domain', lending.id)?.x === 250);
+check('what they own is what it was', owns('productRole', 'Dee Model-Example') === 'domain:Billing,domain:Lending');
+const asPut = dee.members;
+store_.updateRole('productRole', dee.id, { members: asHung });
+check('undo hands the list back as it was, and the card is hung again', store_.roleCardPlace(dee, 'domain', lending.id) === null);
+store_.updateRole('productRole', dee.id, { members: asPut });
+check('redo puts it where it was put', store_.roleCardPlace(dee, 'domain', lending.id)?.y === -120);
+store_.updateRole('productRole', dee.id, { members: store_.membersWithCard(dee, 'domain', lending.id, null) });
+check('and a card can be handed back to the map', store_.roleCardPlace(dee, 'domain', lending.id) === null && dee.members.length === 2);
+store_.updateRole('productRole', dee.id, { members: [{ kind: 'domain', id: billing.id }, { kind: 'domain', id: lending.id, x: 9e9, y: 0 }] });
+check('a place out of reach is no place: the card is hung by the name', store_.roleCardPlace(dee, 'domain', lending.id) === null);
+check('a capability is not theirs to own', store_.setRoleMember('productRole', dee.id, 'capability', titled(store_.store.capabilities, 'Invoicing').id) === null);
+
+const goneDee = store_.deleteRole('productRole', dee.id);
+check('taken off the map, they are gone and what they owned is not', store_.find('productRole', dee.id) === null && store_.find('domain', billing.id) !== null);
+store_.restore(goneDee);
+check('and undoing it puts them back where they stood', store_.store.productRoles.at(-1).id === dee.id);
+
+const goneBilling = store_.deleteDomain(billing.id);
+check('someone who owned a domain that is deleted owns what is left', owns('productRole', 'Ben Sample') === 'domain:Lending');
+store_.setRoleMember('productRole', dee.id, 'domain', lending.id, false);
+check('and one left owning nothing is not written to the file: they were drawn nowhere',
+  !toDocument({ ...store_.store, palette: [] }).productRoles.some((role) => role.title === 'Dee Model-Example'));
+store_.restore(goneBilling);
+check('undoing the delete gives the domain back to whoever owned it',
+  owns('productRole', 'Ben Sample') === 'domain:Billing,domain:Lending' && owns('productRole', 'Dee Model-Example') === 'domain:Billing');
+}
 
 console.log(failures === 0 ? '\nAll layer checks passed.' : `\n${failures} check(s) failed.`);
 process.exitCode = failures === 0 ? 0 : 1;

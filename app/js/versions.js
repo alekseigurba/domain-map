@@ -1,8 +1,10 @@
 // The versions of the map, as the server keeps them: the ones in this person's
-// sandbox, the shared ones every contributor sees, and the published one among
+// sandbox, the shared ones this person may see, and the published one among
 // those, which is the only one a viewer ever sees. A version is a name, a
-// document, and who saved it when; `scope` says which list it is in, and
-// `mine` whether a shared one is this person's to rename or delete.
+// document, and who saved it when; `scope` says which list it is in, `mine`
+// whether a shared one is this person's to rename or delete, and `audience` who
+// a shared one is shared with — null for everyone, or the people and the
+// groups named for it.
 //
 // Every call answers with the server's JSON, or throws an Error carrying the
 // server's own words, its status, and — for a save that lost a race — the
@@ -43,8 +45,17 @@ export const renameVersion = (scope, name, to) => call('PATCH', path(scope, name
 
 export const deleteVersion = (scope, name) => call('DELETE', path(scope, name));
 
-/** A fixed copy of a sandbox version among the shared ones, under its own name or `as`. */
-export const shareDraft = (name, as = null) => call('POST', `${path('sandbox', name)}/share`, as ? { name: as } : {});
+/**
+ * A fixed copy of a sandbox version among the shared ones, under its own name
+ * or `as`, shared with `audience`: `{ everyone: true }`, or `{ people, groups }`
+ * as ids. Left out, a first share is everyone's and a second keeps what the
+ * first said.
+ */
+export const shareDraft = (name, as = null, audience = null) =>
+  call('POST', `${path('sandbox', name)}/share`, { ...(as && { name: as }), ...(audience && { audience }) });
+
+/** Say who a shared version is shared with. Whoever shared it, or an administrator. */
+export const setAudience = (name, audience) => call('PUT', `${path('shared', name)}/audience`, audience);
 
 /** A copy of a shared version in this person's sandbox, to work on. */
 export const copyVersion = (name) => call('POST', `${path('shared', name)}/copy`, {});

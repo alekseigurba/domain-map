@@ -80,6 +80,32 @@ map today, and is there to be held against the domains rather than to define
 them: a domain is cut by what the business does, whoever holds it, and a
 reorganisation moves the bands without moving anything under them.
 
+**Teams.** The people who work on the map's parts, named. **Teams** in the
+header opens their legend, and *Add a team* there makes one: give it a name
+and a **Type** — product team, enabling team, mission team, whatever words the
+organisation uses — and put it on what it works on, from the team's own
+details or from the **Teams** list in a shape's. A team goes on an area, a
+domain or a capability, and on as many of them as it takes, so a team that
+cuts across domains is said the same way as one that lives inside a single
+capability. A team is people, not a shape: nothing is drawn for it, and it is
+seen by lighting up what it is on.
+
+**Who leads what.** Two layers at the top of the stack name people: **Product
+roles** — a product lead, a product manager — and **Engineering roles** — an
+engineering lead, a tech lead, an architect. Pick one of the two in the layer
+control, select an area or a domain, and *Add a product role* or *Add an
+engineering role* hangs a card on it; or name someone from the lists of who
+leads it in the shape's own details. Give them a name, a **Role** and an icon.
+The roles are yours to word: type one into the box and it is on that layer's
+list from then on, to be picked for the next person. The icon is one of the
+five figures the app carries, or anything from the icon library, where your
+own are added, and someone given a role
+takes the icon the others in that role wear until you pick another for them. A
+person may own several areas and domains, and has a card on each. A card
+starts by the name of what it is on; drag it to wherever it reads better and
+it stays there, going with its shape when the shape is moved. **Put cards
+back**, in the person's details, hands them back to the map.
+
 **Connectors.** Point at a domain, a capability or a feature and its connection
 points appear. Drag from one to a point on another shape — or click one, then
 the other — and a line joins them, in any combination of the three: a domain
@@ -97,13 +123,13 @@ steps in a flow, the map is read as a call graph.
 over an overlay that leaves the map in view. Every shape wears a swatch from
 it, so recolouring the palette recolours the map.
 
-**Light or dark.** The page follows your device, and **Theme** under the avatar
-sets it for this browser whatever the device says. A dark map is drawn from the
+**Light or dark.** The page follows your device, and **Theme** in Settings —
+the gear in the header — sets it for this browser whatever the device says. A dark map is drawn from the
 same palette, each colour dimmed to sit on dark paper, so there is nothing to
 recolour for it — and *Edit palette* goes on showing the colours as the light
 theme draws them.
 
-**Getting around** — the button in the header — lists every shortcut and
+**Getting around** — in Settings, behind the gear — lists every shortcut and
 gesture there is: undo, bold, the size and shape steps, restacking, and the
 keys that apply while renaming.
 
@@ -126,6 +152,32 @@ what it joins and how many it carries; pick a domain to see every line it has.
 The level is the same in **Edit** mode, so the map does not change when you
 leave it.
 
+## Who works on what
+
+**Teams**, in the header, opens a legend of the map's teams in the top right
+corner, under their Types, each with the number of shapes it is on. Press a
+team and the map is lit by it: what the team is on is ringed, what it reaches
+through that — the capabilities of its domain, everything in its area — stays
+as it is drawn, and the rest of the map stands back, lines and all. Press a
+Type instead and every team of it is lit together, which shows the map by the
+sort of team that works on it: where the product teams are, what the enabling
+teams touch.
+
+A lit team stays lit while you pick shapes, so what it is on can be read one
+at a time; a shape's details name its teams, and pressing one there lights it.
+Press the team again, or put the legend away, and the map is the map again.
+Nothing here needs Edit mode, and a viewer has all of it.
+
+Who *leads* a part of the map is on the map itself: the **Product roles** and
+**Engineering roles** layers hang a card — an icon, and beside it the name
+with the role under it — on every area and domain someone owns: beyond an
+area's title and off a domain's edge by its name, or wherever the map's owner
+put it. A band down the card's edge is its layer's colour, the one beside the
+layer's name in the layer control: warm for product, cool for engineering.
+Press a card to read who they are and what else they own. Each layer has its
+eye and its dim in the layer control, like the rest, so the map can be read
+for product alone, for engineering alone, or without either.
+
 ## Drawing on the map
 
 **Draw**, in the header, is the marker the map was made to be drawn on with.
@@ -140,6 +192,31 @@ nobody else sees it, a viewer can draw as freely as a contributor, and it lasts
 through a refresh but not past the tab — or past opening another version in its
 place. **Done**, Esc or Draw again puts the marker down and leaves the drawing
 where it is.
+
+## Presenting the map
+
+**Slideshow**, in the header, is the map as a deck: a postcard for every area,
+then every domain in it, and after each domain one for each of its
+capabilities; what is in no area follows the same way. A postcard is the shape
+exactly as the map draws it, beside its words — its name, what it is, its
+owner, who leads it, its teams, what it holds and what it is joined to. A row
+with nothing to say is left off. Across the top of every slide is where its
+shape sits — */area/domain/capability* — so a slide met out of order still
+says what it is a part of. The deck is made of the map, so there is nothing to
+keep in step with it, and it opens on the slide of whatever is selected.
+
+It has the two views a slide program has. **Edit** is the deck with the slide's
+words as fields — the same title, description, owner and Type the details
+panel holds, so a word changed on a slide is a word changed on the map, undone
+with Ctrl+Z and saved with **Save** like any other. Each slide also chooses its
+**Picture**: the shape alone, the shape with its neighbours and the lines
+between them, or a picture of your own — *Uploaded* takes a screenshot, a
+photograph or a sketch, up to 5 MB, and shows it whole in the drawing's place.
+The file is kept when the slide goes back to the drawing, so returning to it
+is one press. **Present** is the slide in hand and nothing else, full screen
+where the browser allows it. The arrow keys, Space or a press on the slide step through;
+Home and End go to either end; Esc comes back to the deck, and again to the
+map. Anyone who can see the map can present it.
 
 ## Asking an AI about the map
 
@@ -166,7 +243,7 @@ ASSISTANT_MODEL=llama3.1
 or Anthropic's Messages API. [docs/BRANDING.md](docs/BRANDING.md#what-it-needs-to-run)
 has the rest. The key stays on the server, and the page says which host your
 messages go to. When the key expires, an administrator gives the model a new one
-in the page — the avatar, then **Assistant model** — or switches the model off
+in the page — the gear, then **Assistant model** — or switches the model off
 there. The key is typed in and kept sealed; nothing shows it again.
 
 **Without one**, **Copy prompt** puts the task, the map and the format to answer
@@ -193,19 +270,27 @@ you save there is nobody else's to see. **Shared** is what every contributor
 sees: fixed copies put in the open, never saved over. One shared version is
 **published** — the one anyone who signs in sees, and the one the map opens at.
 
+A version need not be shared with everyone. **Share** asks who with: everyone
+who works on the map, or the people and the **groups** you tick. A version
+shared with a few is seen by them, by you, and by the administrators, and by
+nobody else — it is not in their list, and a link to it finds nothing. Whoever
+shared it can change who that is afterwards, from the Shared list. The
+published map is everyone's, so a version is shared with everyone before it can
+be published.
+
 **Save** writes the sandbox version that is open; on a shared one it puts a
 copy in your sandbox instead, after asking. **Versions** — the chip naming the
 one you are on — opens the two lists: open another, *Save as new* to keep the
-current map as the next version in your sandbox, *Share* one into the open,
-*Take a copy* of a shared one to work on, rename, delete, and — a publisher —
-publish a shared one. **Cancel** unwinds everything done since **Edit** was
+current map as the next version in your sandbox, *Share* one with everyone or
+with a few, *Take a copy* of a shared one to work on, rename, delete, and — a
+publisher — publish a shared one. **Cancel** unwinds everything done since **Edit** was
 pressed, all at once.
 
 Who may do any of this is a role, one to a person. Everyone who signs in is a
 **contributor**: they open any version, edit, save, rename and delete. A
 **publisher** also chooses which version is the map everyone sees. An
-**administrator** also decides who is what, in **Users & access** under the
-avatar: a role on each row, someone added by email ahead of their first
+**administrator** also decides who is what, in **Users & access** behind the
+gear: a role on each row, someone added by email ahead of their first
 sign-in, and someone taken off the list — on every row but their own, so there
 is always an administrator left. There can be several. A **viewer** sees the
 published map and nothing else — nobody is one until an administrator says so.
@@ -216,6 +301,12 @@ ninety days, or since a day of their choosing, of every role or of one.
 **Preview…** shows exactly who that is before anyone is removed, and only the
 people shown are taken; administrators are left where they are. At the foot is
 a sentence for each role saying what it may do.
+
+**Groups**, the dialog's other view, are a name and the people in it: the
+design reviewers, the people on one product. They are the map's own — an
+administrator makes one from people already on the list, with no directory and
+no security group behind it — and are what a version is shared with when it is
+not shared with everyone. Everyone who works on the map can see them.
 `OWNER_EMAILS` seeds the list the first time the server starts, the first
 address as the administrator; after that the list rules. With sign-in off, as
 in `dev.env`, whoever is there is an administrator, which is what makes `npm
@@ -223,6 +314,7 @@ start` work with no configuration at all.
 
 ## Taking it elsewhere
 
+The three ways out and in are in Settings, behind the gear in the header.
 **Export** downloads the whole map as JSON — the file to keep in a repo, diff,
 or hand to someone else. **Import** replaces the map from one of those files.
 **Export SVG** downloads the diagram as a picture, for a slide or a wall — in

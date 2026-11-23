@@ -7,6 +7,164 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+Who leads what, as two layers of people over the map; teams, and the map lit
+up by who works on it; a slideshow made of the map, to work on and to present;
+and a version shared with a few rather than with everyone, with the groups
+that makes practical. One migration, `006-groups.sql`, applied at startup; map
+files move to version 6. Full notes:
+[docs/releases/2.7.0.md](docs/releases/2.7.0.md).
+
+### Added
+
+- **Product roles and Engineering roles, two layers of people.** A map can say
+  who leads an area or a domain: a product lead or a product manager on one
+  layer, an engineering lead, a tech lead or an architect on the other. Each
+  person is a card — their icon on the left, and beside it their name with
+  their role under it, the icon as tall as the two lines together — hung on
+  what they own, beyond an area's title and off a domain's edge by its name,
+  so it covers nothing of the shape. The card is paper let through, with the
+  quietest of rims, so what it lies over is still there to be seen, and a
+  band down its leading edge is the colour of its layer — warm for product,
+  cool for engineering, the same two colours the layers wear in the layer
+  control — so a product lead and an engineering lead on one domain are told
+  apart before either name is read. Several on one shape stack away from it,
+  product nearest, and where two shapes sit close the cards of one step
+  further out rather than land on the other's, or on an area's name. Fit to
+  screen holds the cards with the rest. The two layers sit at the top of the
+  layer control with the same eye and dim buttons as the rest, so the map can
+  be read for product alone, for engineering alone, or for neither.
+- **A person's card goes where you put it.** Where the map hangs a card is
+  only where it starts. In Edit mode, drag it anywhere — beside the domain,
+  inside the area, clear of a line — and it stays there, measured from the
+  shape it is on, so it goes with the domain when the domain is moved and with
+  an area's name when the area grows. Someone who owns three things has three
+  cards, each put where it reads best. The cards nobody has moved close up
+  behind one that has, and **Put cards back** in the person's details hands
+  theirs back to the map. On a locked map a card is pressed to read who it is,
+  and a drag that starts on one moves the map, as it does on any shape.
+- **A role is typed in once and picked after.** A person has a name, a
+  **Role** and an icon. The roles are the map's own lists, one for each of the
+  two layers, kept as Type choices are: type *Product lead* into the box and it
+  is on the list for everyone after. The icon is one of five figures the app
+  carries — three women and two men, there in every deployment — or anything
+  from the icon library, where your own are added; someone given a role takes
+  the icon the others in that role wear, so a variant is picked once a role
+  and changed only for whoever is to be told apart. In Edit mode, pick one of the two
+  layers and an area or a domain, and *Add a product role* or *Add an
+  engineering role*; or name someone from the shape's own details, which list
+  who leads it. A person may own several areas and domains, and one left
+  owning nothing is taken off the map, since there is nowhere to draw them.
+- **Teams.** A map can name the teams that work on it — product teams,
+  enabling teams, a mission team, whatever the organisation calls them. A team
+  is a name, a description, an owner and a **Type** from a list of the map's
+  own, as an area's is, and it is put on what it works on: an area, a domain, a
+  capability, or several of them across the map, which is how a team that
+  belongs to no one domain is said. A team is people, not a shape, so nothing
+  is drawn for it. The details of an area, a domain or a capability list its
+  **Teams** — the ones on it, and after them, quieter, the ones it has through
+  the domain or the area that holds it — and in Edit mode put another on it,
+  or make a new one that starts there.
+- **The map lit up by a team.** **Teams**, in the header, opens a legend of
+  them in the top right corner, under their Types, each with how many shapes
+  it is on. Press one and the map shows it: what the team is on is ringed,
+  what it reaches through that — the capabilities of its domain, everything in
+  its area — is left as it is drawn, and the rest stands back, lines and all.
+  Press a Type and every team of it is lit together, which is the map by what
+  sort of team works on it. A lit team stays lit while shapes are picked, so
+  what it is on can be read one by one; pressing it again, or putting the
+  legend away, gives the map back. Everyone has it, viewers too, and a team has
+  a link of its own like any shape.
+- **Slideshow.** The map as a deck: a postcard for every area, then every
+  domain in it, and after each domain one for each of its capabilities; what
+  is in no area follows the same way. A postcard is the shape as the map draws
+  it beside its words — its name, what it is, its owner, who leads it, its
+  teams, what it holds and what it is joined to — and says only what there is
+  something to say about. Across the top of every slide is where its shape
+  sits, */area/domain/capability*, so a slide met in the middle of a
+  presentation says what it is a part of. The deck is made of the map, so
+  there is nothing to keep in step: a domain added is a slide added. It opens
+  on the slide of whatever is selected.
+- **Edit and Present, as a slide program has them.** *Edit* is the deck with
+  the slide's title, description, owner and Type as fields: a word changed on
+  a slide is a word changed on the map, undone and saved as any other.
+  *Present* is the slide in hand and nothing else, full screen where the
+  browser allows it: the arrow keys, Space or a press step through, Home and
+  End go to either end, and Esc comes back to the deck. A viewer presents the
+  published map as anyone does.
+- **A slide's picture, and one of your own.** Each slide chooses what it shows
+  of its shape: the shape alone, the shape with its neighbours and the lines
+  between them, or a picture **uploaded** for the slide — a screenshot of the
+  thing the shape stands for, a photograph, a sketch, up to 5 MB. An uploaded
+  picture is shown whole, never cropped, and is kept by name when the slide
+  goes back to the drawing, so returning to it is one press and not another
+  upload. Pictures are stored beside the icons, in a folder of their own.
+- **A version shared with a few.** A shared version used to be every
+  contributor's to see. **Share** now asks who with: everyone who works on the
+  map, or the people and the groups ticked. One shared with a few is seen by
+  them, by whoever shared it, and by the administrators — and to everyone else
+  it is not there: not in their Shared list, not at its name in a link, not to
+  copy. The Shared list says who each version is shared with, and whoever
+  shared it changes that from the same place. Shared again after a fix, a
+  version keeps who it was shared with, so a correction does not open it to
+  everyone. Someone it is shared with can open it and take a copy, and cannot
+  share it further.
+- **Groups, in Users & access.** A group is a name and the people in it, and is
+  the map's own: an administrator makes one from people already on the list,
+  with no directory and no security group behind it. **Groups** is the
+  dialog's other view — name a group, put people in it from a list of who is
+  not in it yet, take one out from their chip — and everyone who works on the
+  map can read them, since a version is shared with a group by whoever shares
+  it. Deleting a group opens nothing to everyone: what was shared with it alone
+  is then its sharer's and the administrators'.
+
+### Changed
+
+- **Settings, behind a gear beside your avatar.** The header is for what is
+  done to the map while reading or editing it, so what is set up or looked up
+  has moved behind one button: **Theme**, **Getting around**, **Users &
+  access**, **Assistant model**, and **Export**, **Export SVG** and
+  **Import**. Each row says what its button is for, and a row is only there
+  for whoever may press it — a viewer has Theme, Getting around and the two
+  exports. The avatar now opens what it says: who you are, your role and what
+  it may do, and **Sign out**.
+- **The pips on a shut capability can be counted.** The row of dots that says
+  how many features a capability holds is half as large again and twice as
+  dark, so it reads at the zoom the map is usually looked at from; on an oval
+  that stands tall a full row is drawn a little smaller, to stay inside it.
+- **Map files are version 6**: the teams are written at the foot of the file,
+  each with what it is on by key, and after them the people in roles, as
+  `productRoles` and `engineeringRoles`; two layers join the stack; the Types
+  gain a list for teams and one for each layer's roles; and an area, a domain
+  or a capability says what its postcard shows when that is not the shape
+  alone, and names the picture uploaded for it. Versions 1 to 5 still read, as
+  a map with no teams and nobody named, and a deployment from before this
+  refuses a version 6 file.
+- **The published map is everyone's.** A version shared with a few cannot be
+  published until it is shared with everyone, and the published version cannot
+  be shared with fewer: Publish is held down on such a row and says why. A
+  publisher renames and deletes what anyone shared, as before, among the
+  versions they are shown.
+- **Sharing is asked about in a dialog of its own**, where it used to be a
+  yes-or-no question. It opens on *Everyone*, which is what a share was, so
+  sharing as before is the same two presses.
+- **Versions is wider**, 1100px where there is the room, for the column saying
+  who a shared version is shared with.
+- **An administrator sees every shared version**, whoever it is shared with.
+  Somebody has to be able to tidy up after a sharer who has gone, and the
+  administrators already run the list of who can see anything at all.
+
+### Fixed
+
+- **Undo takes back what was typed.** A title, a description or an owner typed
+  into its field is on the map as it is typed, so by the time the change was
+  recorded the map already said the new thing — and Ctrl+Z put back the very
+  words it was meant to take away. A field now keeps what it last handed over,
+  and undo returns to that. Leaving a field nothing was typed into no longer
+  records a step that undoes nothing.
+- **Undo takes off an icon given to a shape that had none.** Ctrl+Z after
+  picking a capability's or a touchpoint's first icon left the icon on it: the
+  step handed back "no icon" in a form the map reads as nothing said.
+
 ## 2.6.1 — 2026-11-23
 
 A feature that leans, a line's shape set beside the line, the Assistant's model

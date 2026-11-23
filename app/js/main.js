@@ -10,6 +10,8 @@ import {
   createTouchpoint, updateTouchpoint, deleteTouchpoint,
   createActor, updateActor, deleteActor,
   createArea, updateArea, deleteArea, mayJoinArea,
+  createTeam, updateTeam, deleteTeam, setTeamMember,
+  createRole, updateRole, deleteRole, setRoleMember, roleMembers, iconForRole, membersWithCard,
   createConnector as addConnector, updateConnector, deleteConnector,
   restore, updateMap,
   layerStack, layerState, setLayerState, resetLayerState, isVisible, layerOf, layerForKind,
@@ -22,11 +24,15 @@ import { mayAs, showIdentity, signingIn, whoAmI } from './identity.js';
 import * as api from './versions.js';
 import { initPeople, listPeople } from './people.js';
 import { initAssistantSettings } from './assistant-settings.js';
+import { audienceSays, chooseAudience } from './audience.js';
+import { initTeams, renderTeams, showTeams, setTeamsEditMode } from './teams.js';
+import { initSlideshow, renderSlideshow, setSlideshowEditMode, slideshowOpen } from './slideshow.js';
 import { diagramSvg } from './svg-export.js';
 import {
   initDiagram, render, fitToScreen, zoomBy, centerOn, cancelDraft, viewportCenter, resolvedPoints,
   contentBounds, setEditing, isEditing, kebabAnchor, lineMenuAnchor, startRename, cancelRename,
   setEditMode as setDiagramEditMode, glideInto, glideToFit, setLineLevel, currentLineLevel,
+  setLitTeams, litTeamIds,
 } from './diagram.js';
 import { LEVELS } from './zoom.js';
 import { initDrawing, allowDrawing, drawingTakesKey } from './draw.js';
@@ -50,7 +56,9 @@ import {
   capabilitySize, sizeOf, layoutDomain, layoutArea, newLobeSpot, setPalette, swatchFor,
 } from './geometry.js';
 import { DOMAIN_SHAPE, CAPABILITY_SHAPE, TOUCHPOINT_SHAPE, ACTOR_SHAPE } from './defaults.js';
-import { BASE_LAYER, AREA_SHAPE, MAX_FEATURES, TERRAIN_KINDS, DEFAULT_FEATURE_STRETCH } from './rules.js';
+import {
+  BASE_LAYER, AREA_SHAPE, MAX_FEATURES, TERRAIN_KINDS, DEFAULT_FEATURE_STRETCH, ROLE_KINDS, ROLE_ON_KINDS,
+} from './rules.js';
 import * as undoStack from './history.js';
 
 /** Branding is a stored file too, so it can be changed without a rebuild. */
@@ -101,6 +109,9 @@ async function run(label, work) {
 let role = null;
 const mayEdit = () => mayAs(role, 'contributor');
 const mayPublish = () => mayAs(role, 'publisher');
+const mayAdminister = () => mayAs(role, 'administrator');
+/** Who is looking, by the id the people list has for them: whoever shares a version is not offered themselves. */
+let myId = null;
 
 /** The model the Assistant is connected to, as the server tells a contributor: `{ host, model }`, or null. */
 let assistantModel = null;
@@ -209,6 +220,8 @@ function setEditMode(next) {
   }
   setDiagramEditMode(editMode);
   setDetailsEditMode(editMode);
+  setTeamsEditMode(editMode);
+  setSlideshowEditMode(editMode);
   applyEditMode();
   keepSession();
 }
@@ -464,25 +477,62 @@ async function removeVersion(scope, name) {
   status(`Deleted "${name}"`);
 }
 
+/** "with everyone", "with Reviewers, Dan Draftsman +1": who a version now is shared with, to finish a sentence. */
+function withWhom(version) {
+  if (!version.audience) return 'with everyone';
+  const { short } = audienceSays(version.audience, { mine: true });
+  return short === 'Only you' ? 'with nobody else yet' : `with ${short}`;
+}
+
 /**
- * Put a fixed copy of a sandbox version among the shared ones. Sharing again
- * under a name this person already shared writes that share over, and the
- * question says so; a name somebody else shared under is refused by the
- * server, in its own words, and the version stays in the sandbox.
+ * Put a fixed copy of a sandbox version among the shared ones, and say who it
+ * is shared with: everyone, or the people and the groups picked. Sharing is
+ * asked about in the dialog that does the picking, so that sharing with a few
+ * is the same gesture as sharing at all. Sharing again under a name this
+ * person already shared writes that share over, which the dialog says, and
+ * opens on whoever the first was shared with; a name somebody else shared
+ * under is refused by the server, in its own words, and the version stays in
+ * the sandbox.
  */
 async function share(name) {
-  const there = sharedList.find((version) => version.name === name);
-  const question = there?.mine
-    ? `Share "${name}" again? Your shared "${name}" is written over with this one.`
-    : `Share "${name}"? Every contributor can open the copy, and a publisher can publish it.`;
-  if (!confirm(question)) return;
+  const there = sharedList.find((version) => version.name === name && version.mine);
+  const audience = await chooseAudience({
+    title: there ? `Share "${name}" again` : `Share "${name}"`,
+    says: there
+      ? `Your shared "${name}" is written over with this one.`
+      : 'A fixed copy goes among the shared versions. Whoever it is shared with can open it and take a copy; shared with everyone, a publisher can publish it.',
+    action: there ? 'Share again' : 'Share',
+    current: there ? there.audience : null,
+    me: myId,
+  });
+  if (!audience) return;
 
   status('Sharing…');
   try {
-    await api.shareDraft(name);
-    status(`Shared "${name}"`);
+    const shared = await api.shareDraft(name, null, audience);
+    status(`Shared "${name}" ${withWhom(shared)}`);
   } catch (error) {
     status(`Could not share: ${error.message}`, true);
+  }
+}
+
+/** Change who a shared version is shared with. Whoever shared it may, and an administrator. */
+async function changeAudience(version) {
+  const audience = await chooseAudience({
+    title: `Who "${version.name}" is shared with`,
+    says: 'Whoever it is shared with can open it and take a copy. Shared with everyone, a publisher can publish it.',
+    action: 'Save',
+    current: version.audience,
+    me: myId,
+  });
+  if (!audience) return;
+
+  status('Saving…');
+  try {
+    const now = await api.setAudience(version.name, audience);
+    status(`"${version.name}" is shared ${withWhom(now)}`);
+  } catch (error) {
+    status(`Could not change who it is shared with: ${error.message}`, true);
   }
 }
 
@@ -601,6 +651,25 @@ function draftRow(version) {
 }
 
 /**
+ * Who a shared version is shared with, as a cell. For whoever may change it —
+ * its sharer, or an administrator — the words are the control: a chip that
+ * opens the dialog it was chosen in. For everyone else they are words. The
+ * published version is everyone's and stays so, so its cell is never a chip.
+ */
+function audienceCell(version) {
+  const says = audienceSays(version.audience, { mine: version.mine });
+  if (version.published || !(version.mine || mayAdminister())) {
+    const td = cell('versions__with', says.short);
+    td.title = version.published ? 'The published version is everyone\'s' : says.full;
+    return td;
+  }
+  const chip = rowButton(says.short, `${says.full}. Press to change who "${version.name}" is shared with.`,
+    () => act(() => changeAudience(version)));
+  chip.classList.add('versions__audience');
+  return cell('versions__with', chip);
+}
+
+/**
  * One row a shared version. Take a copy is for everyone; Rename and Delete for
  * whoever shared it, and for a publisher; Publish for a publisher. A row has no
  * button for what would be refused, rather than one that is.
@@ -609,6 +678,8 @@ function sharedRow(version) {
   const open = isOpen('shared', version.name);
   const { published } = version;
   const manages = version.mine || mayPublish();
+  // The published map is everyone's, so only a version shared with everyone can become it.
+  const narrow = version.audience !== null;
 
   const tags = [];
   if (published) tags.push(badge('Published'));
@@ -621,6 +692,7 @@ function sharedRow(version) {
     cell(null, nameCell(version, tags)),
     cell('versions__when', savedAt(version.updatedAt)),
     byCell(version),
+    audienceCell(version),
     actionsCell(
       rowButton('Open', open ? 'This is the version open here' : `Open "${version.name}"`,
         () => act(() => openVersion('shared', version.name), { close: true }), { disabled: open }),
@@ -630,8 +702,11 @@ function sharedRow(version) {
         ? [rowButton('Rename', `Give "${version.name}" another name`, () => act(() => rename('shared', version.name)))]
         : []),
       ...(mayPublish()
-        ? [rowButton('Publish', published ? 'This is the published version' : `Make "${version.name}" the map everyone sees`,
-          () => act(() => publish(version.name)), { disabled: published })]
+        ? [rowButton('Publish',
+          published ? 'This is the published version'
+            : narrow ? 'Share it with everyone before publishing it: the published map is everyone\'s'
+              : `Make "${version.name}" the map everyone sees`,
+          () => act(() => publish(version.name)), { disabled: published || narrow })]
         : []),
       // The published version stays until another takes its place, so the map
       // everyone lands on can never be deleted out from under them.
@@ -644,11 +719,11 @@ function sharedRow(version) {
   return row;
 }
 
-/** A list with nothing in it says so, in the row where the versions would be. */
-function emptyRow(text) {
+/** A list with nothing in it says so, in the row where the versions would be: across however many columns that list has. */
+function emptyRow(text, columns = 4) {
   const row = document.createElement('tr');
   const td = cell('versions__empty', text);
-  td.colSpan = 4;
+  td.colSpan = columns;
   row.append(td);
   return row;
 }
@@ -666,7 +741,7 @@ async function refreshVersions() {
       : [emptyRow('Your sandbox is empty. Save this map as a new version, or take a copy of a shared one.')]));
     sharedRows.replaceChildren(...(shared.length
       ? shared.map(sharedRow)
-      : [emptyRow('Nothing is shared yet. Share a version from your sandbox.')]));
+      : [emptyRow('Nothing is shared yet. Share a version from your sandbox.', 5)]));
     note(null);
   } catch (error) {
     note(`Could not read the versions: ${error.message}`, true);
@@ -833,6 +908,9 @@ function keepSession() {
           touchpoints: store.touchpoints,
           actors: store.actors,
           connectors: store.connectors,
+          teams: store.teams,
+          productRoles: store.productRoles,
+          engineeringRoles: store.engineeringRoles,
         },
         history: undoStack.kept(),
       }));
@@ -938,6 +1016,9 @@ const writerFor = {
   touchpoint: updateTouchpoint,
   actor: updateActor,
   connector: updateConnector,
+  team: updateTeam,
+  productRole: (id, body) => updateRole('productRole', id, body),
+  engineeringRole: (id, body) => updateRole('engineeringRole', id, body),
 };
 
 const removerFor = {
@@ -948,6 +1029,9 @@ const removerFor = {
   touchpoint: deleteTouchpoint,
   actor: deleteActor,
   connector: deleteConnector,
+  team: deleteTeam,
+  productRole: (id) => deleteRole('productRole', id),
+  engineeringRole: (id) => deleteRole('engineeringRole', id),
 };
 
 // --- undo, as data -----------------------------------------------------------
@@ -971,18 +1055,33 @@ function applyUndo(calls) {
   }
 }
 
+/**
+ * A file a record names is let go of with an empty string: to the store a null
+ * is a field that was not given. So what undo hands back for one that held
+ * nothing is the empty string, or the icon just picked for a shape that had
+ * none would stay on it.
+ */
+const NAMED_FILES = ['icon', 'picture'];
+
 /** The values a change is about to replace, so that undo can put them back. */
 const valuesOf = (record, changes) =>
-  Object.fromEntries(Object.keys(changes).map((key) => [key, record[key]]));
+  Object.fromEntries(Object.keys(changes).map((key) =>
+    [key, record[key] ?? (NAMED_FILES.includes(key) ? '' : record[key])]));
 
-/** Apply a partial update, remembering the values it replaced so Ctrl-Z works. */
-function patch(type, id, body, label = 'Saving') {
+/**
+ * Apply a partial update, remembering the values it replaced so Ctrl-Z works.
+ * `was` is those values where the caller knows them better than the record
+ * does: a field that has been writing to the map as it was typed into hands
+ * over a change the record already holds.
+ */
+function patch(type, id, body, label = 'Saving', was = null) {
   const write = writerFor[type];
   if (!write) return null;
 
   const before = find(type, id);
-  if (before) undoStack.record(label, [undoUpdate(type, id, valuesOf(before, body))]);
-  return run(label, () => write(id, body));
+  const change = withRoleIcon(type, before, body);
+  if (before) undoStack.record(label, [undoUpdate(type, id, was ?? valuesOf(before, change))]);
+  return run(label, () => write(id, change));
 }
 
 /**
@@ -1091,6 +1190,8 @@ function renderLayerControl() {
     row.className = `layers__row${layer.hidden ? ' layers__row--hidden' : ''}`
       + `${layer.dimmed ? ' layers__row--dimmed' : ''}`
       + `${chosen ? ' layers__row--selected' : ''}`;
+    // The stylesheet marks the two role layers' rows with their cards' colour.
+    row.dataset.layer = layer.key;
 
     const name = document.createElement('span');
     name.className = 'layers__name';
@@ -1142,6 +1243,8 @@ const ADD_LABELS = {
   feature: 'Add a feature',
   touchpoint: 'Add a touchpoint',
   actor: 'Add an actor',
+  productRole: 'Add a product role',
+  engineeringRole: 'Add an engineering role',
 };
 
 const ADD_ICONS = {
@@ -1151,6 +1254,8 @@ const ADD_ICONS = {
   feature: 'icons/add-feature.svg',
   touchpoint: 'icons/add-touchpoint.svg',
   actor: 'icons/add-actor.svg',
+  productRole: 'icons/add-role.svg',
+  engineeringRole: 'icons/add-role.svg',
 };
 
 function renderAddButtons() {
@@ -1183,6 +1288,11 @@ function renderAddButtons() {
       button.disabled = true;
       button.title = 'Pick the capability to add a feature to';
     }
+    // And a person is drawn on what they own, so there has to be something.
+    if (ROLE_KINDS.includes(kind) && ownedByNewRole().length === 0) {
+      button.disabled = true;
+      button.title = 'Pick the area or the domain they own';
+    }
     return button;
   });
 
@@ -1214,8 +1324,24 @@ function addOfKind(kind) {
   if (kind === 'domain') return addDomain();
   if (kind === 'capability') return addCapabilityHere();
   if (kind === 'feature') return addFeatureHere();
+  if (ROLE_KINDS.includes(kind)) return addRoleHere(kind);
   return addElement(kind);
 }
+
+/**
+ * What a new person would own: the area or the domain that is picked — or, with
+ * a person picked, what they own, so that a lead's deputy is added from the
+ * lead. A person owns something or is nowhere on the map, so with none of
+ * those picked there is nobody to add yet.
+ */
+function ownedByNewRole() {
+  const { type, id } = store.selection;
+  if (ROLE_ON_KINDS.includes(type)) return [{ kind: type, id }];
+  if (ROLE_KINDS.includes(type)) return roleMembers(find(type, id)).map(({ kind, record }) => ({ kind, id: record.id }));
+  return [];
+}
+
+const addRoleHere = (roleKind) => addRole(roleKind, ownedByNewRole());
 
 // --- placing new shapes ------------------------------------------------------
 
@@ -1914,6 +2040,166 @@ function openKebab(domainId) {
   kebabMenu.style.top = `${Math.round(anchor.y - stage.top)}px`;
 }
 
+// --- teams ------------------------------------------------------------------------
+
+// A team is picked from the legend, or from the chip that names it on a shape.
+// Picked, it is lit on the map and its fields are in the details panel. The
+// two are told apart on purpose: pressing a shape while a team is lit shows the
+// shape's fields and leaves the team lit, since looking at what a team is on
+// is most of what a team is lit for.
+
+/**
+ * A team pressed. One that is not lit is lit, and picked. One that is lit and
+ * picked is put out, and nothing is picked: the map is the map again. One
+ * that is lit while something else is picked is picked again, and stays lit.
+ */
+function pickTeam(id) {
+  const picked = store.selection.type === 'team' && store.selection.id === id;
+  const alone = litTeamIds().length === 1 && litTeamIds()[0] === id;
+  if (alone && picked) {
+    setLitTeams([]);
+    select(null, null);
+  } else {
+    setLitTeams([id]);
+    showTeams(true);
+    select('team', id);
+  }
+  renderTeams();
+}
+
+/**
+ * A Type pressed in the legend: every team of it lit together, which is the
+ * map seen by what sort of team works on it — the product teams, the enabling
+ * ones. Pressed while they are the ones lit, it puts the map back. A Type has
+ * no fields of its own, so nothing is picked by it: a team's fields left open
+ * in the panel would be about one team while several were lit.
+ */
+function pickTeamType(ids) {
+  const lit = litTeamIds();
+  const same = ids.length === lit.length && ids.every((id) => lit.includes(id));
+  setLitTeams(same ? [] : ids);
+  if (store.selection.type === 'team') select(null, null);
+  renderTeams();
+}
+
+/** A new team, on the shape it was asked for from if it was asked for from one; picked, so that it can be named. */
+async function addTeam(member = null) {
+  const created = await run('Adding a team', () => createTeam({ members: member ? [member] : [] }));
+  if (!created) return;
+  undoStack.record('Adding a team', [undoDelete('team', created.id)]);
+  setLitTeams([created.id]);
+  showTeams(true);
+  select('team', created.id);
+  renderTeams();
+  status(member ? 'Team added: name it in the details' : 'Team added: name it, then put it on an area, a domain or a capability');
+}
+
+// --- people in roles -----------------------------------------------------------
+
+/** What each discipline's people are called where the page speaks of one. */
+const ROLE_SAYS = { productRole: 'product role', engineeringRole: 'engineering role' };
+
+/**
+ * Name someone on the map: a person in a role, owning what was asked for.
+ * They are picked, so that they can be named and given their role, and their
+ * layer is shown, since a badge added to a layer nobody can see is added to
+ * nowhere.
+ */
+async function addRole(roleKind, owned) {
+  if (!owned?.length) return status('Pick the area or the domain they own', true);
+  const label = `Adding a ${ROLE_SAYS[roleKind]}`;
+  const created = await run(label, () => createRole(roleKind, { members: owned }));
+  if (!created) return null;
+  undoStack.record(label, [undoDelete(roleKind, created.id)]);
+  if (!isVisible(roleKind, created)) changeLayer(layerOf(roleKind, created), { hidden: false });
+  select(roleKind, created.id);
+  status('Added: name them and give them their role in the details');
+  return created;
+}
+
+/**
+ * Give a person an area or a domain to own, or take it from them. Someone left
+ * owning nothing is drawn nowhere and could never be picked again, so taking
+ * the last thing from them takes them off the map — as one step, which undo
+ * puts back whole.
+ */
+function roleMember(roleKind, roleId, kind, id, on) {
+  const role = find(roleKind, roleId);
+  if (!role) return null;
+  const owns = roleMembers(role);
+  if (!on && owns.length === 1 && owns[0].kind === kind && owns[0].record.id === id) {
+    return run('Removing them', () => {
+      const removed = deleteRole(roleKind, roleId);
+      if (removed) undoStack.record('Removing them', [{ op: 'restore', removed }]);
+      return removed;
+    });
+  }
+  const label = on ? 'Giving it to them' : 'Taking it from them';
+  undoStack.record(label, [undoUpdate(roleKind, roleId, { members: role.members.map((member) => ({ ...member })) })]);
+  return run(label, () => setRoleMember(roleKind, roleId, kind, id, on));
+}
+
+/**
+ * A person's card, let go somewhere on the map: where it is kept is in what
+ * they own, beside the shape the card is on, so moving it is a change to that
+ * list — and the list as it was is what Ctrl+Z puts back.
+ */
+function moveRoleCard(roleKind, roleId, kind, id, at) {
+  const role = find(roleKind, roleId);
+  return role ? patch(roleKind, roleId, { members: membersWithCard(role, kind, id, at) }, 'Moving their card') : null;
+}
+
+/** Every card of theirs that was put somewhere, handed back to the map to hang by the shape's name. */
+function roleCardsBack(roleKind, roleId) {
+  const role = find(roleKind, roleId);
+  if (!role) return null;
+  const members = role.members.map(({ kind, id }) => ({ kind, id }));
+  return patch(roleKind, roleId, { members }, 'Putting their cards back');
+}
+
+/**
+ * A role picked for someone who has no icon yet gives them the one the others
+ * in that role wear, so a map's owner picks a variant once a role and not once
+ * a person. Someone who already has an icon keeps it: it was picked for them.
+ * The icon rides in the same change as the role, so one Ctrl+Z takes both back.
+ */
+function withRoleIcon(type, role, body) {
+  if (!ROLE_KINDS.includes(type) || !role || role.icon || !body.type || body.icon !== undefined) return body;
+  const worn = iconForRole(type, body.type);
+  return worn ? { ...body, icon: worn } : body;
+}
+
+/** Put a team on a shape, or take it off. What it was on before is what undo puts back. */
+function teamMember(teamId, kind, id, on) {
+  const team = find('team', teamId);
+  if (!team) return null;
+  const label = on ? 'Putting the team on it' : 'Taking the team off it';
+  undoStack.record(label, [undoUpdate('team', teamId, { members: team.members.map((member) => ({ ...member })) })]);
+  return run(label, () => setTeamMember(teamId, kind, id, on));
+}
+
+initSlideshow({
+  mayEdit,
+  onEdit: () => setEditMode(true),
+  onPatch: patch,
+  onPictureUpload: files.savePicture,
+  pictureUrl: files.pictureUrl,
+  onStatus: status,
+});
+
+initTeams({
+  lit: litTeamIds,
+  onPick: pickTeam,
+  onPickType: pickTeamType,
+  onAdd: () => addTeam(),
+  // The legend put away: nothing stays lit behind it, and a team's fields do not stay open with no team in sight.
+  onHide: () => {
+    setLitTeams([]);
+    if (store.selection.type === 'team') select(null, null);
+  },
+  onLost: (left) => setLitTeams(left),
+});
+
 // --- a line's shape, set beside the line ---------------------------------------
 
 // Curved or straight, anchored or not: most of what there is to change about a
@@ -1992,7 +2278,7 @@ window.addEventListener('resize', () => { if (lineMenuFor) showLineMenu(); });
 
 /** `#/capability/payment-authorization` — the title, normalized, not the id. */
 function parseHash() {
-  const match = /^#\/(area|domain|capability|feature|touchpoint|actor|connector)\/([a-z0-9-]+)$/
+  const match = /^#\/(area|domain|capability|feature|touchpoint|actor|connector|team|productRole|engineeringRole)\/([a-z0-9-]+)$/
     .exec(location.hash);
   return match ? { type: match[1], slug: match[2] } : null;
 }
@@ -2016,6 +2302,20 @@ function applySelection(target) {
   syncingHash = true;
   select(target.type, record.id, 'hash');
   syncingHash = false;
+  // A team is nowhere on the map to be brought into view: a link to one opens
+  // the legend and lights up what it is on.
+  if (target.type === 'team') {
+    setLitTeams([record.id]);
+    showTeams(true);
+    renderTeams();
+    return;
+  }
+  // A person is wherever the first thing they own is.
+  if (ROLE_KINDS.includes(target.type)) {
+    const [owned] = roleMembers(record);
+    if (owned) centerOn(owned.kind, owned.record.id);
+    return;
+  }
   centerOn(target.type, record.id);
 }
 
@@ -2038,6 +2338,9 @@ const DELETE_LABELS = {
   touchpoint: 'Delete touchpoint',
   actor: 'Delete actor',
   connector: 'Delete connector',
+  team: 'Delete team',
+  productRole: 'Remove product role',
+  engineeringRole: 'Remove engineering role',
 };
 
 const resetShapesButton = document.getElementById('reset-shapes');
@@ -2099,6 +2402,8 @@ function renderAll(reason) {
   renderAssistant(reason);
   renderPalette();
   renderLayerControl();
+  renderTeams();
+  renderSlideshow(); // after render(): a slide's picture is the diagram's, as it was just drawn
   statsBar.textContent = [
     ...(store.areas.length ? [counted('area', store.areas.length)] : []),
     `${store.domains.length} domains`,
@@ -2107,6 +2412,9 @@ function renderAll(reason) {
     ...(store.touchpoints.length ? [`${store.touchpoints.length} touchpoints`] : []),
     ...(store.actors.length ? [`${store.actors.length} actors`] : []),
     `${store.connectors.length} connectors`,
+    ...(store.teams.length ? [counted('team', store.teams.length)] : []),
+    ...(store.productRoles.length ? [counted('product role', store.productRoles.length)] : []),
+    ...(store.engineeringRoles.length ? [counted('engineering role', store.engineeringRoles.length)] : []),
   ].join(' · ');
   showSelectionActions();
   writeHash();
@@ -2204,12 +2512,19 @@ function showColumn(which) {
 undoStack.init({ apply: applyUndo, onChange: keepSession });
 
 initDetails({
-  onPatch: patch,
+  onPatch: (type, id, body, was) => patch(type, id, body, 'Saving', was),
   // The names an Owner box offers. A viewer is not shown the list, and types.
   onPeople: listPeople,
   onArea: placeInArea,
   onShow: showOnMap,
   onUnplaceFeature: unplaceFeature,
+  onPickTeam: pickTeam,
+  onTeamMember: teamMember,
+  onNewTeam: (kind, id) => addTeam({ kind, id }),
+  onRoleMember: roleMember,
+  onRoleCardsBack: roleCardsBack,
+  onNewRole: (roleKind, kind, id) => addRole(roleKind, [{ kind, id }]),
+  onPick: (type, id) => select(type, id),
   onMapPatch: (changes) => patchMap(changes, 'Describing the map'),
   onLive: () => { render(); renderMenu(); },
   onStatus: status,
@@ -2270,6 +2585,7 @@ const assistantWasOpen = initAssistant({
 initTextDialog('getting-around');
 initTextDialog('about');
 initTextDialog('profile');
+initTextDialog('settings');
 initTextDialog('versions');
 initTextDialog('people');
 initTextDialog('assistant-model');
@@ -2338,6 +2654,7 @@ initDiagram({
       },
     'Moving the line end'),
   // Shaped by hand, so the line keeps the bends it was given.
+  moveRoleCard,
   shapeConnector: (id, bendPoints) => patch(
     'connector', id, { bendPoints, anchored: true }, 'Bending the line'),
   openKebab,
@@ -2507,6 +2824,14 @@ document.getElementById('export-svg').addEventListener('click', async () => {
 const importFile = document.getElementById('import-file');
 document.getElementById('import-map').addEventListener('click', () => importFile.click());
 
+// Getting around and the three file buttons live in Settings, and each is the
+// last thing done there: the dialog steps aside so that what the press did —
+// the shortcuts opened, the footer saying Exported, the map replaced — is in
+// view and not behind it.
+for (const id of ['getting-around', 'export-map', 'export-svg', 'import-map']) {
+  document.getElementById(id).addEventListener('click', () => document.getElementById('settings-dialog').close());
+}
+
 importFile.addEventListener('change', async () => {
   const [file] = importFile.files ?? [];
   importFile.value = ''; // so picking the same file twice still fires
@@ -2562,7 +2887,7 @@ window.addEventListener('keydown', async (event) => {
   // Behind the palette editor, Getting around or About the map takes no keys
   // but undo: Esc belongs to the dialog, and Delete must not reach a selection
   // that cannot be seen.
-  if (paletteOpen() || textDialogOpen()) return;
+  if (paletteOpen() || textDialogOpen() || slideshowOpen()) return;
 
   if (event.key === 'Escape') {
     closeKebab();
@@ -2769,6 +3094,7 @@ applyEditMode();
 Promise.all([applySettings(), whoAmI()])
   .then(async ([, me]) => {
     role = me.role;
+    myId = me.id;
     assistantModel = me.assistant ?? null;
     showIdentity(me, (message) => status(message, true));
     initPeople({ id: me.id, role: me.role }, { onChange: reloadPeople });

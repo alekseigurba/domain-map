@@ -26,12 +26,26 @@
 // for the reason it always has — an app from before would read past the list
 // and write the map back without it, and would take a line to a domain for a
 // line to a capability it cannot find. Versions 1 to 4 still read, as a map
-// whose capabilities hold nothing. Writing is always version 5.
+// whose capabilities hold nothing.
+//
+// Version 6 added teams: who works on what, written as a list of their own —
+// a team is no shape, so it sits under none — each naming the areas, the
+// domains and the capabilities it is on by their keys. With them came the
+// people who lead a part of the map — `productRoles` and `engineeringRoles`,
+// two lists of the same shape, each person naming the areas and the domains
+// they own, and where their card on one of those has been moved, where it was
+// put — and the two layers their cards are drawn on. It also let an
+// area, a domain and a capability say what their slide shows of them, and name
+// a picture uploaded for it. The number moved for the teams and the people: an
+// app from before would read past the lists and write the map back without
+// them, and neither is a detail of how something is drawn. Versions 1 to 5
+// still read, as a map with no teams and nobody named. Writing is always
+// version 6.
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';
 
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
 
 /** A position as the file writes it: two whole numbers, "x,y". */
 export const position = (x, y) => `${Math.round(x)},${Math.round(y)}`;
@@ -87,6 +101,19 @@ const weightOf = (record) =>
 /** Drop the fields that were never set, so the file carries only what it means. */
 const compact = (record) =>
   Object.fromEntries(Object.entries(record).filter(([, value]) => value != null));
+
+/** What a shape's slide shows of it, written only when it is not the shape by itself. */
+const postcardOf = (record) =>
+  (record.postcard && record.postcard !== rules.DEFAULT_POSTCARD ? record.postcard : null);
+
+/**
+ * What a shape says about its slide, for the `shape` it is written under: what
+ * the slide shows, when that is not the shape by itself, and the picture
+ * uploaded for it. The name only — the file is in data/pictures/, as an icon's
+ * is in data/icons/ — and kept while the slide shows something else, so that
+ * going back to the picture does not mean uploading it again.
+ */
+const slideOf = (record) => ({ postcard: postcardOf(record), picture: record.picture || null });
 
 /** How a feature's bubble leans, written only when it is not lying wide, as one always did. */
 const leanOf = (feature) =>
@@ -177,6 +204,8 @@ export function fromDocument(document_) {
         fontSize: node.shape?.size,
         titleScale: node.shape?.titleScale,
         opacity: node.shape?.opacity,
+        postcard: node.shape?.postcard,
+        picture: node.shape?.picture,
       }),
     };
   });
@@ -209,6 +238,8 @@ export function fromDocument(document_) {
         titleScale: node.shape?.titleScale,
         titleWidth: node.shape?.titleWidth,
         opacity: node.shape?.opacity,
+        postcard: node.shape?.postcard,
+        picture: node.shape?.picture,
       }),
     };
   });
@@ -258,6 +289,8 @@ export function fromDocument(document_) {
         areaId: home === null ? areaNamed(node) : null,
         stretch: node.shape?.stretch,
         lobeScale: node.shape?.lobe,
+        postcard: node.shape?.postcard,
+        picture: node.shape?.picture,
         x: home === null && at ? Math.round(at.x) : undefined,
         y: home === null && at ? Math.round(at.y) : undefined,
         lobeX: home !== null && at ? Math.round(at.x) : undefined,
@@ -375,6 +408,25 @@ export function fromDocument(document_) {
   // under their owners.
   for (const node of document_.connectors ?? []) take(node);
 
+  // A team names what it is on by key, a list a kind. In memory that is one
+  // list of kinds and ids, in the order a team's members are read: areas, then
+  // domains, then capabilities. A key that names nothing is read past — the
+  // validator has refused the file that had one.
+  const memberIds = { area: areaIds, domain: domainIds, capability: capabilityIds };
+  const teams = (document_.teams ?? []).map((node) => ({
+    id: crypto.randomUUID(),
+    ...rules.withDefaults(rules.TEAM_DEFAULTS, {
+      title: node.title?.trim(),
+      description: node.description,
+      owner: node.owner,
+      ownerId: node.ownerId,
+      type: node.type,
+      members: rules.TEAM_MEMBER_KINDS.flatMap((kind) => (node[TEAM_LISTS[kind]] ?? [])
+        .map((key) => ({ kind, id: memberIds[kind].get(key) }))
+        .filter((member) => member.id)),
+    }),
+  }));
+
   return {
     title: document_.title?.trim() || 'Domain map',
     // What the business is. A field the file may leave out, so a map written
@@ -390,13 +442,52 @@ export function fromDocument(document_) {
     touchpoints,
     actors,
     connectors,
+    teams,
+    ...Object.fromEntries(rules.ROLE_KINDS.map((kind) => [ROLE_LISTS[kind], readRoles(document_[ROLE_LISTS[kind]], memberIds)])),
   };
 }
+
+/** Where each discipline's people are written, and held: the same name in the file and in the store. */
+const ROLE_LISTS = { productRole: 'productRoles', engineeringRole: 'engineeringRoles' };
+
+/**
+ * The people of one discipline, as the file has them: a name, the role, the
+ * icon, and what each owns by key. One who owns nothing the file holds is
+ * drawn nowhere, and is not read.
+ */
+function readRoles(list, memberIds) {
+  return (list ?? []).map((node) => ({
+    id: crypto.randomUUID(),
+    ...rules.withDefaults(rules.ROLE_DEFAULTS, {
+      title: node.title?.trim(),
+      description: node.description,
+      type: node.type,
+      icon: node.icon,
+      members: rules.ROLE_ON_KINDS.flatMap((kind) => (node[TEAM_LISTS[kind]] ?? [])
+        .map((owned) => {
+          const id = memberIds[kind].get(ownedKey(owned));
+          return rules.cardPlaced(owned) ? { kind, id, x: owned.x, y: owned.y } : { kind, id };
+        })
+        .filter((member) => member.id)),
+    }),
+  })).filter((role) => role.members.length > 0);
+}
+
+/**
+ * What a person owns is a list of keys — and where their card on one of those
+ * shapes has been put somewhere by hand, that entry is `{ key, x, y }` in
+ * place of the bare key, the position measured from the shape. A file written
+ * by hand need never say it: a bare key is a card the map hangs by itself.
+ */
+const ownedKey = (owned) => (typeof owned === 'string' ? owned : owned?.key);
+
+/** Where a team's file entry lists each kind of thing it is on. */
+const TEAM_LISTS = { area: 'areas', domain: 'domains', capability: 'capabilities' };
 
 /** One list of Type choices per kind, with the kinds a file left out empty. */
 export function readTypes(types) {
   const read = {};
-  for (const kind of rules.ELEMENT_KINDS) {
+  for (const kind of rules.TYPED_KINDS) {
     const choices = types?.[kind];
     read[kind] = Array.isArray(choices)
       ? [...new Set(choices.filter((choice) => typeof choice === 'string' && choice.trim()))]
@@ -433,6 +524,7 @@ export function toDocument(state) {
         weight: area.fontWeight,
         titleScale: area.titleScale,
         opacity: area.opacity,
+        ...slideOf(area),
       }),
     });
   });
@@ -460,6 +552,7 @@ export function toDocument(state) {
         titleScale: domain.titleScale,
         titleWidth: domain.titleWidth,
         opacity: domain.opacity,
+        ...slideOf(domain),
       }),
     });
   });
@@ -527,6 +620,7 @@ export function toDocument(state) {
         order: capability.sortIndex,
         iconPlacement: placementOf(capability),
         iconWeight: weightOf(capability),
+        ...slideOf(capability),
       }),
       // Only when it holds any, and last: the capability first, then what is in it.
       features: held.length === 0 ? null : held,
@@ -648,9 +742,28 @@ export function toDocument(state) {
     }));
 
   const types = Object.fromEntries(
-    rules.ELEMENT_KINDS
+    rules.TYPED_KINDS
       .map((kind) => [kind, state.types?.[kind] ?? []])
       .filter(([, choices]) => choices.length > 0));
+
+  // A team, with what it is on as keys: a list for each kind it is on any of,
+  // and none for the kinds it is not. A shape that has been deleted since the
+  // team was put on it has no key, and is where its name is let go.
+  const memberKeys = { area: areaKeys, domain: domainKeys, capability: capabilityKeys };
+  const teamSeen = new Map();
+  const teams = (state.teams ?? []).map((team) => compact({
+    key: unique(teamSeen, slugify(team.title)),
+    title: team.title,
+    description: blank(team.description),
+    owner: blank(team.owner),
+    ownerId: blank(team.ownerId),
+    type: blank(team.type),
+    ...Object.fromEntries(rules.TEAM_MEMBER_KINDS.map((kind) => {
+      const keys = (team.members ?? []).filter((member) => member.kind === kind)
+        .map((member) => memberKeys[kind].get(member.id)).filter(Boolean);
+      return [TEAM_LISTS[kind], keys.length === 0 ? null : keys];
+    })),
+  }));
 
   return compact({
     version: CURRENT_VERSION,
@@ -673,7 +786,43 @@ export function toDocument(state) {
     touchpoints: touchpoints.length === 0 ? null : touchpoints,
     actors: actors.length === 0 ? null : actors,
     connectors,
+    // Last, and only when there are any: who works on the map comes after the
+    // map, and a map nobody has put a team on says nothing about teams.
+    teams: teams.length === 0 ? null : teams,
+    // And who leads it, the same way: a list a discipline, only when it names anyone.
+    ...Object.fromEntries(rules.ROLE_KINDS.map((kind) => {
+      const roles = writeRoles(state[ROLE_LISTS[kind]], memberKeys);
+      return [ROLE_LISTS[kind], roles.length === 0 ? null : roles];
+    })),
   });
+}
+
+/**
+ * The people of one discipline, with what each owns as keys. A shape deleted
+ * since has no key, and a person left owning nothing is where they are let go:
+ * they were drawn nowhere, and a file should not keep what the map cannot show.
+ */
+function writeRoles(list, memberKeys) {
+  const seen = new Map();
+  return (list ?? []).map((role) => {
+    const owned = Object.fromEntries(rules.ROLE_ON_KINDS.map((kind) => {
+      const keys = (role.members ?? []).filter((member) => member.kind === kind)
+        .map((member) => {
+          const key = memberKeys[kind].get(member.id);
+          return key && rules.cardPlaced(member) ? { key, x: member.x, y: member.y } : key;
+        }).filter(Boolean);
+      return [TEAM_LISTS[kind], keys.length === 0 ? null : keys];
+    }));
+    if (Object.values(owned).every((keys) => keys === null)) return null;
+    return compact({
+      key: unique(seen, slugify(role.title)),
+      title: role.title,
+      description: blank(role.description),
+      type: blank(role.type),
+      icon: role.icon || null,
+      ...owned,
+    });
+  }).filter(Boolean);
 }
 
 // --- writing it out ----------------------------------------------------------
@@ -771,6 +920,8 @@ export function validate(document_) {
       titleScale: shape?.titleScale,
       titleAngle: shape?.titleAngle,
       opacity: shape?.opacity,
+      postcard: shape?.postcard,
+      picture: shape?.picture,
     });
     if (error) return `Area '${area.key}': ${error}`;
   }
@@ -804,6 +955,8 @@ export function validate(document_) {
       titleScale: shape?.titleScale,
       titleWidth: shape?.titleWidth,
       opacity: shape?.opacity,
+      postcard: shape?.postcard,
+      picture: shape?.picture,
     });
     if (error) return `Domain '${domain.key}': ${error}`;
   }
@@ -846,6 +999,8 @@ export function validate(document_) {
       icon: capability.icon,
       iconPlacement: shape?.iconPlacement,
       iconWeight: shape?.iconWeight,
+      postcard: shape?.postcard,
+      picture: shape?.picture,
     });
     if (error) return `Capability '${capability.key}': ${error}`;
 
@@ -976,6 +1131,67 @@ export function validate(document_) {
   for (const connector of document_.connectors ?? []) {
     const wrong = checkLine(connector);
     if (wrong) return wrong;
+  }
+
+  // Teams: a key each, the words every element is checked for, and nothing
+  // named that is not in the file.
+  if (document_.teams != null && !Array.isArray(document_.teams)) return 'Teams must be a list.';
+  if ((document_.teams?.length ?? 0) > rules.MAX_TEAMS)
+    return `The file holds ${document_.teams.length} teams; a map holds at most ${rules.MAX_TEAMS}.`;
+  const teamKeys = new Set();
+  const named = { area: areaKeys, domain: domainKeys, capability: capabilityKeys };
+  for (const team of document_.teams ?? []) {
+    if (!team?.key || team.key.trim().length === 0) return 'Every team needs a key.';
+    if (teamKeys.has(team.key)) return `Two teams share the key '${team.key}'.`;
+    teamKeys.add(team.key);
+
+    const wrong = rules.validateTeam({
+      title: team.title,
+      description: team.description,
+      owner: team.owner,
+      ownerId: team.ownerId,
+      type: team.type,
+    });
+    if (wrong) return `Team '${team.key}': ${wrong}`;
+
+    for (const kind of rules.TEAM_MEMBER_KINDS) {
+      const list = team[TEAM_LISTS[kind]];
+      if (list != null && !Array.isArray(list)) return `Team '${team.key}': ${TEAM_LISTS[kind]} must be a list.`;
+      const stray = (list ?? []).find((key) => !named[kind].has(key));
+      if (stray !== undefined) return `Team '${team.key}' is on ${kind} '${stray}', which is not in the file.`;
+    }
+  }
+
+  // The people in roles, a discipline at a time: checked as the teams are.
+  for (const roleKind of rules.ROLE_KINDS) {
+    const listed = document_[ROLE_LISTS[roleKind]];
+    const label = ROLE_LISTS[roleKind];
+    if (listed != null && !Array.isArray(listed)) return `${label} must be a list.`;
+    if ((listed?.length ?? 0) > rules.MAX_ROLES)
+      return `The file names ${listed.length} people under ${label}; a map names at most ${rules.MAX_ROLES}.`;
+    const roleKeys = new Set();
+    for (const role of listed ?? []) {
+      if (!role?.key || role.key.trim().length === 0) return `Everyone under ${label} needs a key.`;
+      if (roleKeys.has(role.key)) return `Two people under ${label} share the key '${role.key}'.`;
+      roleKeys.add(role.key);
+
+      const wrong = rules.validateRole({
+        title: role.title, description: role.description, type: role.type, icon: role.icon,
+      });
+      if (wrong) return `${label} '${role.key}': ${wrong}`;
+
+      for (const kind of rules.ROLE_ON_KINDS) {
+        const list = role[TEAM_LISTS[kind]];
+        if (list != null && !Array.isArray(list)) return `${label} '${role.key}': ${TEAM_LISTS[kind]} must be a list.`;
+        const stray = (list ?? []).find((owned) => !named[kind].has(ownedKey(owned)));
+        if (stray !== undefined)
+          return `${label} '${role.key}' owns ${kind} '${ownedKey(stray)}', which is not in the file.`;
+        for (const owned of list ?? []) {
+          const misplaced = typeof owned === 'string' ? null : rules.validateCardPlace(owned);
+          if (misplaced) return `${label} '${role.key}', on ${kind} '${owned.key}': ${misplaced}`;
+        }
+      }
+    }
   }
 
   return null;

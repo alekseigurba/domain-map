@@ -4,9 +4,12 @@
 import {
   store, selected, find, patchLocal, connectorLabel, slugFor, oneLine, withBreaks,
   typesFor, layerOf, layerTitle, connectorScope, CONNECTOR_NAMES,
-  areaOf, membersOf, mayJoinArea, featuresOf, domainOfEnd,
+  areaOf, membersOf, mayJoinArea, featuresOf, domainOfEnd, teamsOn, teamsThrough, teamMembers,
+  rolesOn, roleMembers, listOf,
 } from './store.js';
-import { AREA_SHAPE } from './rules.js';
+import {
+  AREA_SHAPE, TEAM_MEMBER_KINDS, ROLE_KINDS, ROLE_ON_KINDS, cardPlaced, FIGURES, figureLabel,
+} from './rules.js';
 import {
   COLORS, FONT_SIZES, CAPABILITY_FONT_SIZES, FONT_WEIGHTS, SIZE_SCALES, TITLE_SCALES,
   LINE_STYLES, DEFAULT_FONT_WEIGHT,
@@ -181,6 +184,21 @@ function liveText(type, record, key, {
 
   let before = record[key] ?? '';
   const value = () => stored(input.value, before);
+  // What the map held before the words now being sent. The field writes to the
+  // map as it is typed into, so by the time a change is handed over to be
+  // recorded the record already says the new thing: asked then what it used to
+  // say, it answers with what was just typed, and undo put back the very words
+  // it was meant to take away. So the field keeps what it last handed over.
+  let kept = before;
+  const send = () => {
+    const now = value();
+    // Leaving a field that has nothing new in it — one already handed over on
+    // a pause, or never typed into — is no change: handed over all the same,
+    // it was a step of undo that undid nothing, in front of the one that did.
+    if (now === kept) return;
+    handlers.onPatch?.(type, record.id, { [key]: now }, { [key]: kept });
+    kept = now;
+  };
 
   if (!editMode) {
     input.classList.add('field__input--quiet');
@@ -205,16 +223,17 @@ function liveText(type, record, key, {
     onInput?.();
     handlers.onLive?.();
     clearTimeout(debounce);
-    debounce = setTimeout(() => handlers.onPatch?.(type, record.id, { [key]: value() }), 400);
+    debounce = setTimeout(send, 400);
   });
   input.addEventListener('focus', () => {
     editingId = record.id;
     before = record[key] ?? '';
+    kept = before;
   });
   input.addEventListener('blur', () => {
     editingId = null;
     clearTimeout(debounce);
-    handlers.onPatch?.(type, record.id, { [key]: value() });
+    send();
   });
   return input;
 }
@@ -341,18 +360,31 @@ function ownerField(type, record) {
   }
 
   const change = () => ({ owner: input.value, ownerId: personNamed(input.value)?.id ?? null });
+  // Who the map said owned it before the name now being sent, as a typed field
+  // keeps what it last handed over: the record already holds the new name.
+  let kept = { owner: record.owner ?? '', ownerId: record.ownerId ?? null };
+  const send = () => {
+    const now = change();
+    // Nothing new since it was last handed over: no change, and no step of undo for one.
+    if (now.owner === kept.owner && now.ownerId === kept.ownerId) return;
+    handlers.onPatch?.(type, record.id, now, kept);
+    kept = now;
+  };
   input.addEventListener('input', () => {
     patchLocal(type, record.id, change());
     sayWho();
     handlers.onLive?.();
     clearTimeout(debounce);
-    debounce = setTimeout(() => handlers.onPatch?.(type, record.id, change()), 400);
+    debounce = setTimeout(send, 400);
   });
-  input.addEventListener('focus', () => { editingId = record.id; });
+  input.addEventListener('focus', () => {
+    editingId = record.id;
+    kept = { owner: record.owner ?? '', ownerId: record.ownerId ?? null };
+  });
   input.addEventListener('blur', () => {
     editingId = null;
     clearTimeout(debounce);
-    handlers.onPatch?.(type, record.id, change());
+    send();
   });
   return wrapper;
 }
@@ -464,7 +496,16 @@ async function loadIcons({ refresh = false } = {}) {
  * keeps the file name only — the file itself lives in data/icons/, which is why
  * an exported map names its icons rather than carrying them.
  */
-function iconField(type, record) {
+const iconField = (type, record) =>
+  iconPicker(record.icon, (name) => patch(type, record, { icon: name }), { figures: ROLE_KINDS.includes(type) });
+
+/**
+ * The picker itself: a preview, the library as a list, and a button that adds a
+ * file to the library and picks it. `current` is the name held now, or none,
+ * and `onPick` is told the name chosen — empty for none.
+ */
+function iconPicker(current, onPick, { figures = false } = {}) {
+  const record = { icon: current ?? null };
   const wrapper = document.createElement('div');
   wrapper.className = 'icon-picker';
 
@@ -482,23 +523,38 @@ function iconField(type, record) {
 
   const chooser = document.createElement('select');
   chooser.className = 'field__select';
+  const choice = (value, label) => {
+    const node = document.createElement('option');
+    node.value = value;
+    node.textContent = label;
+    node.selected = value === (record.icon ?? '');
+    return node;
+  };
   const fill = (names) => {
-    chooser.replaceChildren();
-    for (const option of [{ value: '', label: 'None' },
-      ...names.map((name) => ({ value: name, label: name }))]) {
-      const node = document.createElement('option');
-      node.value = option.value;
-      node.textContent = option.label;
-      node.selected = option.value === (record.icon ?? '');
-      chooser.appendChild(node);
+    chooser.replaceChildren(choice('', 'None'));
+    if (!figures) {
+      chooser.append(...names.map((name) => choice(name, name)));
+      return;
     }
+    // For a person the app's own figures come first, under a heading of their
+    // own: they are who most cards wear, and they are there before anything
+    // has been added to the library.
+    const shelf = (label, options) => {
+      if (options.length === 0) return;
+      const group = document.createElement('optgroup');
+      group.label = label;
+      group.append(...options);
+      chooser.append(group);
+    };
+    shelf('Figures', FIGURES.map((name) => choice(name, figureLabel(name))));
+    shelf('Library', names.filter((name) => !FIGURES.includes(name)).map((name) => choice(name, name)));
   };
   fill(iconNames ?? (record.icon ? [record.icon] : []));
   if (!iconNames) loadIcons().then(fill);
 
   chooser.addEventListener('change', () => {
-    // Empty is how "no icon" reaches the server, which reads it as a clear.
-    patch(type, record, { icon: chooser.value });
+    // Empty is how "no icon" reaches the store, which reads it as a clear.
+    onPick(chooser.value);
     paint(chooser.value);
   });
 
@@ -531,7 +587,7 @@ function iconField(type, record) {
       await loadIcons({ refresh: true });
       fill(iconNames);
       chooser.value = name;
-      patch(type, record, { icon: name });
+      onPick(name);
       paint(name);
     } catch (error) {
       handlers.onStatus?.(error.message ?? String(error), true);
@@ -676,7 +732,7 @@ export function lineShapeFields(record) {
  * Browsing shows the value and nothing to change it with, like every other
  * field here.
  */
-function typeField(kind, record) {
+function typeField(kind, record, noun = 'type') {
   if (!editMode) return staticText(record.type || '—');
 
   const wrapper = document.createElement('div');
@@ -697,7 +753,7 @@ function typeField(kind, record) {
   // what you meant this element to be.
   const adding = document.createElement('input');
   adding.className = 'field__input type-pick__new';
-  adding.placeholder = 'Add a type…';
+  adding.placeholder = `Add a ${noun}…`;
   adding.maxLength = 60;
   adding.title = 'Type a new choice and press Enter';
 
@@ -720,7 +776,7 @@ function typeField(kind, record) {
   remove.type = 'button';
   remove.className = 'btn btn--icon type-pick__remove';
   remove.textContent = '−';
-  remove.title = 'Remove the selected type from the list';
+  remove.title = `Remove the selected ${noun} from the list`;
   remove.disabled = !record.type || !choices.includes(record.type);
   remove.addEventListener('click', () => handlers.onRemoveType?.(kind, record.type));
 
@@ -771,6 +827,291 @@ function memberChips(members) {
     row.appendChild(button);
   }
   return row;
+}
+
+// --- teams -------------------------------------------------------------------
+
+/** A chip with a way off it at its end: a name to press, and in Edit mode a × that takes it away. */
+function chipWithOut(label, title, onPress, out) {
+  const holder = document.createElement('span');
+  holder.className = 'details__pick';
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'btn btn--chip details__member';
+  chip.textContent = label;
+  chip.title = title;
+  chip.addEventListener('click', onPress);
+  holder.append(chip);
+  if (editMode && out) {
+    const off = document.createElement('button');
+    off.type = 'button';
+    off.className = 'details__out';
+    off.textContent = '×';
+    off.title = out.title;
+    off.setAttribute('aria-label', out.title);
+    off.addEventListener('click', out.press);
+    holder.append(off);
+  }
+  return holder;
+}
+
+/** What each kind a team may be on is called, one and many. */
+const TEAM_ON = { area: ['area', 'Areas'], domain: ['domain', 'Domains'], capability: ['capability', 'Capabilities'] };
+
+/**
+ * The teams of an area, a domain or a capability: the ones on it, each a chip
+ * that picks the team and lights up what it is on, and after them the ones it
+ * has through its domain or its area. In Edit mode a list puts another team on
+ * it, or makes a new one that starts on it. Browsing, a shape with no team says
+ * nothing about teams.
+ */
+function teamsSection(kind, record) {
+  const direct = teamsOn(kind, record.id);
+  // With where each comes from, since those are not this shape's to take off.
+  const through = teamsThrough(kind, record);
+  if (!editMode && direct.length + through.length === 0) return null;
+
+  const row = document.createElement('div');
+  row.className = 'details__members';
+  for (const team of direct) {
+    row.append(chipWithOut(oneLine(team.title), `Show what ${oneLine(team.title)} is on`,
+      () => handlers.onPickTeam?.(team.id),
+      { title: `Take ${oneLine(team.title)} off this ${kind}`, press: () => handlers.onTeamMember?.(team.id, kind, record.id, false) }));
+  }
+  for (const { team, via } of through) {
+    const chip = chipWithOut(oneLine(team.title), `On ${oneLine(via.title)}, which holds this. Show what ${oneLine(team.title)} is on`,
+      () => handlers.onPickTeam?.(team.id));
+    chip.classList.add('details__pick--through');
+    row.append(chip);
+  }
+  const fields = direct.length + through.length ? [row] : [];
+
+  if (editMode) {
+    const others = store.teams.filter((team) => !direct.includes(team));
+    const NEW = ' new';
+    const picker = select(
+      [{ value: '', label: 'Put a team on it…' },
+        ...others.map((team) => ({ value: team.id, label: oneLine(team.title) })),
+        { value: NEW, label: 'A new team…' }],
+      '',
+      (value) => {
+        if (value === NEW) handlers.onNewTeam?.(kind, record.id);
+        else if (value) handlers.onTeamMember?.(value, kind, record.id, true);
+      },
+    );
+    picker.setAttribute('aria-label', 'Put a team on it');
+    fields.push(picker);
+  }
+  return section('Teams', fields, 'Holds');
+}
+
+/**
+ * What a team is on, as names to press — each shows its shape on the map — and
+ * in Edit mode a × on each, and a list of everything a team may be put on that
+ * this one is not on yet: the areas, the domains, the capabilities.
+ */
+function teamOnField(team) {
+  const members = teamMembers(team);
+  const row = document.createElement('div');
+  row.className = 'details__members';
+  for (const { kind, record } of members) {
+    row.append(chipWithOut(oneLine(record.title), `Show this ${kind} on the map`,
+      () => handlers.onShow?.(kind, record.id),
+      { title: `Take the team off ${oneLine(record.title)}`, press: () => handlers.onTeamMember?.(team.id, kind, record.id, false) }));
+  }
+  const fields = members.length ? [row] : [staticText('Nothing yet.')];
+  if (!editMode) return fields;
+
+  const picker = document.createElement('select');
+  picker.className = 'field__select';
+  picker.setAttribute('aria-label', 'Put the team on something');
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = 'Put it on…';
+  picker.append(first);
+  const isOn = (kind, id) => members.some((member) => member.kind === kind && member.record.id === id);
+  for (const kind of TEAM_MEMBER_KINDS) {
+    const free = (kind === 'area' ? store.areas : kind === 'domain' ? store.domains : store.capabilities)
+      .filter((record) => !isOn(kind, record.id));
+    if (free.length === 0) continue;
+    const group = document.createElement('optgroup');
+    group.label = TEAM_ON[kind][1];
+    for (const record of free) {
+      const option = document.createElement('option');
+      option.value = `${kind}:${record.id}`;
+      // Two capabilities may share a name, in two domains: the domain tells them apart.
+      const home = kind === 'capability' ? find('domain', record.domainId) : null;
+      option.textContent = home ? `${oneLine(record.title)} — ${oneLine(home.title)}` : oneLine(record.title);
+      group.append(option);
+    }
+    picker.append(group);
+  }
+  picker.addEventListener('change', () => {
+    const [kind, id] = picker.value.split(':');
+    if (id) handlers.onTeamMember?.(team.id, kind, id, true);
+  });
+  return [...fields, picker];
+}
+
+// --- people in roles ---------------------------------------------------------
+
+/** What each discipline is called: over its section on a shape, over a person's own fields, and in a sentence. */
+const ROLE_NAMES = {
+  productRole: { many: 'Product roles', one: 'Product role', says: 'product' },
+  engineeringRole: { many: 'Engineering roles', one: 'Engineering role', says: 'engineering' },
+};
+
+/** A person as a chip names them: their name, and the role they hold when they have been given one. */
+const roleSays = (role) => (role.type ? `${oneLine(role.title)} — ${role.type}` : oneLine(role.title));
+
+/**
+ * The people of one discipline who own an area or a domain: each a chip that
+ * picks them, and in Edit mode a × that takes the shape from them and a list
+ * that gives it to someone already on the map, or names someone new on it.
+ * Browsing, a shape nobody leads says nothing about who leads it.
+ */
+function rolesSection(roleKind, kind, record) {
+  const here = rolesOn(roleKind, kind, record.id);
+  if (!editMode && here.length === 0) return null;
+  const { many, says } = ROLE_NAMES[roleKind];
+
+  const row = document.createElement('div');
+  row.className = 'details__members';
+  for (const role of here) {
+    row.append(chipWithOut(roleSays(role), `Show ${oneLine(role.title)}'s details`,
+      () => handlers.onPick?.(roleKind, role.id),
+      {
+        title: `Take this ${kind} from ${oneLine(role.title)}`,
+        press: () => handlers.onRoleMember?.(roleKind, role.id, kind, record.id, false),
+      }));
+  }
+  const fields = here.length ? [row] : [];
+
+  if (editMode) {
+    const others = listOf(roleKind).filter((role) => !here.includes(role));
+    const NEW = ' new';
+    const picker = select(
+      [{ value: '', label: `Name who leads it for ${says}…` },
+        ...others.map((role) => ({ value: role.id, label: roleSays(role) })),
+        { value: NEW, label: 'Someone new…' }],
+      '',
+      (value) => {
+        if (value === NEW) handlers.onNewRole?.(roleKind, kind, record.id);
+        else if (value) handlers.onRoleMember?.(roleKind, value, kind, record.id, true);
+      },
+    );
+    picker.setAttribute('aria-label', `Name who leads it for ${says}`);
+    fields.push(picker);
+  }
+  return section(many, fields, 'Holds');
+}
+
+/**
+ * What a person owns, as names to press — each shows its shape on the map —
+ * and in Edit mode a × on each and a list of the areas and domains they do not
+ * own yet. The last thing they own has no ×: a person who owns nothing is
+ * nowhere on the map, and is taken off it with Remove instead.
+ */
+function roleOwnsField(roleKind, role) {
+  const owned = roleMembers(role);
+  const row = document.createElement('div');
+  row.className = 'details__members';
+  for (const { kind, record } of owned) {
+    row.append(chipWithOut(oneLine(record.title), `Show this ${kind} on the map`,
+      () => handlers.onShow?.(kind, record.id),
+      owned.length > 1
+        ? {
+          title: `Take ${oneLine(record.title)} from them`,
+          press: () => handlers.onRoleMember?.(roleKind, role.id, kind, record.id, false),
+        }
+        : null));
+  }
+  if (!editMode) return [row];
+
+  const picker = document.createElement('select');
+  picker.className = 'field__select';
+  picker.setAttribute('aria-label', 'Give them something else to own');
+  const first = document.createElement('option');
+  first.value = '';
+  first.textContent = 'Give them another…';
+  picker.append(first);
+  const owns = (kind, id) => owned.some((member) => member.kind === kind && member.record.id === id);
+  for (const kind of ROLE_ON_KINDS) {
+    const free = listOf(kind).filter((record) => !owns(kind, record.id));
+    if (free.length === 0) continue;
+    const group = document.createElement('optgroup');
+    group.label = TEAM_ON[kind][1];
+    for (const record of free) {
+      const option = document.createElement('option');
+      option.value = `${kind}:${record.id}`;
+      option.textContent = oneLine(record.title);
+      group.append(option);
+    }
+    picker.append(group);
+  }
+  picker.addEventListener('change', () => {
+    const [kind, id] = picker.value.split(':');
+    if (id) handlers.onRoleMember?.(roleKind, role.id, kind, id, true);
+  });
+  // A card that has been dragged somewhere stays there, so the way back to
+  // where the map would hang it is offered here — and only once there is a
+  // card to put back.
+  if (!role.members.some(cardPlaced)) return [row, picker];
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'btn btn--chip';
+  back.textContent = 'Put cards back';
+  back.title = 'Hang their cards by the names of what they own again';
+  back.addEventListener('click', () => handlers.onRoleCardsBack?.(roleKind, role.id));
+  return [row, picker, back];
+}
+
+/**
+ * A person's own fields: their name, the role they hold — picked from the
+ * roles the map's owner has typed in, with a box to type another — the icon
+ * their badge wears, and anything worth saying about them. The name box has
+ * the people list behind it, so someone who signs in to the map need not be
+ * spelt out; it is still only a name, and takes anyone.
+ */
+function roleSection(roleKind, role) {
+  const label = staticText(slugOf(roleKind, role));
+  const name = liveText(roleKind, role, 'title', {
+    onInput: () => { label.textContent = slugOf(roleKind, role); }, shown: oneLine,
+  });
+  if (people?.length) name.setAttribute('list', 'people-options');
+  return section(ROLE_NAMES[roleKind].one, [
+    field('Label', label),
+    field('Name', name),
+    field('Role', typeField(roleKind, role, 'role')),
+    ...(editMode ? [field('Icon', iconField(roleKind, role))] : []),
+    field('Description', liveText(roleKind, role, 'description', { multiline: true })),
+    meta([`Layer: ${layerNameOf(roleKind, role)}`]),
+  ], 'Metadata');
+}
+
+/** "2 domains", "1 capability": how much of each kind a team is on, for the facts under its fields. */
+function teamCounts(team) {
+  const members = teamMembers(team);
+  const counts = TEAM_MEMBER_KINDS
+    .map((kind) => [kind, members.filter((member) => member.kind === kind).length])
+    .filter(([, count]) => count > 0)
+    .map(([kind, count]) => `${TEAM_ON[kind][1]}: ${count}`);
+  return counts.length ? counts : ['On nothing yet'];
+}
+
+/**
+ * The words of a domain or a capability as fields — its title, what it is, who
+ * owns it, its Type — for wherever they are edited but the panel: a slide is
+ * one. They are the panel's own fields, so what is typed into either is typed
+ * into the map, the same way, with the same undo.
+ */
+export function wordFields(type, record) {
+  return [
+    field('Title', liveText(type, record, 'title', { shown: oneLine, stored: withBreaks })),
+    field('Description', liveText(type, record, 'description', { multiline: true, rows: 4 })),
+    field('Owner', ownerField(type, record)),
+    field('Type', typeField(type, record)),
+  ];
 }
 
 /** A domain title is bold by default; every label on a shape is not. */
@@ -847,6 +1188,7 @@ const HEADINGS = {
   feature: 'Feature',
   touchpoint: 'Touchpoint',
   actor: 'Actor',
+  team: 'Team',
 };
 
 function metadataSection(type, record, { lead = [], trail = [] }) {
@@ -906,7 +1248,17 @@ export function renderDetails() {
 
   const nodes = [];
 
-  if (type === 'feature') {
+  if (type === 'team') {
+    // A team is its words and what it is on. It has no shape: nothing is drawn
+    // for it, and picking it is what lights up the shapes it is on.
+    nodes.push(metadataSection(type, record, { trail: teamCounts(record) }));
+    nodes.push(section('Works on', teamOnField(record), 'Holds'));
+  } else if (ROLE_KINDS.includes(type)) {
+    // A person is their name, their role, their icon and what they own. The
+    // badge has no Shape section: it is drawn where its shape puts it.
+    nodes.push(roleSection(type, record));
+    nodes.push(section('Owns', roleOwnsField(type, record), 'Holds'));
+  } else if (type === 'feature') {
     // A feature is its words and where it belongs. It has no Shape section:
     // it is drawn in the room its capability has for it, in the order the
     // capability holds it — which the bracket keys change — and the one thing
@@ -945,6 +1297,7 @@ export function renderDetails() {
         memberChips(held.map((feature) => ({ kind: 'feature', record: feature }))),
       ], 'Holds'));
     }
+    nodes.push(teamsSection(type, record));
     nodes.push(section('Shape', [
       fontSizeField(type, record),
       weightField(type, record),
@@ -988,6 +1341,8 @@ export function renderDetails() {
       lead: [field('Layer', staticText(layerNameOf(type, record))), areaField(type, record)],
       trail: [`Capabilities: ${count}`],
     }));
+    for (const roleKind of ROLE_KINDS) nodes.push(rolesSection(roleKind, type, record));
+    nodes.push(teamsSection(type, record));
     nodes.push(section('Shape', [
       fontSizeField(type, record),
       weightField(type, record),
@@ -1015,6 +1370,8 @@ export function renderDetails() {
     // What it holds is what it is, so it comes before how it is drawn. Every
     // shape keeps its one row in the menu; this is where a team is read off.
     if (members.length) nodes.push(section('Holds', [memberChips(members)]));
+    for (const roleKind of ROLE_KINDS) nodes.push(rolesSection(roleKind, type, record));
+    nodes.push(teamsSection(type, record));
     nodes.push(section('Shape', [
       fontSizeField(type, record),
       weightField(type, record),

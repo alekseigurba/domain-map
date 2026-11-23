@@ -61,6 +61,7 @@ and charcoal are, for the dark theme. Everything else names what a color does he
 | `--ink-invert` | neutral-white | neutral-white | text on a control filled with the brand color or the orange |
 | `--selection` | focused-400 | `#4a9bff` | selection outlines, active controls |
 | `--selection-ink` | neutral-white | night-700 | text on a control filled with the selection |
+| `--role-product` / `--role-engineering` | `#d97a1f` / `#17938c` | `#f0a24e` / `#45c2b8` | which role layer a person's card is on: the band down its edge, and the same band on the layer's row in the layer control |
 | `--selected-row` | brand-200 | brand-400 at 38% over night-600 | the selected row in the tree, a step past the hover |
 | `--danger` | red-100 | `#3a1c1c` | the delete button's hover |
 | `--error` / `--error-ink` | red-400 / `#8c2f18` | `#f1857c` / `#f3a092` | a border or an edge on what went wrong, and the sentence that says what did |
@@ -70,7 +71,7 @@ and charcoal are, for the dark theme. Everything else names what a color does he
 
 ### The dark theme
 
-The page follows the system until someone chooses in the profile popup, and
+The page follows the system until someone chooses in Settings, and
 `data-theme` on the root says which theme it is in — put there before the first
 paint by `js/theme-first.js`, and after that by [`app/js/theme.js`](app/js/theme.js).
 The dark theme is the one block in `tokens.css` under `:root[data-theme="dark"]`:
@@ -226,6 +227,24 @@ margin an icon is drawn with costs nothing; which side of the title it sits on,
 and how the two share a shape, is `iconStack` in
 [`app/js/geometry.js`](../app/js/geometry.js).
 
+A person's icon, for their card on the **Product roles** and **Engineering
+roles** layers, is picked from the same library — and, ahead of it in the
+picker under a heading of their own, from the five **figures** the app
+carries: three women and two men, the app's own files under
+`app/icons/people/`, named in [`app/js/rules.js`](app/js/rules.js). They are
+not in the library, so every deployment has them whatever its library holds,
+and a file added to the library is never given one of their names. On a card
+the icon is
+drawn as its file has it — at twice the size of a capability's, its lines need
+no help, so there is no weight to set — and it is fitted by its ink, as on a
+shape, so that two icons drawn with different margins are two people of one
+size.
+
+A picture uploaded for a **slide** is a third thing again: kept under
+`data/pictures/`, apart from the icons so that the icon picker does not fill
+with photographs, named by the shape as an icon is, the same kinds of file,
+and up to 5 MB.
+
 Icons meant for the map read best drawn with a line of 1.5 to 2 on a 24-unit
 grid, round caps, in colours that hold against the palette. Button icons are
 another convention — a 16-unit grid and no stroke or colour of their own, as
@@ -260,65 +279,116 @@ triangle opens the rest. Its menu is `position: fixed` and placed in script,
 because the header does not scroll and would otherwise clip a long list.
 **Draw** follows the version chip and is a switch, not an action: pressed, it
 holds `--selected-row` and a marker is in hand over a locked map. It leaves the
-row while Edit is on, since the two are never on together. Then
-**Export** and **Import**, which move a JSON document in and out by hand, with
-**Export SVG** between them: the diagram as a picture, without the selection or
-the edit chrome, cropped to 10px around the ink. Unlike an exported map it
-carries its icons and its type inside it, since a picture has no server to ask,
-and whatever has been drawn on the map with a marker.
+row while Edit is on, since the two are never on together. **Teams** is the
+next switch, and holds `--selected-row` while its legend is on the stage; it
+stays in Edit mode, where the legend is also where a team is added.
+**Slideshow** beside it is an action: it opens the deck over the page.
 **Assistant** comes next, and is the other chip in the row that is a switch rather
 than an action: it swaps the details column for the Assistant and back. Unpressed
 it keeps its ink like the chips beside it — it is still a thing to press — and
 pressed it holds `--selected-row`, the fill the tree gives what is selected.
-**Getting around** and **About** close the row, and each opens the same modal as
-the palette editor, placed for what it holds. Getting around is one sentence on
-panning and zooming, then every shortcut: a table for each thing they act on —
-shapes, renaming a domain, connectors — under a small heading, and a paragraph
-for the palette editor. It is centered on the page and wide, since it is read on
-its own rather than beside anything. About holds the README's first chapter, copied into the
-page, pinned to the top right corner under the button, and wider than the
-palette editor, since it holds prose rather than controls.
+**About** closes the words, and opens the same modal as the palette editor,
+placed for what it holds: the README's first chapter, copied into the page,
+pinned to the top right corner under the button, and wider than the palette
+editor, since it holds prose rather than controls.
+
+Then two round things, which are not about the map. The **gear** is an
+icon-only chip and opens **Settings**, pinned under it like About, 400px: what
+is set up or looked up rather than done to the map, kept behind one button so
+that the row before it is only what is done while reading or editing. Its first
+row is **Theme**, an `--ink-soft` label and three chips — **System**,
+**Light**, **Dark** — sharing the row; the one in force is filled with
+`--selection`, as the palette's size is. It is whoever is looking's and not
+the map's: the browser keeps it, as it keeps which panels are folded. Under it
+a two-column grid, a button a row with a sentence in `--ink-soft` saying what
+it is for, the buttons all one width so the sentences start on one line:
+**Getting around**, **Users & access**, **Assistant model**, **Export**,
+**Export SVG** and **Import**. A button nobody here may press is not shown,
+and its sentence goes with it — a viewer's Settings is Theme, Getting around
+and the two exports; one that is only waiting, as Import is outside Edit mode,
+stays greyed with its sentence saying what it waits for. Pressing a row shuts
+Settings: what the press did is what should be in view. Close is alone in the
+foot.
+
+**Getting around** is one sentence on panning and zooming, then every
+shortcut: a table for each thing they act on — shapes, renaming a domain,
+connectors — under a small heading, and a paragraph for the palette editor. It
+is centered on the page and wide, since it is read on its own rather than
+beside anything. **Export** and **Import** move a JSON document out and in by
+hand. **Export SVG** is the diagram as a picture, without the selection or the
+edit chrome, cropped to 10px around the ink. Unlike an exported map it carries
+its icons and its type inside it, since a picture has no server to ask, and
+whatever has been drawn on the map with a marker.
 
 Last in the row, the **avatar**: initials in a circle, or a silhouette when
 sign-in is off. It opens the **profile popup**, pinned under it like About and
-narrower: the name, the address, one line saying the role and what it may do —
-*Viewer — sees the published map, and nothing else* — then **Theme**, and, in the foot, **Users & access**
-for everyone who works on the map, **Assistant model** for an administrator,
-**Sign out**, and Close on the right. With all four the row wraps, and Close is
-still the last thing in it.
-Theme is an `--ink-soft` label and three chips on one row — **System**, **Light**,
-**Dark** — sharing what the label leaves; the one in force is filled with
-`--selection`, as the palette's size is. It is here rather than in the header
-because it is whoever is looking's and not the map's: the browser keeps it, as
-it keeps which panels are folded.
+narrower, and holds only who is looking: the name, the address, one line
+saying the role and what it may do — *Viewer — sees the published map, and
+nothing else* — and, in the foot, **Sign out**, with Close on the right.
 
 ### Versions
 
 The chip in the header names the version open and tags it **Published** or, in
 the quiet badge, **Shared** — what Save would do is always in view, since a
-shared version is never saved over. The dialog it opens is centred and 920px
-wide — measured against a shared row with all five actions and all three tags,
-so nothing is behind a scroll bar — and holds two lists under small uppercase
-headings in the dialog title's style: **My sandbox**, then **Shared**. Each is
-the same table — name with its tags in a 16rem box, when, by whom, actions — and
-says so in its rows' place when it is empty. On a phone each row is a card: the
+shared version is never saved over. The dialog it opens is centred and 1100px
+wide — measured against a shared row with all five actions, all three tags and
+a group and a person named, so nothing is behind a scroll bar — and holds two
+lists under small uppercase headings in the dialog title's style: **My
+sandbox**, then **Shared**. Each is the same table — name with its tags in a
+16rem box, when, by whom, actions — and says so in its rows' place when it is
+empty. The Shared table has one column more, **Shared with**: *Everyone*, or a
+name or two and how many more (*Reviewers, Dan Draftsman +1*), groups first,
+cut at 22ch with the whole of it on the pointer. For whoever may change it —
+its sharer, or an administrator — the words are a chip (`.versions__audience`)
+that opens the dialog below; for everyone else, and on the published version,
+they are words. On a phone each row is a card: the
 name cut where the card ends, and the actions wrapping. A sandbox row offers
 Open, Rename, Share and Delete; a shared row Open, Take a copy, and then only
 what this person may do: Rename and Delete for whoever shared it and for a
 publisher, Publish for a publisher, so a row never carries a button that would
 be refused. The shared version this person put there wears a quiet **Yours** tag
-beside Published and Open. Every button in the dialog is held down while an
+beside Published and Open. Publish is held down on a version shared with fewer
+than everyone, and says why. Every button in the dialog is held down while an
 action is on its way, and the lists are read again after.
+
+**Who a version is shared with** is one small dialog (`.dialog--audience`,
+440px, centred over Versions), asked both when a version is shared from the
+sandbox and from the chip on a shared row — sharing with a few is the same
+gesture as sharing at all. A sentence in `--ink-soft` on what the button does;
+**Shared with**, the toggle, *Everyone* or *Selected*; and under *Selected*
+two lists to tick, **Groups** then **People**, each a bordered box that scrolls
+inside itself at about four rows so the toggle and the button stay in sight. A
+row is its whole width to press: a checkbox, the name in `--fw-semibold`, and
+under it in `--ink-soft` how many are in the group, or the person's address.
+People has the look-up box over it. A line under the lists counts what is
+ticked and says who sees the version regardless: *1 group and 2 people. You and
+the administrators see it as well.* Viewers are not offered, since a viewer
+sees the published map and nothing else, nor is whoever is asking. In the
+foot, at the right, Cancel and the action — **Share**, **Share again** or
+**Save**.
 
 ### Users & access
 
 Who may open the map and what each may do: the roster, a dialog laid out like
-Versions — centred, a table with a row a person — and reached from the profile
-popup, which shuts as it opens, since who may do what belongs with who you are.
-It is 1000px wide, wider than Versions: a row holds an address of any length, a
-role to choose and a button, and at 760px was read by scrolling sideways. The
-person's column is the one that gives way, wrapping a long name or address
-inside itself.
+Versions — centred, a table with a row a person — and reached from Settings,
+which shuts as it opens.
+It is 1000px wide: a row holds an address of any length, a role to choose and a
+button, and at 760px was read by scrolling sideways. The person's column is the
+one that gives way, wrapping a long name or address inside itself.
+
+Under the title a toggle, **People** or **Groups** (`.roster__views`, its chips
+the width of their words): the dialog's two views, each a `.roster__panel`. The
+key and Close are under both. **Groups** opens on a sentence saying what a
+group is for, then the same table with a row a group: its name in
+`--fw-semibold` over how many are in it, then its members as chips
+(`.roster__member`, on `--chrome`), wrapping onto as many lines as there are.
+For an administrator each chip carries a quiet **×** that takes that person out
+— `--ink-soft`, `--error-ink` under the pointer — and after the last chip a
+select, *Add someone…*, of everyone not in the group yet; the row's actions are
+**Rename** and **Delete**, which asks first and says that nothing shared with
+the group falls open to everyone. Under the table an administrator's form: a
+name box and **Add group**. Everyone else reads the same rows with nothing on
+them to press.
 
 Under the title, **finding someone** (`.roster__find`): a look-up box that takes
 the room, matching a name or an address as it is typed, then two selects the
@@ -467,6 +537,42 @@ no name to come first, and how it is drawn is most of what there is to set. It
 holds two rows — **Line**, the toggle, and **Anchor**, a checkbox — and they
 are the same two the pop-up beside the line holds, built by one function.
 
+A **Teams** section closes the details of an area, a domain and a capability:
+the teams on it as chips, each pressed to light the team up, and after them
+the ones it has through the domain or the area that holds it — the same chip
+with a dashed border in `--ink-soft`, since those are not this shape's to take
+off. In Edit mode a chip put on the shape itself ends in a **×**, quiet in
+`--ink-soft` until it is pointed at and `--error-ink` then, as the one on a
+group's member is; and a list under the chips puts another team on the shape,
+or makes a new one that starts there. Browsing, a shape with no team has no
+Teams section.
+
+An area and a domain also say who leads them, in two sections over Teams —
+**Product roles** and **Engineering roles** — each a row of the same chips,
+reading *name — role* and pressed to pick the person. In Edit mode a chip's ×
+takes the shape from them, and a list under the row gives it to someone
+already on the map or names someone new on it.
+
+A **person** picked has a first section headed **Product role** or
+**Engineering role**: **Name**, with the people list behind it as the Owner
+box has; **Role**, which is the Type picker under another word — the list,
+the − that takes a role nobody holds off it, and the box that adds one; the
+**Icon** picker a capability has; and a description. There is no Shape
+section: a card has no colour or size of its own to set, and where it is, is
+set by moving it. **Owns** lists the areas and domains they own as chips, each
+showing its shape on the map; the last of them has no ×, because a person who
+owns nothing is nowhere on the map and is taken off it with **Remove**
+instead. Once a card of theirs has been moved, a **Put cards back** chip
+stands under the list — beside what it changes, and only while there is a
+card to put back.
+
+A **team** picked has a first section headed **Team** — title, description,
+owner and Type, the fields every element has, and no Shape section, since
+nothing is drawn for it — and **Works on**: what it is on as the same chips,
+each showing its shape on the map, and in Edit mode a list of the areas, the
+domains and the capabilities it is not on yet, a capability with its domain
+after a dash where two share a name.
+
 With **nothing selected** the panel is about the map itself. A **Map** section
 holds **What the business is** — the map's own description, a text area like any
 other description — above the sentence that says nothing is selected. It opens
@@ -493,7 +599,7 @@ foot says so, there and only there.
 
 ### Assistant model
 
-An administrator's, from the profile popup: the model behind the Assistant,
+An administrator's, from Settings: the model behind the Assistant,
 switched on or off, and its key. A centred dialog, 420px, since it is one switch
 and one box. A sentence in the ordinary ink says how the model stands and where
 it is; then **Model**, the On / Off toggle; then **Key**, a line in `--ink-soft`
@@ -628,6 +734,84 @@ still be read, round at its ends and its corners, and as wide on the map as the
 marker was on screen when it was made. It takes no pointer: what is under it is
 still the thing pressed.
 
+A **role card** is a person on the map: their icon on the left, and beside it
+their name in the heading face with their role under it in the text face, in
+`--ink-soft`. It is drawn in the map's own units. The name is set at 56,
+between a capability's title and a domain's, so who leads a domain reads from
+the helicopter view where the domain does and is still not louder than what
+they lead; the role at seven tenths of that, since it is the name that is
+looked for. The icon is as tall as the name, the role and the air between them
+together — 104 — so the picture and the two lines are one block with one top
+and one foot, and it is that size whether or not the person has a role:
+someone with none has their name level with the middle of it. The card is
+`--paper` at 72%: it lies over the map, so enough paper to read a name against
+a line or a domain's colour, and little enough that what is under it is still
+there to be seen. Its rim is `--line` at 1px on screen, the quietest line the
+map has, there to say where the card ends and no more; the corners are rounded
+by three tenths of the name's size. Paper and not a colour of its own: the
+map's colours already say which domain is which, and the icon is what tells
+one role from another. Until an icon is picked the card wears a plain figure,
+head and shoulders, in `--ink-soft`.
+
+What tells one *layer* from the other is a **band** down the card's leading
+edge, eighteen hundredths of the name wide, inside the rim and round where
+the card's corners are: `--role-product` on a product card and
+`--role-engineering` on an engineering one. A product lead and an engineering
+lead on one domain are otherwise the same card, and a name is the last thing
+read from any distance. Warm against cool, the pair that stays two colours to
+nearly every eye, and neither is the selection's blue, the brand's green or
+the orange that says unsaved. The two layers' rows in the layer control wear
+the same band at their head, 3px, which is where the colours are learnt; the
+other layers have no colour and no band.
+
+A card starts where the map hangs it: outside the shape it is on, by the
+shape's name, so that it covers nothing of it — beyond an area's title, on the
+side away from the band, and off a domain's edge on the side its title sits.
+Several people on one shape are one column stacked away from it, **Product
+roles** nearest and **Engineering roles** after, all as wide as the widest so
+that the icons stand in a line, and a layer that is hidden gives up its places
+so the other closes up. Where two shapes sit close, the cards of one are moved
+further out from their own shape until they are clear of the other's — the
+domains' first, so that an area's people are the ones to step out — and clear
+of an area's name, which rides the border just where a domain inside it hangs
+its own. They only ever move further out: sideways would slide a card off the
+side its shape's name is on.
+
+In Edit mode a card is moved as a shape is, and from then on it is where it
+was put: kept as a distance from the shape it is on — a domain's own point,
+the name of an area — so it goes with the shape, leaves the column, which
+closes up behind it, and is as wide as what it says. Nothing the map hangs
+steps out of the way of a card that was put somewhere, since whoever put it
+there can see what it is over. In hand it is `--paper` at 92%: it is passing
+over everything on its way. The card has a shape's `move` cursor, answers the
+pointer with a `--line-strong` rim, and is rimmed in `--selection` at 2px
+while its person is picked. On a locked map it is pressed, not moved, and a
+drag that starts on one moves the map. While a team is lit the cards stand
+back with the rest of the map.
+
+While **Teams** is on, the **legend** has the top right corner, the one corner
+nothing else on the stage holds: 230px of the layer control's see-through
+paper with a `--line-strong` border, scrolling inside itself so that forty
+teams do not cover the map. A row is a button the width of the legend — the
+team's name, cut with an ellipsis where it runs out, and the number of shapes
+it is on in tabular figures. The row that is lit holds `--selection` with
+`--selection-ink`, as a pressed switch does; the one whose fields are open in
+the details panel is semibold, as the tree's selected row is. Teams stand
+under their **Type**, a small heading that is itself a button and turns
+`--selection` while every team of it is lit; teams with no Type come last
+under *Other teams*, and a map that names no Types has no headings at all. In
+Edit mode **Add a team** closes the legend.
+
+A **lit team** changes how the map is drawn and nothing about where anything
+is. What the team is on is ringed in `--selection` at 3px, a width held on
+screen so that it reads from the helicopter view — a domain's blob, a
+capability's oval, an area's border. What it reaches through that — the
+capabilities of its domain, whatever its area holds — is left exactly as the
+map draws it. Everything else, and every line with an end outside what is lit,
+stands back at 20% opacity: still there, still to be pressed, and plainly not
+the subject. A team has no colour of its own: the map's colours already say
+which domain is which, and a second coding laid over them would say neither.
+
 ### Levels and the zoom
 
 The stage draws more the closer it is looked at, and moves nothing to do it;
@@ -654,7 +838,10 @@ these are the elements that come of it.
   several it takes only the hover rim, and names itself in the chip with a
   third row in `--ink-soft` for the count.
 - **Pips** — `.cap__pip`, a row of dots along the foot of a shut capability
-  that holds features, one each up to seven, in the title's ink at 30%.
+  that holds features, one each up to seven, in the title's ink at 60%: each
+  nine hundredths of the oval's shorter radius across, so the count reads at
+  the zoom the map is usually looked at from, and smaller where a full row
+  would otherwise cross the rim of an oval that stands tall.
 - **An open capability** — `.cap--open`. Its name is `.cap__heading`, bold, in
   the crown of the oval at an eighth of the oval's shorter radius; its icon is
   not drawn.
@@ -698,6 +885,55 @@ scope's width in map units, drawn between two widths on screen:
 A new stage element that should keep its size on screen divides by `--k` the
 same way; one that belongs to the terrain is left in map units and scales with
 it.
+
+### Slideshow
+
+The map as a deck, over the whole page: a native `<dialog>`, so the page
+behind is inert, but with a frame of its own rather than `.dialog`'s — it is
+not a box floating over the map, it is the window for as long as it is open.
+On `--chrome`, a bar across the top: the heading, the **Edit | Present**
+toggle, the two steps either side of *3 / 41* in tabular figures, and Close.
+Under it, the **deck** in a column at the left — a row a slide, in the order
+the map is read: an area, the domains in it, each domain's capabilities, every
+row set in by how deep its shape sits, an area's and a domain's in semibold,
+the one in hand on `--selected-row` — and the slide in hand beside it.
+
+A **slide** is a postcard: a 16:9 card of `--paper` with a `--line-strong`
+border, `--radius-l` corners and a soft shadow. Across its top is the **path**
+— where the shape sits, */area/domain/capability* — in `--ink-soft` on one
+line, cut with an ellipsis where it runs out, its last step, the shape
+itself, in `--ink` and semibold. Under it, the picture in the left half and
+the words in the right. Its type is set in shares of the card's own width
+(container units, each with a floor in pixels), so a slide reads the same in
+the deck's corner of the window and across a projector. The **picture** is the
+diagram's own drawing of the shape — its colour, its lobes, its title where it
+was dragged to — without the selection or the edit chrome, and it has its half
+to the card's edge: a shape drawn small in a frame of paper is a diagram of
+the shape, and this is meant to be the shape. A capability pictured alone is
+drawn open, with its features; a shape pictured with its neighbours is the
+stage as it stands round it, half the shape's size again on every side, with
+the lines at the level the slider is on. The **words** stand level with the middle of the picture: a
+kicker in small capitals and `--ink-soft` saying what kind of thing it is and
+its Type, the title in the heading face, the description, and the facts — a
+label in `--ink-soft` against what it says, a list of names as a wrapping row
+of pills on `--chrome`. A fact with nothing to say is left off.
+
+**Edit** pressed, the words are the details panel's own fields at the panel's
+own size — a field set in shares of the slide would be too small to type into
+in the deck — and under them **Picture**, a toggle of three: *The shape*,
+*With its neighbours*, or *Uploaded*. Under the toggle, the uploaded file by
+name in `--ink-soft` and a chip that says **Upload…** until there is one and
+**Replace…** after. *Uploaded* pressed with no file yet asks for one. An
+uploaded picture has the picture's half of the card and is shown whole, never
+cropped — it is the owner's, and what it shows at its edges is theirs to
+decide. The facts stay as they will read, since who a shape's teams are
+and what it holds are said on the map. **Present** pressed, the card loses its
+border and shadow and fills the window on `--paper`, the deck's column goes,
+and the bar is unseen at the top until a pointer goes looking for it there:
+the keys are the way through a presentation.
+
+On a phone held upright the deck's column goes and the postcard stands on end,
+the picture over the words, as tall as the screen.
 
 ### Footer
 
@@ -881,6 +1117,8 @@ export const LAYERS = Object.freeze([
   Object.freeze({ key: 'areas', title: 'Areas' }),
   Object.freeze({ key: 'core', title: 'Domains' }),
   Object.freeze({ key: 'presentation', title: 'Presentation' }),
+  Object.freeze({ key: 'engineering', title: 'Engineering roles' }),
+  Object.freeze({ key: 'product', title: 'Product roles' }),
 ]);
 
 /** Which layer each kind is on. No element carries a layer of its own. */
@@ -890,10 +1128,12 @@ export const LAYER_OF = Object.freeze({
   capability: 'core',
   touchpoint: 'presentation',
   actor: 'presentation',
+  productRole: 'product',
+  engineeringRole: 'engineering',
 });
 ```
 
-A deployment may restyle its shapes; it may not redefine what the three layers
+A deployment may restyle its shapes; it may not redefine what the five layers
 mean, or which kind of element is on which.
 
 Change a value, then check the file:

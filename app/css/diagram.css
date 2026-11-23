@@ -104,6 +104,22 @@
   border-radius: var(--radius-s);
 }
 
+/* The two role layers wear the colour their cards wear, as a band at the head
+   of the row: the layer control is the key to the map's layers, so it is where
+   the colours are explained. The other layers have no colour of their own,
+   and no band. */
+.layers__row[data-layer="product"]::before,
+.layers__row[data-layer="engineering"]::before {
+  content: "";
+  flex: none;
+  align-self: stretch;
+  width: 3px;
+  border-radius: 2px;
+}
+
+.layers__row[data-layer="product"]::before { background: var(--role-product); }
+.layers__row[data-layer="engineering"]::before { background: var(--role-engineering); }
+
 /* The title runs up against the controls rather than away from them, so the
    name and the icons it belongs to read as one row. */
 .layers__name {
@@ -200,6 +216,205 @@
   flex-direction: column;
   width: max-content;
   gap: var(--gap-1);
+}
+
+/* --- teams ------------------------------------------------------------------ */
+
+/* The legend, in the top right corner while Teams is on: the layer control's
+   see-through paper and border, a column of rows. It scrolls inside itself, so
+   a map with forty teams does not cover the map with them. */
+.teams {
+  position: absolute;
+  top: var(--gap-3);
+  right: var(--gap-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-1);
+  width: 230px;
+  max-height: calc(100% - 190px);
+  padding: var(--gap-2);
+  font-size: var(--fs-200);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+}
+
+.teams__title,
+.teams__type {
+  margin: 0;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.teams__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A Type is a quieter heading than the legend's own, and stands a little clear
+   of the teams of the Type before it. It is pressed as a team is, to light up
+   what every team of the Type is on, so it is a button under the heading's
+   look: the selection's ink says when it is the one lit. */
+.teams__type {
+  margin-top: var(--gap-2);
+  padding: 2px var(--gap-2);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teams__type:hover { background: var(--chrome); }
+.teams__type[aria-pressed="true"] { color: var(--selection); }
+
+/* A row is a button the width of the legend: the name, cut where it runs out,
+   and how many shapes the team is on. The one lit holds the selection's fill,
+   as a pressed switch does everywhere else on the stage; the one whose fields
+   are open in the details panel is semibold, as the tree's selected row is. */
+.teams__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-2);
+  width: 100%;
+  padding: var(--space-025) var(--gap-2);
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.teams__row:hover { background: var(--chrome); }
+
+.teams__row[aria-pressed="true"],
+.teams__row[aria-pressed="true"]:hover {
+  background: var(--selection);
+  color: var(--selection-ink);
+}
+
+.teams__row--picked { font-weight: var(--fw-semibold); }
+
+.teams__name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.teams__count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.teams__none {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: var(--lh-m);
+}
+
+.teams__add { margin-top: var(--gap-1); }
+
+/* A team lit. What it is not on stands back: still there, still to be pressed,
+   and plainly not the subject. What it is on is ringed in the selection's
+   colour, a width held on screen so it reads from the helicopter view. What it
+   reaches through that is left exactly as the map draws it. */
+.team-off { opacity: 0.2; }
+
+.domain.team-on .domain__blob,
+.cap.team-on .cap__oval,
+.touchpoint.team-on .touchpoint__box {
+  stroke: var(--selection);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+
+.area.team-on .area__border {
+  stroke: var(--selection);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A person's card, on the layer of their discipline: their icon, and beside
+   it their name with their role under it. It lies over the map — hung by the
+   name of what they own, or wherever it was put — so its ground is paper let
+   through: enough of it to read the name against a line or a domain's colour,
+   and little enough that what is under the card is still there to be seen.
+   The rim is the quietest line the map has, there to say where the card ends
+   and no more; it is held to a width on screen, so it neither thickens close
+   to nor vanishes from the helicopter view. A card is picked and moved as a
+   shape is, so it has a shape's cursor, a rim that answers the pointer, and
+   the selection's colour while its person is picked. */
+.role-badge { cursor: move; }
+
+.role-badge__pill {
+  fill: var(--paper);
+  fill-opacity: 0.72;
+  stroke: var(--line);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.role-badge:hover .role-badge__pill { stroke: var(--line-strong); }
+
+.role-badge--selected .role-badge__pill {
+  stroke: var(--selection);
+  stroke-width: 2px;
+}
+
+/* The band down a card's leading edge says which of the two layers it is on.
+   A product lead and an engineering lead on one domain are the same card but
+   for a name, and from any distance the name is the last thing read; a band of
+   the layer's own colour is the first. The same colour marks the layer's row
+   in the layer control, which is where it is learnt. */
+.role-badge__mark { pointer-events: none; }
+
+.role-badge[data-kind="productRole"] .role-badge__mark { fill: var(--role-product); }
+.role-badge[data-kind="engineeringRole"] .role-badge__mark { fill: var(--role-engineering); }
+
+/* In hand it is nearly solid: it is passing over everything on its way, and
+   has to be read against all of it. */
+.role-badge--dragging .role-badge__pill { fill-opacity: 0.92; }
+
+.role-badge__name {
+  fill: var(--ink);
+  font-family: var(--font-heading);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The role is the quieter line of the two: it says what the person is here,
+   and it is the name that is looked for. */
+.role-badge__role {
+  fill: var(--ink-soft);
+  font-family: var(--font-text);
+  pointer-events: none;
+  user-select: none;
+}
+
+.role-badge__icon { pointer-events: none; }
+
+/* The plain figure a person wears until an icon is picked for them: head and
+   shoulders. How heavy its line is comes with the figure, which is drawn at
+   the size the card keeps for it. */
+.role-badge__figure {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 /* Icon then label, reading left to right. Not one of the square icon-only
@@ -561,11 +776,12 @@
 
 /* --- features ------------------------------------------------------------ */
 
-/* A shut capability says there is more inside with a row of pips along its
-   foot. They are the title's ink, thinned: a hint, small enough to be gone
-   from the helicopter view and to show as the map closes in. */
+/* A shut capability says there is more inside, and roughly how much, with a
+   row of pips along its foot. They are the title's ink, thinned — but only so
+   far that they stay second to the title: at less than this they were a hint
+   that had to be looked for, and a count is no use unless it is seen. */
 .cap__pip {
-  fill-opacity: 0.3;
+  fill-opacity: 0.6;
   pointer-events: none;
 }
 

@@ -40,7 +40,7 @@ every contributor may send one — which is everyone who signs in, until an
 administrator says otherwise.
 
 The URL is the deployment's to say. The key need not be: an administrator can
-give the model a key in the page — the avatar, then **Assistant model** — which
+give the model a key in the page — the gear, then **Assistant model** — which
 is used in place of `ASSISTANT_API_KEY` from the next message on, and can switch
 the model off and on there without a redeploy. A key expires; a release should
 not be what replaces it. A key set in the page is sealed before it is kept in
@@ -108,7 +108,7 @@ of the package's choosing rather than yours.
 ## The dark theme
 
 The page has a light theme and a dark one. It follows the system until someone
-chooses under the avatar, and a brand is worn in both.
+chooses in Settings, and a brand is worn in both.
 
 **A brand that says nothing about dark is dark all the same.** The dark theme
 is one block in `tokens.css` that says again what each semantic token is, under

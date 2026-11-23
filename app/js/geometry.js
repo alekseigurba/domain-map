@@ -726,6 +726,10 @@ const HEADING_SIZE = 0.125;
 const FEATURE_ROOM = 0.9;
 /** How many marks a closed capability wears for what it holds, at most. */
 const MAX_PIPS = 7;
+/** A pip's radius, how far down the oval the row sits — both as shares of the oval's shorter radius — and the step from one pip to the next, in radii. */
+const PIP_SIZE = 0.045;
+const PIP_DEPTH = 0.8;
+const PIP_STEP = 3.2;
 
 /** `total` shared out over rows by how wide each is, every row getting at least one. */
 function shareOut(total, widths) {
@@ -950,23 +954,35 @@ export function layoutFeatures(size, features, title = '') {
 /**
  * The marks a closed capability wears for the features inside it: a short row
  * of pips along the foot of the oval, one a feature up to a handful. They are
- * small enough to vanish from the helicopter view and to show as the map
- * closes in, which is when "there is more in here" is worth saying. None are
- * drawn where the title or its icon reaches down that far.
+ * a count that can be read at the zoom the map is usually looked at from —
+ * large enough to be seen there, and still gone from the helicopter view,
+ * where a capability is a word and no more. None are drawn where the title or
+ * its icon reaches down that far.
+ *
+ * The oval is narrow at its foot, and narrower still when it stands tall, so
+ * a full row is drawn smaller there rather than let its ends cross the rim.
  *
  * @param size  the capability's oval and what is laid out in it
  * @param count how many features it holds
  */
 export function featurePips(size, count) {
   if (!(count > 0)) return [];
-  const r = size.ry * 0.03;
-  const y = size.ry * 0.8;
+  const shown = Math.min(count, MAX_PIPS);
+  const y = size.ry * PIP_DEPTH;
+  // How many radii the row is across, half of it: the pips' centres and the
+  // outermost pip's own radius.
+  const across = ((shown - 1) * PIP_STEP) / 2 + 1;
+  // Half the oval's width where the lowest point of a pip would be, less a
+  // little air, is all the room the row has.
+  const full = size.ry * PIP_SIZE;
+  const chord = size.rx * Math.sqrt(Math.max(0, 1 - (PIP_DEPTH + PIP_SIZE) ** 2));
+  const r = Math.min(full, (chord * 0.85) / across);
+
   const wordsEnd = (size.textY ?? 0) + (size.height ?? 0) / 2;
   const iconEnd = size.iconSize > 0 ? size.iconY + size.iconHeight / 2 : -Infinity;
-  if (Math.max(wordsEnd, iconEnd) > y - r * 2.5) return [];
+  if (Math.max(wordsEnd, iconEnd) > y - r * 2) return [];
 
-  const shown = Math.min(count, MAX_PIPS);
-  return Array.from({ length: shown }, (_, at) => ({ x: (at - (shown - 1) / 2) * r * 3.4, y, r }));
+  return Array.from({ length: shown }, (_, at) => ({ x: (at - (shown - 1) / 2) * r * PIP_STEP, y, r }));
 }
 
 // --- touchpoints and actors --------------------------------------------------
@@ -2323,4 +2339,246 @@ export function layoutArea(area, outlines, sliding = null) {
     /** Is this point inside the line? What a drop asks. */
     contains: (x, y) => insideOutline(band, x, y),
   };
+}
+
+// --- role cards ---------------------------------------------------------------
+
+// A person in a role has no shape, so the layer of their discipline hangs a
+// card for them on each area and domain they own: a band in the layer's colour
+// down its leading edge, their icon, and beside it their name with their role
+// under it. A card is hung outside the
+// shape, by its name, so that it covers nothing of the shape it is on — beyond
+// a domain's edge where its title sits, beyond an area's title on the border —
+// and several people on one shape stack away from it, the first the nearest.
+// That is only where a card starts: it can be taken hold of and put anywhere,
+// and from then on it stays where it was put, measured from its shape.
+
+/**
+ * How large a name on a card is, in the map's own units: between a
+ * capability's title and a domain's, so that who leads a domain reads from the
+ * helicopter view, where the domain itself does, and is still not louder than
+ * the thing they lead.
+ */
+export const BADGE_FONT = 56;
+
+/** How large the role under a name is, as a share of the name: the smaller of the two, since it is the name that is looked for. */
+export const BADGE_ROLE_SHARE = 0.7;
+
+/** The air between a name and the role under it, as a share of the name. */
+const BADGE_LINE_GAP = 0.15;
+
+/**
+ * How wide the band down a card's leading edge is, as a share of the name. The
+ * band is the colour of the layer the card is on: two people side by side, one
+ * leading for product and one for engineering, are otherwise the same card.
+ */
+const BADGE_MARK = 0.18;
+
+/**
+ * How tall a person's icon is, as a multiple of their name: as tall as the
+ * name, the role and the air between them together, so that the picture and
+ * the two lines beside it are one block with one top and one foot.
+ */
+export const BADGE_ICON_SHARE = 1 + BADGE_LINE_GAP + BADGE_ROLE_SHARE;
+
+/** A name or a role on a card, cut where a card would otherwise be wider than what it hangs on. */
+export const MAX_BADGE_NAME = 32;
+
+const badgeName = (name) => {
+  const said = String(name ?? '').replace(/\s+/g, ' ').trim();
+  return said.length > MAX_BADGE_NAME ? `${said.slice(0, MAX_BADGE_NAME - 1).trimEnd()}…` : said;
+};
+
+/**
+ * Where a domain's cards hang: outside its edge, on the side its title sits,
+ * growing away from the blob. `layout` is `layoutDomain`'s, in the domain's own
+ * coordinates, and so is the answer. A title in the very middle of the body
+ * points nowhere, and the cards go over the top, where a title starts.
+ */
+export function badgeAnchorOnBlob(layout) {
+  const dx = layout.titleLobe.x - layout.body.x;
+  const dy = layout.titleLobe.y - layout.body.y;
+  const degrees = Math.hypot(dx, dy) < 1 ? DEFAULT_TITLE_ANGLE : (Math.atan2(dy, dx) * 180) / Math.PI;
+  const at = rimPoint(layout.outline, layout.body, degrees);
+  return { x: at.x, y: at.y, grows: at.y < layout.body.y ? -1 : 1 };
+}
+
+/**
+ * Where an area's cards hang: beyond its title, on the side of it that is
+ * outside the band — over a title that rides the top of the border, and under
+ * one that rides anywhere else. `layout` is `layoutArea`'s.
+ */
+export function badgeAnchorOnBand(layout) {
+  const outward = Math.sin((layout.title.angle * Math.PI) / 180);
+  return outward < -0.3
+    ? { x: layout.title.x, y: layout.gap.minY, grows: -1 }
+    : { x: layout.title.x, y: layout.gap.maxY, grows: 1 };
+}
+
+/** What a card says and how much room that takes, before it is put anywhere. */
+function badgeSized(person, fontSize) {
+  const label = badgeName(person?.name);
+  const role = badgeName(person?.role);
+  const roleFontSize = fontSize * BADGE_ROLE_SHARE;
+  const icon = fontSize * BADGE_ICON_SHARE;
+  const pad = fontSize * 0.3;
+  const between = fontSize * 0.35;
+  const mark = fontSize * BADGE_MARK;
+  const words = Math.max(measure(label, fontSize), role ? measure(role, roleFontSize) : 0);
+  return {
+    label, role, fontSize, roleFontSize, icon, pad, between, mark,
+    // A little more air after the words than before the icon: a line of type
+    // ends raggedly, and reads as nearer the edge than it is.
+    width: mark + pad + icon + between + words + pad * 1.4,
+    height: icon + pad * 2,
+  };
+}
+
+/**
+ * A sized card put where its top left corner is given, `width` wide. The name
+ * and the role are each given by the middle of their left edge. Someone with
+ * no role has their name in the middle of the card's height, beside the icon.
+ */
+function badgeLaid(sized, x, y, width = sized.width) {
+  const { label, role, fontSize, roleFontSize, icon, pad, between, mark } = sized;
+  const left = x + mark + pad + icon + between;
+  const top = y + pad;
+  return {
+    label,
+    role,
+    x,
+    y,
+    width,
+    height: sized.height,
+    radius: fontSize * 0.3,
+    mark,
+    icon: { x: x + mark + pad, y: top, size: icon },
+    text: { x: left, y: role ? top + fontSize / 2 : top + icon / 2 },
+    roleText: role ? { x: left, y: top + icon - roleFontSize / 2 } : null,
+    fontSize,
+    roleFontSize,
+  };
+}
+
+/**
+ * The cards of one shape, laid out from where they hang: one under another,
+ * centred on the anchor and stacked away from the shape, all as wide as the
+ * widest so that the icons stand in one column. `people` is a list of `{ name,
+ * role }`. Each card is `{ label, role, x, y, width, height, radius, icon: { x,
+ * y, size }, text: { x, y }, roleText: { x, y } | null, fontSize, roleFontSize
+ * }`: the card and the icon by their top left corners, and each line of type
+ * by the middle of its left edge.
+ */
+export function badgeStack(anchor, people, fontSize = BADGE_FONT) {
+  const apart = fontSize * 0.2;
+  const clear = fontSize * 0.25;
+  const grows = anchor.grows < 0 ? -1 : 1;
+  const sized = people.map((person) => badgeSized(person, fontSize));
+  const width = Math.max(0, ...sized.map((one) => one.width));
+
+  return sized.map((one, index) => {
+    const step = clear + index * (one.height + apart);
+    const y = grows > 0 ? anchor.y + step : anchor.y - step - one.height;
+    return badgeLaid(one, anchor.x - width / 2, y, width);
+  });
+}
+
+/**
+ * One card put where someone left it: its middle on `centre`, and as wide as
+ * what it says, since it stands in no column.
+ */
+export function badgeAt(centre, person, fontSize = BADGE_FONT) {
+  const sized = badgeSized(person, fontSize);
+  return badgeLaid(sized, centre.x - sized.width / 2, centre.y - sized.height / 2);
+}
+
+/** A card moved by so much, with everything on it. */
+export const badgeMovedBy = (badge, dx, dy) => ({
+  ...badge,
+  x: badge.x + dx,
+  y: badge.y + dy,
+  icon: { ...badge.icon, x: badge.icon.x + dx, y: badge.icon.y + dy },
+  text: { x: badge.text.x + dx, y: badge.text.y + dy },
+  roleText: badge.roleText ? { x: badge.roleText.x + dx, y: badge.roleText.y + dy } : null,
+});
+
+/**
+ * The band down a card's leading edge, as a path: the part of the card that
+ * lies within the band's width of its left side, so the band's outer corners
+ * are the card's own rounded ones and it never shows past the rim.
+ */
+export function badgeMarkPath(badge) {
+  const { x, y, height, radius: r } = badge;
+  const w = badge.mark;
+  const foot = y + height;
+  if (w >= r) {
+    return `M ${x + w} ${y} H ${x + r} A ${r} ${r} 0 0 0 ${x} ${y + r} V ${foot - r} A ${r} ${r} 0 0 0 ${x + r} ${foot} H ${x + w} Z`;
+  }
+  // Narrower than the corner is round: the band's own edge meets the corner
+  // part of the way round it, this far short of where the corner would end.
+  const short = r - Math.sqrt(r * r - (r - w) ** 2);
+  return `M ${x + w} ${y + short} A ${r} ${r} 0 0 0 ${x} ${y + r} V ${foot - r} A ${r} ${r} 0 0 0 ${x + w} ${foot - short} Z`;
+}
+
+/** The middle of a card: what is remembered of one that has been put somewhere. */
+export const badgeCentre = (badge) => ({ x: badge.x + badge.width / 2, y: badge.y + badge.height / 2 });
+
+/**
+ * Where to put a card's icon so that its drawing fills the square the card
+ * keeps for it: the ink is fitted to the square whole, the longer side to the
+ * edge, and the file's margin hangs outside as it does on a shape. Two icons
+ * drawn with different margins are then two people of one size.
+ */
+export function badgeIconBox(box, ink = WHOLE_ICON) {
+  const aspect = (ink.width * ink.aspect) / ink.height || 1;
+  return iconImageBox({
+    iconX: box.x + box.size / 2,
+    iconY: box.y + box.size / 2,
+    iconWidth: aspect >= 1 ? box.size : box.size * aspect,
+    iconHeight: aspect >= 1 ? box.size / aspect : box.size,
+  }, ink);
+}
+
+const boxesMeet = (a, b, air) =>
+  a.x < b.x + b.width + air && b.x < a.x + a.width + air
+  && a.y < b.y + b.height + air && b.y < a.y + a.height + air;
+
+/**
+ * The cards the map hangs by itself, moved clear of one another. Two shapes
+ * that sit close hang their people in the same place, and a card is large
+ * enough to land on its neighbour's — or on the name of the area the shape is
+ * in, which rides the border just past a domain's edge. So each shape's cards,
+ * in the order given, are moved further from their shape, the way they already
+ * grow, until they stand clear of everything placed before them and of every
+ * box in `taken`. Only ever further out: sideways would slide a card off the
+ * side its shape's name is on, and often back over the shape. A card someone
+ * has put somewhere is not in this at all — it is where it was put.
+ *
+ * `stacks` is a list of `{ grows, cards }`, the cards as `badgeStack` laid
+ * them; the answer is the cards of each, in the same order. `taken` is boxes
+ * as `{ x, y, width, height }`.
+ */
+export function badgesClear(stacks, taken = [], air = BADGE_FONT * 0.25) {
+  const held = [...taken];
+  return stacks.map(({ grows, badges }) => {
+    const away = grows < 0 ? -1 : 1;
+    let by = 0;
+    // A step out clears at least one box for good, since a card never comes
+    // back towards its shape, so there are no more steps than boxes.
+    for (let step = 0; step <= held.length; step += 1) {
+      let further = 0;
+      for (const badge of badges) {
+        const at = { x: badge.x, y: badge.y + by, width: badge.width, height: badge.height };
+        for (const box of held) {
+          if (!boxesMeet(at, box, air)) continue;
+          further = Math.max(further, away < 0 ? at.y + at.height + air - box.y : box.y + box.height + air - at.y);
+        }
+      }
+      if (further < 1e-6) break;
+      by += away * further;
+    }
+    const placed = by === 0 ? badges : badges.map((badge) => badgeMovedBy(badge, 0, by));
+    held.push(...placed);
+    return placed;
+  });
 }

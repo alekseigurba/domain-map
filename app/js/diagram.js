@@ -4,8 +4,9 @@
 import {
   store, select, childrenOf, stackingOrder, stackedList, patchLocal, find, connectorScope,
   connectorEnds, oneLine, layerStack, layerOf, layerForKind, connectorLayer, isHidden,
-  membersOf, areaOf, mayJoinArea, holderOf, chainOf,
+  membersOf, areaOf, mayJoinArea, holderOf, chainOf, teamReach, rolesOn, roleCardPlace,
 } from './store.js';
+import { ROLE_KINDS } from './rules.js';
 import * as geo from './geometry.js';
 import { iconArt } from './icon-art.js';
 import * as vp from './viewport.js';
@@ -99,6 +100,19 @@ let openCapabilities = new Set();
 /** How far this map zooms: past the usual limit, where its features are set small. */
 let zoomLimits = { ...vp.ZOOM_LIMITS };
 let hoveredFoldKey = null; // the folded line under the cursor, which names itself as a real one does
+/**
+ * The teams that are lit, by id: the shapes they are on are drawn as they are
+ * and ringed, what they reach through them is drawn as it is, and everything
+ * else stands back. One team, picked from the legend — or every team of one
+ * Type, which is the map seen by what sort of team works on it. It is this
+ * tab's, like the level the lines are drawn at: no part of the map, and gone
+ * the next time the page is opened.
+ */
+let litTeams = [];
+/** Where each discipline's cards are, as the last render laid them out: a list of `{ role, roleKind, on, shapeAt, pill }` a kind. */
+let badges = new Map();
+/** What the lit team is on and what it reaches through that, as two sets of ids, worked out each render — or null with no team lit. */
+let lighting = null;
 let gliding = 0;           // the frame a glide is waiting on, while one is under way
 /** How long a glide takes, however far it goes. */
 const GLIDE_MS = 450;
@@ -465,6 +479,15 @@ export function render() {
   domainViews = views;
   areaViews = areas;
   readZoom(views);
+  // A team that has been deleted since it was lit lights nothing; several lit
+  // together light whatever any of them is on.
+  const reaches = litTeams.map((id) => find('team', id)).filter(Boolean).map(teamReach);
+  lighting = reaches.length === 0 ? null : {
+    on: new Set(reaches.flatMap((reach) => [...reach.on])),
+    through: new Set(reaches.flatMap((reach) => [...reach.through])),
+  };
+
+  badges = badgePlaces();
 
   renderView();
 
@@ -502,29 +525,224 @@ function renderLayer(layer, views) {
   const has = (kind) => layer.kinds.includes(kind);
 
   group.append(
-    el('g', { class: 'stack stack--areas' }, has('area') ? areaViews.map(renderArea) : []),
-    el('g', { class: 'stack stack--domains' }, has('domain') ? views.map(renderDomain) : []),
+    el('g', { class: 'stack stack--areas' },
+      has('area') ? areaViews.map((one) => teamLit(renderArea(one), one.area.id)) : []),
+    el('g', { class: 'stack stack--domains' },
+      has('domain') ? views.map((one) => teamLit(renderDomain(one), one.domain.id)) : []),
     // Paint order is the stack, so a shape sent to the back lands at the back.
     el('g', { class: 'stack stack--capabilities' },
-      has('capability') ? paintOrder().map(renderCapability) : []),
+      has('capability') ? paintOrder().map((one) => teamLit(renderCapability(one), one.id)) : []),
     el('g', { class: 'stack stack--touchpoints' },
-      has('touchpoint') ? stackedList('touchpoint').map(renderTouchpoint) : []),
+      has('touchpoint') ? stackedList('touchpoint').map((one) => teamLit(renderTouchpoint(one), one.id)) : []),
     el('g', { class: 'stack stack--actors' },
-      has('actor') ? stackedList('actor').map(renderActor) : []),
+      has('actor') ? stackedList('actor').map((one) => teamLit(renderActor(one), one.id)) : []),
     el('g', { class: 'stack stack--connectors' }, [
       // A folded line stands for lines between capabilities, so it is drawn
       // where theirs are, and under them: a line picked out of a fold is drawn
       // for real, and has to show over the fold it came from.
-      ...(has('capability') ? shownLines.folded.map(renderFold).filter(Boolean) : []),
+      ...(has('capability')
+        ? shownLines.folded.map((line) => litLine(renderFold(line), line.from, line.to)).filter(Boolean)
+        : []),
       ...store.connectors
         .filter((connector) => connectorLayer(connector) === layer.key
           && shownLines.drawn.has(connector.id))
-        .map(renderConnector)
+        .map((connector) => litLine(renderConnector(connector),
+          { kind: connector.fromKind, id: connector.fromId }, { kind: connector.toKind, id: connector.toId }))
         .filter(Boolean),
     ]),
     el('g', { class: 'stack stack--features' }, has('capability') ? renderFeatures() : []),
+    el('g', { class: 'stack stack--roles' }, ROLE_KINDS.filter(has).flatMap(renderRoleBadges)),
   );
   return group;
+}
+
+// --- a team lit ----------------------------------------------------------------
+
+// Picking a team changes nothing on the map and moves nothing on it: the shapes
+// the team is on are ringed, what it reaches through them — the domains of its
+// area, the capabilities of its domain — is left as it is, and the rest stands
+// back, still there and still to be pressed. The map keeps its own colours,
+// since what a shape is does not change with who works on it.
+
+/** Whether a shape is the lit team's: one it is on, or one it reaches through one. */
+const inLight = (id) => lighting.on.has(id) || lighting.through.has(id);
+
+/** Mark a shape as drawn for how it stands to the lit team. With none lit, it is as it was. */
+function teamLit(node, id) {
+  if (!lighting || !node) return node;
+  if (lighting.on.has(id)) node.classList.add('team-on');
+  else if (!lighting.through.has(id)) node.classList.add('team-off');
+  return node;
+}
+
+/** The shape a line's end counts as for a team: a feature is its capability's, since a team is never on a feature. */
+const lightEnd = (end) => (end.kind === 'feature' ? find('feature', end.id)?.capabilityId ?? end.id : end.id);
+
+/** A line stands back unless both the shapes it joins are the lit team's: it is then a line inside what the team works on. */
+function litLine(node, from, to) {
+  if (!lighting || !node) return node;
+  if (!(inLight(lightEnd(from)) && inLight(lightEnd(to)))) node.classList.add('team-off');
+  return node;
+}
+
+/** The teams that are lit, by id. None, when the map is drawn for nobody. */
+export const litTeamIds = () => litTeams;
+
+// --- role cards ---------------------------------------------------------------
+
+/** Is this the card being moved just now? Then it is wherever the pointer has it. */
+const cardInHand = ({ roleKind, role, on }) =>
+  (drag?.kind === 'role-card' && drag.moved && drag.roleKind === roleKind && drag.id === role.id
+    && drag.on.kind === on.kind && drag.on.id === on.id ? drag : null);
+
+/**
+ * Where a card has been put, as the point its middle is on, or null while the
+ * map hangs it. What is kept is measured from the shape the card is on — a
+ * domain's own point, the name of an area — so a card that was put somewhere
+ * goes with its shape when the shape is moved.
+ */
+function cardPutAt(holder) {
+  const held = cardInHand(holder);
+  if (held) return { x: held.x, y: held.y };
+  const at = roleCardPlace(holder.role, holder.on.kind, holder.on.id);
+  return at ? { x: holder.shapeAt.x + at.x, y: holder.shapeAt.y + at.y } : null;
+}
+
+/**
+ * Where every card on the map is, worked out once a render for both
+ * disciplines together: a shape's product people and its engineering people
+ * share the one place a card hangs off it, so they are stacked as one column
+ * — product nearest the shape — and each layer then draws its own. A layer
+ * that is hidden gives up its places, so the other closes up to the shape.
+ *
+ * The domains are placed first and the areas after: a domain's people stay
+ * hard by the domain, and an area — which is the larger thing, drawn round the
+ * domains — is the one whose people step further out when the two would meet.
+ * An area's name is kept clear as well, since it rides the border just where
+ * a domain inside it hangs its own.
+ *
+ * A card someone has put somewhere is in none of that: it is where it was put,
+ * it leaves the column — which closes up behind it — and nothing the map hangs
+ * steps out of its way, since whoever put it there can see what it is over.
+ */
+function badgePlaces(domainsLaid = domainViews, areasLaid = areaViews) {
+  const shown = [...ROLE_KINDS].filter((roleKind) => !isHidden(layerForKind(roleKind)));
+  const person = (role) => ({ name: oneLine(role.title), role: oneLine(role.type) });
+  const stacks = [];
+  const put = [];
+  const hang = (kind, id, anchor, shapeAt) => {
+    const on = { kind, id };
+    const hung = [];
+    for (const roleKind of shown) {
+      for (const role of rolesOn(roleKind, kind, id)) {
+        const holder = { roleKind, role, on, shapeAt };
+        const centre = cardPutAt(holder);
+        if (centre) put.push({ ...holder, pill: geo.badgeAt(centre, person(role)) });
+        else hung.push(holder);
+      }
+    }
+    if (hung.length === 0) return;
+    stacks.push({ holders: hung, grows: anchor.grows, badges: geo.badgeStack(anchor, hung.map(({ role }) => person(role))) });
+  };
+
+  for (const { domain, layout } of domainsLaid) {
+    const at = geo.badgeAnchorOnBlob(layout);
+    hang('domain', domain.id, { ...at, x: at.x + domain.x, y: at.y + domain.y }, { x: domain.x, y: domain.y });
+  }
+  // An area whose layer is hidden has nothing drawn to hang a card on, and no name to keep clear.
+  const areasShown = isHidden(layerForKind('area')) ? [] : areasLaid;
+  for (const { area, layout } of areasShown) {
+    hang('area', area.id, geo.badgeAnchorOnBand(layout), { x: layout.title.x, y: layout.title.y });
+  }
+  const names = areasShown.map(({ layout: { gap } }) =>
+    ({ x: gap.minX, y: gap.minY, width: gap.maxX - gap.minX, height: gap.maxY - gap.minY }));
+
+  const places = new Map();
+  const place = (card) => places.set(card.roleKind, [...(places.get(card.roleKind) ?? []), card]);
+  geo.badgesClear(stacks, names).forEach((laid, at) => {
+    stacks[at].holders.forEach((holder, index) => place({ ...holder, pill: laid[index] }));
+  });
+  // Last, so that a card put somewhere — and the one in hand — is drawn over the ones the map hung.
+  put.forEach(place);
+  return places;
+}
+
+/** One discipline's layer of cards: everyone in it, on everything they own. */
+const renderRoleBadges = (roleKind) => (badges.get(roleKind) ?? []).map(renderBadge);
+
+/**
+ * One card: a person's icon, and beside it their name with their role under
+ * it. It is picked as a shape is — its fields are the person's — and in Edit
+ * mode it is moved as one is, which is why it says which shape it is on: a
+ * person who owns three things has three cards, and each is put where it reads
+ * best. While a team is lit the cards stand back with the rest of the map,
+ * since who leads a thing is not the subject.
+ */
+function renderBadge({ role, roleKind, on, pill }) {
+  const picked = store.selection.type === roleKind && store.selection.id === role.id;
+  const name = oneLine(role.title);
+  const group = el('g', {
+    class: `role-badge${picked ? ' role-badge--selected' : ''}${lighting ? ' team-off' : ''}`
+      + `${cardInHand({ roleKind, role, on }) ? ' role-badge--dragging' : ''}`,
+    'data-type': 'role-badge',
+    'data-kind': roleKind,
+    'data-id': role.id,
+    'data-on-kind': on.kind,
+    'data-on-id': on.id,
+  });
+  group.append(
+    el('title', {}, [text(role.type ? `${name} — ${role.type}` : name)]),
+    el('rect', {
+      class: 'role-badge__pill', x: pill.x, y: pill.y, width: pill.width, height: pill.height, rx: pill.radius,
+    }),
+    // Which layer they are on, as a colour: the stylesheet reads the kind off
+    // the card and paints the band.
+    el('path', { class: 'role-badge__mark', d: geo.badgeMarkPath(pill) }),
+    badgeIcon(role, pill.icon),
+    el('text', {
+      class: 'role-badge__name', x: pill.text.x, y: pill.text.y, 'font-size': pill.fontSize,
+      'dominant-baseline': 'central',
+    }, [text(pill.label)]),
+  );
+  if (pill.roleText) {
+    group.append(el('text', {
+      class: 'role-badge__role', x: pill.roleText.x, y: pill.roleText.y, 'font-size': pill.roleFontSize,
+      'dominant-baseline': 'central',
+    }, [text(pill.role)]));
+  }
+  return group;
+}
+
+/**
+ * What a card wears: the icon picked for the person, drawn as its file has
+ * it — its lines as heavy as whoever drew it made them, since at this size
+ * they need no help — or, until one is picked, a plain figure, head and
+ * shoulders, in the stylesheet's own ink.
+ */
+function badgeIcon(role, box) {
+  const art = role.icon ? iconArt({ icon: role.icon }, actions.iconUrl, () => render()) : null;
+  if (art) {
+    return el('image', {
+      class: 'role-badge__icon',
+      href: art.href,
+      ...geo.badgeIconBox(box, art.ink),
+      preserveAspectRatio: 'xMidYMid meet',
+    });
+  }
+  const middle = box.x + box.size / 2;
+  const reach = box.size * 0.32;
+  return el('g', { class: 'role-badge__figure', 'stroke-width': box.size * 0.06 }, [
+    el('circle', { cx: middle, cy: box.y + box.size * 0.33, r: box.size * 0.17 }),
+    el('path', { d: `M ${middle - reach} ${box.y + box.size * 0.88} a ${reach} ${reach * 0.95} 0 0 1 ${reach * 2} 0` }),
+  ]);
+}
+
+/** Light these teams up, or with none put the map back as it is drawn for nobody. */
+export function setLitTeams(ids) {
+  const next = [...new Set(ids ?? [])];
+  if (next.length === litTeams.length && next.every((id) => litTeams.includes(id))) return;
+  litTeams = next;
+  render();
 }
 
 /**
@@ -1131,6 +1349,8 @@ function renderFeatures() {
         x: at.x + (held?.x ?? bubble.x),
         y: at.y + (held?.y ?? bubble.y),
       }, ink, Boolean(held));
+      // A feature is in its capability's light or out of it: a team is never on a feature itself.
+      if (lighting && !inLight(capability.id)) node.classList.add('team-off');
       (held ? inHand : nodes).push(node);
     }
   }
@@ -1578,6 +1798,8 @@ function targetOf(event) {
       end: node.dataset.end,
       side: node.dataset.side,
       key: node.dataset.key,
+      onKind: node.dataset.onKind,
+      onId: node.dataset.onId,
     }
     : null;
 }
@@ -1756,6 +1978,36 @@ function onPointerDown(event) {
       screen: { x: event.clientX, y: event.clientY },
       pointerId: event.pointerId,
     };
+    render();
+    return;
+  }
+
+  // A card is a person hung on what they own. Pressed, it is the person who
+  // is picked, as a shape would be; in Edit mode it is taken hold of as well,
+  // to be put somewhere better than where the map hung it. What is in hand is
+  // the middle of the card, and where its shape is goes with it, since where
+  // the card ends up is kept as a distance from that.
+  if (target?.type === 'role-badge') {
+    select(target.kind, target.id);
+    if (!editMode) { panFromShape(event); render(); return; }
+    const card = (badges.get(target.kind) ?? []).find(({ role, on }) =>
+      role.id === target.id && on.kind === target.onKind && on.id === target.onId);
+    if (card) {
+      const centre = geo.badgeCentre(card.pill);
+      drag = {
+        kind: 'role-card',
+        roleKind: target.kind,
+        id: target.id,
+        on: card.on,
+        shapeAt: card.shapeAt,
+        pointerId: event.pointerId,
+        world,
+        origin: centre,
+        x: centre.x,
+        y: centre.y,
+        moved: false,
+      };
+    }
     render();
     return;
   }
@@ -2219,6 +2471,13 @@ function onPointerMove(event) {
     return;
   }
 
+  if (drag.kind === 'role-card') {
+    drag.x = drag.origin.x + dx;
+    drag.y = drag.origin.y + dy;
+    scheduleRender();
+    return;
+  }
+
   if (drag.kind === 'title-width') {
     const reach = drag.side === 'right' ? dx : -dx;
     drag.width = Math.round(Math.min(geo.MAX_TITLE_WIDTH,
@@ -2347,6 +2606,11 @@ function onPointerUp(event) {
       actions.moveConnectorEnd?.(
         finished.id, finished.end, finished.pointIndex, finished.targetId, finished.targetKind);
     }
+  } else if (finished.kind === 'role-card') {
+    // Nothing was written while the card was in hand, so what undo puts back
+    // is still in the store: only where the card was let go is handed over.
+    actions.moveRoleCard?.(finished.roleKind, finished.id, finished.on.kind, finished.on.id,
+      { x: finished.x - finished.shapeAt.x, y: finished.y - finished.shapeAt.y });
   } else if (finished.kind === 'bend') {
     actions.shapeConnector?.(finished.id, bendFlat(finished.points));
   } else if (finished.kind === 'title-width') {
@@ -2592,6 +2856,104 @@ export function glideInto(type, id) {
   glideTo(vp.centerOn({ k: vp.clampZoom(k, zoomLimits) }, at, size));
 }
 
+// --- a shape's picture, for a slide ----------------------------------------------
+
+/** What the stage draws for the pointer and for the page's own state, which a picture of the map has no use for. */
+const PICTURE_CHROME = '.title-hit, .snaps, .connector__hit, .connector__rim, .slot, '
+  + '.area__hit, .area__title-hit, .area__rim, .domain__edge';
+/** Picked, hovered, held, lit: how the page stands just now, not how the map is. */
+const PICTURE_STATE = /(--(selected|hover|dragging|swap)|^team-(on|off))$/;
+
+/** A drawn node as a picture has it: without the targets, and without the page's state on it. */
+function asPictured(node) {
+  for (const chrome of node.querySelectorAll(PICTURE_CHROME)) chrome.remove();
+  for (const one of [node, ...node.querySelectorAll('[class]')]) {
+    for (const name of [...one.classList]) if (PICTURE_STATE.test(name)) one.classList.remove(name);
+  }
+  return node;
+}
+
+/**
+ * An area's, a domain's or a capability's picture, as a slide shows it: the
+ * nodes to draw and the box of the map they are in.
+ *
+ * `shape` is the shape by itself, drawn afresh by the code that draws the map
+ * and so exactly as the map draws it: an area with everything it holds, a
+ * domain with its capabilities on it, a capability opened onto its features
+ * whatever the zoom of the stage — a postcard of a capability is the one place
+ * its features are always worth showing. `context` is the shape where it
+ * sits: the stage as it stands, neighbours, lines and all, in a box that takes
+ * in what is round the shape. Null for a shape that is not on the map.
+ */
+export function picture(kind, id, mode = 'shape') {
+  let box;
+  if (kind === 'area') {
+    const laid = areaViews.find(({ area }) => area.id === id);
+    if (!laid) return null;
+    box = { ...laid.layout.bounds };
+  } else if (kind === 'domain') {
+    const laid = domainViews.find(({ domain }) => domain.id === id);
+    if (!laid) return null;
+    const { domain, layout } = laid;
+    box = {
+      minX: domain.x + layout.bounds.minX,
+      minY: domain.y + layout.bounds.minY,
+      maxX: domain.x + layout.bounds.maxX,
+      maxY: domain.y + layout.bounds.maxY,
+    };
+  } else {
+    const at = positions.get(id);
+    if (kind !== 'capability' || !at) return null;
+    box = { minX: at.x - at.rx, minY: at.y - at.ry, maxX: at.x + at.rx, maxY: at.y + at.ry };
+  }
+  const [wide, tall] = [box.maxX - box.minX, box.maxY - box.minY];
+  const grown = (by) => ({ minX: box.minX - by, minY: box.minY - by, maxX: box.maxX + by, maxY: box.maxY + by });
+
+  if (mode === 'context') {
+    return {
+      nodes: [...zOrder.stacks.children].map((layer) => asPictured(layer.cloneNode(true))),
+      // Half the shape's own size again on every side: enough to see what it
+      // sits among. An area is most of a map already, and a fifth is enough.
+      box: grown(Math.max(wide, tall) * (kind === 'area' ? 0.2 : 0.5)),
+    };
+  }
+
+  const nodes = [];
+  const domainWith = (domainId) => {
+    const view = domainViews.find(({ domain }) => domain.id === domainId);
+    return view ? [renderDomain(view), ...childrenOf(domainId).map(renderCapability)] : [];
+  };
+  if (kind === 'area') {
+    // The band, and on it what it holds: its domains with their capabilities,
+    // then the touchpoints and loose capabilities, which stand over a domain
+    // where they overlap one.
+    const view = areaViews.find(({ area }) => area.id === id);
+    const held = membersOf(id);
+    nodes.push(
+      renderArea(view),
+      ...held.filter((member) => member.kind === 'domain').flatMap((member) => domainWith(member.record.id)),
+      ...held.filter((member) => member.kind === 'capability').map((member) => renderCapability(member.record)),
+      ...held.filter((member) => member.kind === 'touchpoint').map((member) => renderTouchpoint(member.record)),
+    );
+  } else if (kind === 'domain') {
+    nodes.push(...domainWith(id));
+  } else {
+    const capability = find('capability', id);
+    const laid = featureLayouts.get(id)?.laid ?? null;
+    // Opened for the picture and shut again after it, if the stage has it shut.
+    const wasOpen = openCapabilities.has(id);
+    if (laid) openCapabilities.add(id);
+    nodes.push(renderCapability(capability));
+    if (laid) {
+      const at = positions.get(id);
+      const ink = labelInk(colorOf(capability.colorIndex), opacityOf(capability, 100));
+      nodes.push(...laid.bubbles.map((bubble) => renderFeature({ ...bubble, x: at.x + bubble.x, y: at.y + bubble.y }, ink)));
+    }
+    if (!wasOpen) openCapabilities.delete(id);
+  }
+  return { nodes: nodes.filter(Boolean).map(asPictured), box: grown(Math.max(wide, tall) * 0.06) };
+}
+
 export function zoomBy(factor) {
   const rect = svg.getBoundingClientRect();
   zoomAt(rect.width / 2, rect.height / 2, factor);
@@ -2653,6 +3015,15 @@ export function contentBounds() {
         maxX: position.x + position.rx,
         maxY: position.y + position.ry,
       });
+    }
+  }
+  // People stand outside the shapes they are hung on, and a card that was put
+  // somewhere may stand well away from all of them: Fit to screen has to hold
+  // the cards too, or the ones round the edge of the map are cut off by the
+  // stage.
+  for (const placed of badgePlaces(views, areas).values()) {
+    for (const { pill } of placed) {
+      boxes.push({ minX: pill.x, minY: pill.y, maxX: pill.x + pill.width, maxY: pill.y + pill.height });
     }
   }
   return vp.unionBox(boxes) ?? { minX: -400, minY: -300, maxX: 400, maxY: 300 };

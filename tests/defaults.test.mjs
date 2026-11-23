@@ -113,7 +113,7 @@ check('an area alone may go down to no fill at all',
 // consumer's own defaults.js cannot redefine what the layers mean.
 const layerError = validateLayers(LAYERS.map((layer) => ({ key: layer.key })));
 check('the layers make a valid stack', layerError === null, layerError ?? '');
-check('there are three of them', LAYERS.length === 3, String(LAYERS.length));
+check('there are five of them', LAYERS.length === 5, String(LAYERS.length));
 check('every one of them is named', LAYERS.every((layer) => layer.title?.length > 0));
 check('and every kind of element is on one that exists',
   Object.values(LAYER_OF).every((key) => LAYERS.some((layer) => layer.key === key)),

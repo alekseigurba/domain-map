@@ -86,7 +86,7 @@ export function showIdentity(me, report) {
 
   const button = document.getElementById('profile');
   const who = me.required ? (me.name ?? 'Signed in') : 'Sign-in is off';
-  button.title = `${who} — profile, help and sign-out`;
+  button.title = `${who} — who you are here, what you may do, and sign-out`;
   button.setAttribute('aria-label', `${who}: profile`);
 
   document.getElementById('profile-name').textContent = who;

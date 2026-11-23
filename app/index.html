@@ -62,22 +62,37 @@
       <button class="btn btn--chip" id="draw-toggle" aria-pressed="false"
               aria-controls="marker-tray"
               title="Draw on the map with a marker">Draw</button>
-      <button class="btn btn--chip" id="export-map" title="Download the whole map as JSON">Export</button>
-      <button class="btn btn--chip" id="export-svg" title="Download the diagram as an SVG picture">Export SVG</button>
-      <button class="btn btn--chip" id="import-map" title="Replace the map from a JSON file" hidden>Import</button>
-      <input type="file" id="import-file" accept="application/json,.json" hidden>
+      <!-- A switch, like Draw: the legend of the map's teams, and through it
+           the picking of one, which lights up what that team is on. It is
+           everyone's: a viewer reads who works on what as anyone does. -->
+      <button class="btn btn--chip" id="teams-toggle" aria-pressed="false"
+              aria-controls="teams-panel"
+              title="Teams: who works on what. Pick one to light up what it is on">Teams</button>
+      <!-- The map as a deck: a postcard a domain, and one a capability. It
+           opens over the page, to be worked on or presented. Everyone's: a
+           viewer presents the published map as anyone does. -->
+      <button class="btn btn--chip" id="slideshow-toggle" aria-haspopup="dialog" aria-controls="slideshow"
+              title="Slideshow: a postcard for every domain and capability, to edit or to present">Slideshow</button>
       <!-- Swaps the details column for the Assistant and back. It is a column
            rather than a dialog because its cards name shapes, and pressing a
            name has to be able to show that shape on the map behind it. -->
       <button class="btn btn--chip" id="assistant-toggle" aria-pressed="false"
               aria-controls="details-panel"
               title="Prompts to take to an AI chat, and its replies to review">Assistant</button>
-      <button class="btn btn--chip" id="getting-around" title="Keyboard shortcuts and gestures"
-              aria-haspopup="dialog" aria-controls="getting-around-dialog">Getting around</button>
       <button class="btn btn--chip" id="about" title="What this map is for"
               aria-haspopup="dialog" aria-controls="about-dialog">About</button>
-      <!-- Who is looking. It opens the profile popup, which names them and
-           holds the way out; identity.js fills it. -->
+      <!-- What is set up or looked up rather than done to the map: how the
+           page looks, how to get around it, who may open it, the Assistant's
+           model, and the map as a file, out and in. Kept behind one button so
+           that the row before it is what is done while reading or editing,
+           and nothing else. -->
+      <button class="btn btn--chip btn--chip-icon" id="settings" type="button"
+              title="Settings: theme, getting around, access, the Assistant's model, export and import"
+              aria-haspopup="dialog" aria-controls="settings-dialog" aria-label="Settings">
+        <span class="icon" data-icon="icons/settings.svg" aria-hidden="true"></span>
+      </button>
+      <!-- Who is looking. It opens the profile popup, which names them, says
+           what they may do and holds the way out; identity.js fills it. -->
       <button class="avatar" id="profile" type="button" data-avatar
               aria-haspopup="dialog" aria-controls="profile-dialog" aria-label="Profile">
         <span class="avatar__initials"></span>
@@ -156,6 +171,17 @@
            now. main.js fills both, from the kinds that layer takes and from the
            model's stack. -->
       <div class="add-shapes" id="add-shapes" role="group" aria-label="Add a shape" hidden></div>
+      <!-- The teams, while Teams is on: the map's own list of them under their
+           Types, a row a team. Pressing one lights up what it is on and stands
+           the rest of the map back; pressing it again puts the map back.
+           teams.js fills the list. It has the top right corner, the one corner
+           of the stage nothing else is in. -->
+      <aside class="teams" id="teams-panel" aria-label="Teams" hidden>
+        <h2 class="teams__title">Teams</h2>
+        <div class="teams__list" id="teams-list"></div>
+        <button class="btn btn--chip teams__add" type="button" id="teams-add" hidden
+                title="Add a team, to put on an area, a domain or a capability">Add a team</button>
+      </aside>
       <div class="layers" id="layer-control" role="group" aria-label="Layers"></div>
       <!-- The marker tray, on the stage while Draw is on. It has the corner the
            Add buttons hold in Edit mode, which it is never on together with:
@@ -390,6 +416,7 @@
               <th scope="col">Version</th>
               <th scope="col">Shared</th>
               <th scope="col">Shared by</th>
+              <th scope="col">Shared with</th>
               <th scope="col" aria-label="Actions"></th>
             </tr>
           </thead>
@@ -404,8 +431,77 @@
     </div>
   </dialog>
 
+  <!-- The slideshow: the map as a deck, a postcard an area, a domain and a
+       capability. It fills the window. The bar holds the two views — Edit, the deck with
+       its slides listed at the left and the one in hand as fields; Present,
+       the one in hand and nothing else, full screen — and the way through the
+       deck. slideshow.js fills the list, the picture and the words. -->
+  <dialog class="slideshow" id="slideshow" aria-label="Slideshow" data-view="deck">
+    <header class="slideshow__bar">
+      <h2 class="dialog__title">Slideshow</h2>
+      <span class="toggle slideshow__views" role="group" aria-label="View">
+        <button class="btn btn--chip toggle__chip" type="button" id="slideshow-edit" aria-pressed="false"
+                title="Work on the deck: a slide's words are the shape's own, edited here as in its details">Edit</button>
+        <button class="btn btn--chip toggle__chip" type="button" id="slideshow-present" aria-pressed="false"
+                title="Present from this slide, full screen. Arrow keys step through; Esc comes back">Present</button>
+      </span>
+      <span class="slideshow__steps">
+        <button class="btn btn--chip btn--chip-icon" type="button" id="slideshow-prev" title="The slide before (Left arrow)" aria-label="The slide before">&lsaquo;</button>
+        <span class="slideshow__at" id="slideshow-at" aria-live="polite"></span>
+        <button class="btn btn--chip btn--chip-icon" type="button" id="slideshow-next" title="The slide after (Right arrow)" aria-label="The slide after">&rsaquo;</button>
+      </span>
+      <button class="btn btn--chip" type="button" id="slideshow-close" title="Back to the map (Esc)">Close</button>
+    </header>
+    <div class="slideshow__body">
+      <nav class="slideshow__list" id="slideshow-list" aria-label="Slides"></nav>
+      <!-- The room a slide has: the slide is the largest 16:9 card that fits it. -->
+      <div class="slideshow__stage">
+        <article class="slide" id="slide">
+          <p class="slide__path" id="slide-path" aria-label="Where it sits"></p>
+          <div class="slide__picture" id="slide-picture"></div>
+          <div class="slide__words" id="slide-words"></div>
+        </article>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Who a shared version is shared with: everyone who works on the map, or
+       the people and the groups ticked here. Asked when a version is shared
+       from a sandbox, and again from the Shared list by whoever shared it.
+       audience.js fills the two lists and answers with what was chosen. -->
+  <dialog class="dialog dialog--audience" id="audience-dialog" aria-labelledby="audience-title">
+    <form class="dialog__body" id="audience-form">
+      <h2 class="dialog__title" id="audience-title">Share</h2>
+      <p class="audience__says" id="audience-says"></p>
+      <div class="field field--inline">
+        <span class="field__label" id="audience-with-label">Shared with</span>
+        <span class="toggle" id="audience-with" role="group" aria-labelledby="audience-with-label">
+          <button class="btn btn--chip toggle__chip" type="button" data-with="everyone" aria-pressed="true"
+                  title="Everyone who works on the map: every contributor, publisher and administrator">Everyone</button>
+          <button class="btn btn--chip toggle__chip" type="button" data-with="selected" aria-pressed="false"
+                  title="Only the people and the groups ticked below">Selected</button>
+        </span>
+      </div>
+      <div class="audience__pick" id="audience-pick" hidden>
+        <h3 class="versions__heading">Groups</h3>
+        <div class="audience__list" id="audience-groups"></div>
+        <h3 class="versions__heading">People</h3>
+        <input class="field__input" id="audience-find" type="search" placeholder="Find by name or email"
+               aria-label="Find by name or email" maxlength="200" autocomplete="off" spellcheck="false">
+        <div class="audience__list" id="audience-people"></div>
+        <p class="versions__note" id="audience-count" role="status"></p>
+      </div>
+      <p class="versions__note" id="audience-note" hidden></p>
+      <div class="dialog__foot">
+        <button class="btn btn--chip" type="button" id="audience-cancel">Cancel</button>
+        <button class="btn btn--chip" type="submit" id="audience-ok">Share</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- The profile popup, under the avatar: who is signed in, what they may do,
-       and the way out. identity.js fills it. -->
+       and the way out — and nothing else. What is set up for the page or the
+       map is under the gear beside it. identity.js fills it. -->
   <dialog class="dialog dialog--profile" id="profile-dialog" aria-labelledby="profile-name">
     <div class="dialog__body">
       <div class="profile">
@@ -423,12 +519,28 @@
       </div>
       <p class="profile__role" id="profile-role"></p>
       <p class="profile__bypass" id="profile-bypass" hidden>Signed in through the development bypass.</p>
-      <!-- Light or dark is whoever is looking's to say, like which panels are
-           folded, so it is kept by the browser and sits with who they are. It
-           follows the system until one of the other two is pressed. -->
-      <div class="profile__theme">
-        <span class="profile__label" id="theme-label">Theme</span>
-        <span class="profile__choices" id="theme-choices" role="group" aria-labelledby="theme-label">
+      <div class="dialog__foot">
+        <button class="btn btn--chip" type="button" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
+        <button class="btn btn--chip" type="button" id="profile-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Settings, under the gear: what is set up rather than done to the map. A
+       button a row, with what it is for said beside it, since these are
+       pressed seldom enough that a name alone would have to be remembered.
+       Each row is there for whoever may use it and is not there at all for
+       anyone else: the modules that own the buttons hide them, and a hidden
+       button takes its sentence with it. -->
+  <dialog class="dialog dialog--settings" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="settings-title">Settings</h2>
+      <div class="settings">
+        <!-- Light or dark is whoever is looking's to say, like which panels are
+             folded, so it is kept by the browser and is no part of the map. It
+             follows the system until one of the other two is pressed. -->
+        <span class="settings__label" id="theme-label">Theme</span>
+        <span class="settings__choices" id="theme-choices" role="group" aria-labelledby="theme-label">
           <button class="btn btn--chip theme-choice" type="button" data-theme-choice="system"
                   title="Light or dark, whichever this device is set to">System</button>
           <button class="btn btn--chip theme-choice" type="button" data-theme-choice="light"
@@ -436,23 +548,35 @@
           <button class="btn btn--chip theme-choice" type="button" data-theme-choice="dark"
                   title="Dark, whatever this device is set to">Dark</button>
         </span>
-      </div>
-      <div class="dialog__foot">
-        <!-- Who may do what belongs with who you are. people.js shows it to
-             everyone who works on the map, and lets an administrator change it. -->
-        <button class="btn btn--chip" type="button" id="people"
-                title="Who may open the map, and what each may do"
+        <!-- Every shortcut and gesture. Everyone's, and first among the
+             buttons: it is the one a newcomer comes here for. -->
+        <button class="btn btn--chip settings__do" type="button" id="getting-around"
+                aria-haspopup="dialog" aria-controls="getting-around-dialog">Getting around</button>
+        <span class="settings__says">Keyboard shortcuts and gestures.</span>
+        <!-- people.js shows it to everyone who works on the map, and lets an
+             administrator change it. -->
+        <button class="btn btn--chip settings__do" type="button" id="people"
                 aria-haspopup="dialog" aria-controls="people-dialog" hidden>Users &amp; access</button>
-        <!-- An administrator's: the model behind the Assistant, on or off, and
-             its key. assistant-settings.js shows it to nobody else. -->
-        <button class="btn btn--chip" type="button" id="assistant-model"
-                title="Switch the Assistant's model on or off, and change its key"
+        <span class="settings__says">Who may open the map, and what each may do.</span>
+        <!-- An administrator's: assistant-settings.js shows it to nobody else. -->
+        <button class="btn btn--chip settings__do" type="button" id="assistant-model"
                 aria-haspopup="dialog" aria-controls="assistant-model-dialog" hidden>Assistant model</button>
-        <button class="btn btn--chip" type="button" id="sign-out" title="Sign out of this map" hidden>Sign out</button>
-        <button class="btn btn--chip" type="button" id="profile-close">Close</button>
+        <span class="settings__says">The model behind the Assistant: on or off, and its key.</span>
+        <button class="btn btn--chip settings__do" type="button" id="export-map">Export</button>
+        <span class="settings__says">Download the whole map as JSON.</span>
+        <button class="btn btn--chip settings__do" type="button" id="export-svg">Export SVG</button>
+        <span class="settings__says">Download the diagram as a picture.</span>
+        <button class="btn btn--chip settings__do" type="button" id="import-map" hidden>Import</button>
+        <span class="settings__says">Replace the map from a JSON file. In Edit mode.</span>
+      </div>
+      <div class="dialog__foot dialog__foot--end">
+        <button class="btn btn--chip" type="button" id="settings-close">Close</button>
       </div>
     </div>
   </dialog>
+  <!-- The file Import reads. It stands outside the dialog that asks for it,
+       which has shut by the time the file is chosen. -->
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
 
   <!-- Users & access: who may open the map and what each may do. Everyone who
        works on the map reads it; an administrator gives out roles, adds
@@ -464,6 +588,16 @@
   <dialog class="dialog dialog--people" id="people-dialog" aria-labelledby="people-title">
     <div class="dialog__body">
       <h2 class="dialog__title" id="people-title">Users &amp; access</h2>
+      <!-- The list of people, or the groups made from it. Two views of one
+           dialog rather than two dialogs: a group is nothing but people from
+           the list, and is put together looking at it. -->
+      <span class="toggle roster__views" id="people-views" role="group" aria-label="Show">
+        <button class="btn btn--chip toggle__chip" type="button" data-view="people" aria-pressed="true">People</button>
+        <button class="btn btn--chip toggle__chip" type="button" data-view="groups" aria-pressed="false"
+                title="Groups of people, for sharing a version with fewer than everyone">Groups</button>
+      </span>
+      <p class="versions__note" id="people-note" role="status" hidden></p>
+      <div class="roster__panel" id="people-panel">
       <!-- Finding someone on a list that only grows: by name or address, by what
            they may do, by when they were last here. people.js narrows the rows
            to what these say, a page at a time. -->
@@ -494,7 +628,6 @@
         <button class="btn btn--chip" type="button" id="people-sweep-cancel" title="Remove nobody, and go back to the whole list">Cancel</button>
         <button class="btn btn--chip btn--danger" type="button" id="people-sweep-remove">Remove</button>
       </div>
-      <p class="versions__note" id="people-note" role="status" hidden></p>
       <div class="versions__scroll">
         <table class="roster">
           <thead>
@@ -553,6 +686,30 @@
         <button class="btn btn--chip" type="submit" id="people-sweep-go"
                 title="Show who that is. Nobody is removed until you say so on the list.">Preview…</button>
       </form>
+      </div>
+      <!-- Groups: a name and its members, kept by the app itself. Everyone who
+           works on the map reads them, since a version is shared with a group
+           by whoever shares it; an administrator makes one and says who is in
+           it. people.js fills the rows. -->
+      <div class="roster__panel" id="groups-panel" hidden>
+        <p class="roster__says">A group is a name and the people in it. It is what a version is shared with when it is not shared with everyone: <strong>Share</strong>, in Versions, offers the groups here beside the people one by one.</p>
+        <div class="versions__scroll">
+          <table class="roster">
+            <thead>
+              <tr>
+                <th scope="col">Group</th>
+                <th scope="col">Members</th>
+                <th scope="col" aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody id="groups-rows"></tbody>
+          </table>
+        </div>
+        <form class="roster__add" id="groups-add" hidden>
+          <input class="field__input" id="groups-add-name" name="name" placeholder="Name of a new group" required maxlength="80" aria-label="Name of a new group">
+          <button class="btn btn--chip" type="submit" title="Make a group, to put people in">Add group</button>
+        </form>
+      </div>
       <!-- What each role may do, at the foot: it is read once and then glanced
            back at, and the list is what the dialog is opened for. -->
       <dl class="roster__key" id="people-key" aria-label="What each role may do"></dl>
@@ -619,11 +776,14 @@
         <p>Drag the map to pan, scroll to zoom, or use the controls at the bottom right. Browsing, a drag pans from wherever it starts, on a shape or off one; in <strong>Edit</strong> mode a drag on a shape moves the shape, and open ground or the middle button pans. In <strong>Edit</strong> mode, click a connection point on a domain, a capability or a feature to start a connector, and a point on another to finish it. Press <strong>Edit</strong> in the header to make changes.</p>
         <p>The map says more the closer you look, and nothing on it moves as you do. Zoom in on a capability and it <strong>opens onto its features</strong> — a row of pips along its foot says it holds some. <strong>Double-click</strong> a domain or a capability to close in on it, and Fit to screen to come back out.</p>
         <p>The <strong>slider over the zoom buttons</strong> sets the level the lines are drawn at, without moving the map. <strong>F</strong>, where a map opens: every line where it really ends, on a feature, a capability or a domain. <strong>C</strong>: a line that ends on a feature leaves from its capability. <strong>D</strong>: every line leaves from a domain, the lines between two domains are one line, heavier the more it stands for, and each domain keeps its two strongest — point at one to read what it joins and how many it carries, and pick a domain to see every line it has. The level is the same in <strong>Edit</strong> mode, and is your tab's alone. A line drawn short of its own ends cannot be reshaped until the level, or the zoom, draws it whole.</p>
-        <p>The <strong>layer control</strong> in the bottom left corner lists the three layers, topmost first: Presentation, Domains, and Areas underneath them both. The eye hides Presentation or Areas; Domains, the base layer, cannot be hidden, only dimmed. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
-        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds — domains, capabilities and features, touchpoints and actors, or areas. A feature goes into the capability that is selected, after the ones it already holds. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
+        <p>The <strong>layer control</strong> in the bottom left corner lists the five layers, topmost first: Product roles and Engineering roles, which are who leads what — each marked with the colour its people's cards wear down their edge; then Presentation, Domains, and Areas underneath them all. The eye hides any of them but Domains, the base layer, which cannot be hidden, only dimmed; the half-disc beside it dims a layer instead. What you change there is for your tab alone — unless you are in Edit mode, where it sets what the map opens at for everyone.</p>
+        <p>In <strong>Edit</strong> mode each row also carries a box saying which layer you are adding to — one at a time. The Add buttons beside the control then offer that layer's own kinds — domains, capabilities and features, touchpoints and actors, areas, or a person in a role. A feature goes into the capability that is selected, after the ones it already holds, and a person is added on the area or the domain that is selected. Selecting a hidden layer shows it, and hiding the one you are working on moves you back to the base layer.</p>
         <p>An <strong>area</strong> is who owns what: a band drawn round the domains, touchpoints and loose capabilities one team holds. It has no size of its own — it follows what it holds. Its title rides the border like a legend; Shift+Enter while renaming it breaks the title into rows, which stack outside the band. Drag a shape in from outside the line to put it in the area; to take it out, set <strong>Area</strong> to — in its details. Dragging a shape clear of its team only stretches the band after it, so tidying the map never reorganises the company. A shape is in one area or in none. An area says who answers for a part of the map today, and is there to be held against the domains, not to define them: a domain is cut by what the business does, whoever holds it.</p>
         <p><strong>Assistant</strong>, in the header, takes the place of the details panel: pick what to ask, and either send it to the model this map is connected to or, where there is none, copy the prompt into the AI chat you use and paste its reply back. What comes back is a list of cards. Nothing on one touches the map until you apply it in <strong>Edit</strong> mode, and each card is one Ctrl+Z. <strong>Ask your own</strong> opens a box for your question, and Ctrl+Enter there sends it.</p>
         <p><strong>Draw</strong>, in the header, puts a marker in your hand and locks the map under it: nothing on it is selected or moved while you draw, so a flow can be traced across the terrain without disturbing it. The tray in the top left corner holds five markers, an eraser, undo and clear. What you draw belongs to this tab — it is in no version, nobody else sees it, and it survives a refresh but not the tab being closed — and it goes when another version is opened in its place. <strong>Export SVG</strong> carries it into the picture. Draw stands down while <strong>Edit</strong> is on.</p>
+        <p><strong>Product roles</strong> and <strong>Engineering roles</strong> are two layers of people: who leads an area or a domain for product, and who for engineering. Each person is a card — their icon, and beside it their name with their role under it — hung on what they own, and pressing one shows their details. In <strong>Edit</strong> mode, pick one of the two layers, select an area or a domain, and <strong>Add a product role</strong> or <strong>Add an engineering role</strong>; or name someone from the <strong>Product roles</strong> and <strong>Engineering roles</strong> lists in the shape's own details. A person has a name, a <strong>Role</strong> — type one in once, then pick it from the list — and an icon: one of the five figures the app carries, or anything from the icon library. Someone given a role takes the icon others in that role wear, until you pick another for them. A person may own several areas and domains, with a card on each, and one who owns nothing is taken off the map. A card starts by the name of what it is on: in <strong>Edit</strong> mode, drag it to wherever it reads better and it stays there, going with its shape when the shape is moved. <strong>Put cards back</strong>, in the person's details, hangs them by the names again.</p>
+        <p><strong>Teams</strong>, in the header, opens a legend of the map's teams in the top right corner, under their Types. Press a team and the map is lit by it: what it is on is ringed, what it reaches through that — the capabilities of its domain, everything in its area — stays as drawn, and the rest stands back. Press a Type and every team of it is lit together. A lit team stays lit while you pick shapes; press it again, or put the legend away, and the map is the map again. In <strong>Edit</strong> mode the legend adds a team, and a team is put on an area, a domain or a capability from its own details or from the <strong>Teams</strong> list in the shape's.</p>
+        <p><strong>Slideshow</strong>, in the header, is the map as a deck: a postcard for every area, every domain in it and each of the domain's capabilities, the shape as the map draws it beside its words. Across the top of a slide is where its shape sits — <em>/area/domain/capability</em>. <strong>Edit</strong> there makes the slide's words fields — they are the shape's own, so a change on a slide is a change to the map — and lets each slide choose its picture: the shape alone, the shape with its neighbours, or a picture of your own, uploaded for the slide. <strong>Present</strong> shows the slide in hand and nothing else, full screen where the browser allows it.</p>
         <p>On macOS, use Cmd wherever this says Ctrl. While you type in a field, keys go to the field: Ctrl+Z there undoes typing, not a change to the map. Esc is the one key that also works from a field.</p>
 
         <section class="shortcuts__group" aria-labelledby="shortcuts-shapes">
@@ -711,6 +871,23 @@
               <tr><td>The eraser, then press a stroke or drag across several</td><td>Take off each stroke it touches, whole. Press the eraser again, or a marker, to go back to drawing.</td></tr>
               <tr><td>Ctrl+Z</td><td>Take back the last stroke, the last erasing or the last clear</td></tr>
               <tr><td>Esc</td><td>Drop the stroke you are in the middle of, or else put the marker down. <strong>Done</strong> and <strong>Draw</strong> put it down too, and what is drawn stays on the map.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="shortcuts__group" aria-labelledby="shortcuts-slideshow">
+          <h3 class="shortcuts__heading" id="shortcuts-slideshow">Slideshow</h3>
+          <table class="keys">
+            <thead>
+              <tr><th scope="col">Key or gesture</th><th scope="col">What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Right, Down or Page Down</td><td>The slide after</td></tr>
+              <tr><td>Left, Up or Page Up</td><td>The slide before</td></tr>
+              <tr><td>Home / End</td><td>The first slide, or the last</td></tr>
+              <tr><td>Space, or a press on the slide, while presenting</td><td>The slide after</td></tr>
+              <tr><td>Ctrl+Z</td><td>Undo the last change to the map, as on the map itself. With the caret in a field it undoes typing instead.</td></tr>
+              <tr><td>Esc</td><td>One step back out: out of a field, out of presenting to the deck, out of the deck to the map</td></tr>
             </tbody>
           </table>
         </section>

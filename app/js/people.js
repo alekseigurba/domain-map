@@ -7,6 +7,12 @@
 // administrator afterwards. The dialog's frame is in index.html; this reads the
 // list afresh each time it opens.
 //
+// Beside the people are the groups made from them: a name and its members,
+// which is what a version is shared with when it is not shared with everyone.
+// Everyone who can open the dialog reads them, and an administrator makes one,
+// names it and says who is in it. They are the dialog's other view rather than
+// a dialog of their own, since a group is put together looking at the list.
+//
 // The list only grows — everyone who signs in once is on it — so it is shown a
 // page at a time, and narrowed by a name or an address, by role, and by when
 // someone was last here. All of that is done here, on the list as it was read:
@@ -28,6 +34,15 @@ const whoIsAway = (since, role) => call('GET',
 const clearOut = ({ since, role, people: shown }) => call('POST', 'api/people/inactive',
   { notSeenSince: since.toISOString(), role: role || null, ids: shown.map((person) => person.id) });
 
+/** Every group, by name, each with its members. Contributors and above. */
+export const listGroups = async () => (await call('GET', 'api/groups')).groups;
+const group = (id, rest = '') => `api/groups/${encodeURIComponent(id)}${rest}`;
+const addGroup = (name) => call('POST', 'api/groups', { name });
+const renameGroup = (id, name) => call('PATCH', group(id), { name });
+const removeGroup = (id) => call('DELETE', group(id));
+const addMember = (id, personId) => call('PUT', group(id, `/members/${encodeURIComponent(personId)}`));
+const removeMember = (id, personId) => call('DELETE', group(id, `/members/${encodeURIComponent(personId)}`));
+
 /** How many rows a page holds: what the dialog shows without the list running off the screen. */
 const PAGE_SIZE = 25;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -43,6 +58,10 @@ const el = (id) => document.getElementById(id);
 let me = { id: null, role: 'viewer' };
 /** Everyone on the list, as last read. */
 let everyone = [];
+/** Every group, as last read. */
+let groups = [];
+/** Which of the dialog's two views is on show: the people, or the groups. */
+let view = 'people';
 /** Which page of those found is on show, from 0. */
 let page = 0;
 /**
@@ -209,6 +228,126 @@ function render() {
   el('people-prev').disabled = page === 0;
   el('people-next').disabled = page === pages - 1;
   showSweep();
+  showGroups();
+  showView();
+}
+
+/** Show the view that was asked for, and say which it is on the toggle. */
+function showView() {
+  el('people-panel').hidden = view !== 'people';
+  el('groups-panel').hidden = view !== 'groups';
+  for (const chip of el('people-views').querySelectorAll('[data-view]')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.view === view));
+  }
+}
+
+/**
+ * One row a group: what it is called and how many are in it, who they are, and
+ * what an administrator can do about it. A member is a chip with a way out of
+ * the group on it; after the last one, a list of everyone not in the group
+ * yet, which puts whoever is picked into it.
+ */
+function groupRow(one) {
+  const administers = me.role === ADMINISTRATOR;
+
+  const what = document.createElement('div');
+  what.className = 'roster__who';
+  const name = document.createElement('span');
+  name.className = 'roster__name';
+  name.textContent = one.name;
+  const count = document.createElement('span');
+  count.className = 'roster__email';
+  count.textContent = one.members.length === 0 ? 'Nobody in it yet' : people(one.members.length);
+  what.append(name, count);
+
+  const members = document.createElement('div');
+  members.className = 'roster__members';
+  for (const member of one.members) {
+    const chip = document.createElement('span');
+    chip.className = 'roster__member';
+    chip.textContent = member.name;
+    if (member.email && member.email !== member.name) chip.title = member.email;
+    if (administers) {
+      const out = document.createElement('button');
+      out.type = 'button';
+      out.className = 'roster__out';
+      out.textContent = '×';
+      out.title = `Take ${member.name} out of ${one.name}`;
+      out.setAttribute('aria-label', out.title);
+      out.addEventListener('click', () => act(() => removeMember(one.id, member.id)));
+      chip.append(out);
+    }
+    members.append(chip);
+  }
+  if (administers) {
+    const inIt = new Set(one.members.map((member) => member.id));
+    const others = everyone.filter((person) => !inIt.has(person.id));
+    const join = document.createElement('select');
+    join.className = 'field__select roster__join';
+    join.setAttribute('aria-label', `Put someone in ${one.name}`);
+    const first = document.createElement('option');
+    first.value = '';
+    first.textContent = others.length ? 'Add someone…' : 'Everyone is in it';
+    join.append(first);
+    for (const person of others) {
+      const option = document.createElement('option');
+      option.value = person.id;
+      option.textContent = person.email && person.email !== person.name ? `${person.name} — ${person.email}` : person.name;
+      join.append(option);
+    }
+    join.disabled = others.length === 0;
+    join.addEventListener('change', () => { if (join.value) act(() => addMember(one.id, join.value)); });
+    members.append(join);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'versions__actions';
+  if (administers) {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'btn btn--chip';
+    rename.textContent = 'Rename';
+    rename.title = `Give "${one.name}" another name`;
+    rename.addEventListener('click', () => {
+      const wanted = prompt(`Rename the group "${one.name}" to what?`, one.name);
+      const to = wanted?.trim();
+      if (!to || to === one.name) return;
+      act(() => renameGroup(one.id, to));
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn btn--chip btn--danger';
+    remove.textContent = 'Delete';
+    remove.title = `Delete the group "${one.name}"`;
+    remove.addEventListener('click', () => {
+      // Said before it is done: the one thing about deleting a group that is not obvious.
+      const question = `Delete the group "${one.name}"?\n\nWhatever was shared with it is no longer shared with its members through it. `
+        + 'Nothing falls open to everyone: a version shared with this group alone is then seen by whoever shared it, and by the administrators.';
+      if (confirm(question)) act(() => removeGroup(one.id));
+    });
+    actions.append(rename, remove);
+  }
+
+  const row = document.createElement('tr');
+  row.append(cell(null, what), cell('roster__in', members), cell(null, actions));
+  return row;
+}
+
+/** The groups, a row each, or that there are none and who makes them. */
+function showGroups() {
+  const administers = me.role === ADMINISTRATOR;
+  el('groups-add').hidden = !administers;
+  if (groups.length > 0) {
+    el('groups-rows').replaceChildren(...groups.map(groupRow));
+    return;
+  }
+  const none = cell('versions__empty', administers
+    ? 'There are no groups yet. Name one below, then put people in it.'
+    : 'There are no groups yet. An administrator makes them.');
+  none.colSpan = 3;
+  const row = document.createElement('tr');
+  row.append(none);
+  el('groups-rows').replaceChildren(row);
 }
 
 /** "3 versions", "1 version". */
@@ -320,7 +459,7 @@ function personRow(person) {
 /** Read the list again and show it. */
 async function refresh() {
   try {
-    everyone = await listPeople();
+    [everyone, groups] = await Promise.all([listPeople(), listGroups()]);
     say(null);
   } catch (error) {
     say(`Could not read the list: ${error.message}`, true);
@@ -399,9 +538,9 @@ function showKey() {
 }
 
 /**
- * Wire the dialog to who is looking. main.js opens it from the button in the
- * profile popup; this is what happens then, and what an administrator's form
- * at the foot does.
+ * Wire the dialog to who is looking. main.js opens it from the button in
+ * Settings; this is what happens then, and what an administrator's form at the
+ * foot does.
  */
 export function initPeople(who, { onChange: changed } = {}) {
   me = who;
@@ -411,15 +550,18 @@ export function initPeople(who, { onChange: changed } = {}) {
   const opener = el('people');
   opener.hidden = !mayAs(me.role, 'contributor');
   opener.addEventListener('click', () => {
-    el('profile-dialog').close();
+    el('settings-dialog').close();
     // Opened afresh: the whole list, from its first page.
     el('people-find').value = '';
     el('people-role').value = '';
     el('people-seen').value = '';
     page = 0;
     preview = null;
+    view = 'people';
     everyone = [];
+    groups = [];
     el('people-rows').replaceChildren();
+    el('groups-rows').replaceChildren();
     el('people-count').textContent = '';
     say('Reading the list…');
     refresh();
@@ -430,6 +572,22 @@ export function initPeople(who, { onChange: changed } = {}) {
   for (const [id, event] of [['people-find', 'input'], ['people-role', 'change'], ['people-seen', 'change']]) {
     el(id).addEventListener(event, () => { page = 0; render(); });
   }
+  for (const chip of el('people-views').querySelectorAll('[data-view]')) {
+    chip.addEventListener('click', () => {
+      view = chip.dataset.view;
+      say(null);
+      showView();
+    });
+  }
+  el('groups-add').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const box = el('groups-add-name');
+    const name = box.value;
+    act(async () => {
+      await addGroup(name);
+      box.value = '';
+    });
+  });
   el('people-prev').addEventListener('click', () => { page -= 1; render(); });
   el('people-next').addEventListener('click', () => { page += 1; render(); });
 

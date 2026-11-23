@@ -4,11 +4,16 @@
 // same three things without this file changing.
 
 import { signInAgain } from './identity.js';
-import { ICON_EXTENSIONS, MAX_ICON_BYTES, extensionOf, looksExecutable, safeIconName } from './rules.js';
+import {
+  ICON_EXTENSIONS, MAX_ICON_BYTES, PICTURE_EXTENSIONS, MAX_PICTURE_BYTES,
+  FIGURES, FIGURES_PATH, isFigure,
+  extensionOf, looksExecutable, safeIconName,
+} from './rules.js';
 
 const API = 'api/files';
 
 const ICONS_PREFIX = 'data/icons/';
+const PICTURES_PREFIX = 'data/pictures/';
 
 const url = (key) => `${API}/${key.split('/').map(encodeURIComponent).join('/')}`;
 
@@ -59,8 +64,12 @@ export async function listFiles(prefix) {
 // Icons are files under `data/icons/`, and the map stores only the name — an
 // exported map names its icons, it does not carry them.
 
-/** Where the page points an <img> or an SVG <image> at an icon. */
-export const iconUrl = (name) => url(`${ICONS_PREFIX}${name}`);
+/**
+ * Where the page points an <img> or an SVG <image> at an icon. A figure — one
+ * of the people the app carries for the role layers — is the app's own file,
+ * there whatever the library holds; anything else is in the library.
+ */
+export const iconUrl = (name) => (isFigure(name) ? `${FIGURES_PATH}${name}` : url(`${ICONS_PREFIX}${name}`));
 
 const isIcon = (name) => ICON_EXTENSIONS.includes(extensionOf(name));
 
@@ -73,17 +82,33 @@ export async function listIcons() {
 }
 
 /** Store one icon and answer with the name the map should keep. */
-export async function saveIcon(file) {
-  if (file.size > MAX_ICON_BYTES) {
-    throw new Error(`An icon must be under ${MAX_ICON_BYTES / 1024} KB.`);
+export const saveIcon = (file) => saveNamed(file, {
+  prefix: ICONS_PREFIX,
+  what: 'An icon',
+  extensions: ICON_EXTENSIONS,
+  most: MAX_ICON_BYTES,
+  // A file that arrives with a figure's name is kept under another, or it
+  // would be in the library and never drawn: the name would still be the figure's.
+  reserved: FIGURES,
+});
+
+/**
+ * Store one file under a folder of its own and answer with the name it was
+ * given there: the one way a picture of any sort gets into the store. `what`
+ * is how the file is spoken of when it is refused.
+ */
+async function saveNamed(file, { prefix, what, extensions, most, reserved = [] }) {
+  if (file.size > most) {
+    const limit = most >= 1024 * 1024 ? `${most / 1024 / 1024} MB` : `${most / 1024} KB`;
+    throw new Error(`${what} must be under ${limit}.`);
   }
 
   const name = safeIconName(file.name);
   if (!name) throw new Error('That file name cannot be used.');
 
   const extension = extensionOf(name);
-  if (!ICON_EXTENSIONS.includes(extension)) {
-    throw new Error(`An icon must be one of ${ICON_EXTENSIONS.join(', ')}.`);
+  if (!extensions.includes(extension)) {
+    throw new Error(`${what} must be one of ${extensions.join(', ')}.`);
   }
 
   // An SVG is a document, and a document served from this origin could carry
@@ -97,10 +122,28 @@ export async function saveIcon(file) {
     type = 'image/svg+xml';
   }
 
-  const saved = await freeName(name, await listIcons());
-  await putFile(`${ICONS_PREFIX}${saved}`, body, type);
+  const taken = [...(await listFiles(prefix)).map((object) => object.key.slice(prefix.length)), ...reserved];
+  const saved = await freeName(name, taken);
+  await putFile(`${prefix}${saved}`, body, type);
   return saved;
 }
+
+// --- pictures ----------------------------------------------------------------
+
+// A picture uploaded for a slide is a file under `data/pictures/`, and the map
+// keeps only its name, exactly as it does an icon's. They are kept apart from
+// the icons so that the icon picker does not fill with photographs.
+
+/** Where a slide points an <img> at a picture. */
+export const pictureUrl = (name) => url(`${PICTURES_PREFIX}${name}`);
+
+/** Store one picture and answer with the name the map should keep. */
+export const savePicture = (file) => saveNamed(file, {
+  prefix: PICTURES_PREFIX,
+  what: 'A picture',
+  extensions: PICTURE_EXTENSIONS,
+  most: MAX_PICTURE_BYTES,
+});
 
 /** A name nothing else has, so an upload never overwrites an icon in use. */
 function freeName(name, taken) {

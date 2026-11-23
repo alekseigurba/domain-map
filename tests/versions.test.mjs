@@ -201,6 +201,28 @@ try {
   check('a map the app could not open is refused',
     (await as(app, OWNER, 'POST', '/api/drafts', { document: '{"domains":[{"key":""}]}' })).status === 400);
   check('and so is one that is not JSON', (await as(app, OWNER, 'POST', '/api/drafts', { document: '{' })).status === 400);
+
+  // A person's card that was moved is written beside the shape it is on, as
+  // `{ key, x, y }` where a bare key stood: the server has to read that as the
+  // page writes it, or a map with one moved card cannot be saved at all.
+  const led = (owned) => `${JSON.stringify({
+    ...seedMap,
+    title: 'Led',
+    version: 6,
+    productRoles: [{ key: 'ada-example', title: 'Ada Example', type: 'Product lead', domains: [owned] }],
+  }, null, 2)}\n`;
+  const domainKey = seedMap.domains[0].key;
+  const hung = await as(app, OWNER, 'POST', '/api/drafts', { document: led(domainKey), name: 'Led, hung' });
+  check('a map that says who leads a domain is saved', hung.status === 201, JSON.stringify(hung.body));
+  const put = await as(app, OWNER, 'POST', '/api/drafts', { document: led({ key: domainKey, x: 818, y: -89 }), name: 'Led, put' });
+  check('and so is one in which their card was put somewhere', put.status === 201, JSON.stringify(put.body));
+  const far = await as(app, OWNER, 'POST', '/api/drafts', { document: led({ key: domainKey, x: 9e9, y: 0 }) });
+  check('one whose card is put out of reach of its shape is refused, in words that name the card',
+    far.status === 400 && /ada-example/.test(far.body.error) && /within/.test(far.body.error), JSON.stringify(far.body));
+  const lost = await as(app, OWNER, 'POST', '/api/drafts', { document: led({ key: 'nowhere', x: 1, y: 2 }) });
+  check('and one whose card is on a domain the file does not have says which, by its key',
+    lost.status === 400 && /owns domain 'nowhere'/.test(lost.body.error), JSON.stringify(lost.body));
+  for (const name of ['Led, hung', 'Led, put']) await as(app, OWNER, 'DELETE', `/api/drafts/${encodeURIComponent(name)}`);
   check('and a name with a slash in it, which would read as a path',
     (await as(app, OWNER, 'POST', '/api/drafts', { document: mapText(), name: 'drafts/q3' })).status === 400);
 
@@ -328,6 +350,135 @@ try {
   check('a sandbox version is deleted by its owner alone',
     (await as(app, OWNER, 'DELETE', '/api/drafts/v2%20(2)')).status === 404
     && (await as(app, OWNER_BY_EMAIL, 'DELETE', '/api/drafts/v2%20(2)')).status === 204);
+
+  // --- groups, and a version shared with fewer than everyone ---
+  // In a scope of its own: the checks above have taken the short names.
+  {
+  const PAULA = { source: 'entra', subject: 'oid-paula', name: 'Paula Publisher', username: 'paula@contoso.example', method: 'microsoft' };
+  const CARLA = { source: 'entra', subject: 'oid-carla', name: 'Carla Contributor', username: 'carla@contoso.example', method: 'microsoft' };
+  const DAN = { source: 'entra', subject: 'oid-dan', name: 'Dan Draftsman', username: 'dan@contoso.example', method: 'microsoft' };
+  const paula = (await as(app, PAULA, 'GET', '/api/me')).body;
+  const carla = (await as(app, CARLA, 'GET', '/api/me')).body;
+  const dan = (await as(app, DAN, 'GET', '/api/me')).body;
+  await as(app, OWNER, 'PATCH', `/api/people/${paula.id}`, { role: 'publisher' });
+
+  check('a contributor cannot make a group', (await as(app, OWNER_BY_EMAIL, 'POST', '/api/groups', { name: 'Reviewers' })).status === 403);
+  const made = await as(app, OWNER, 'POST', '/api/groups', { name: '  Reviewers ' });
+  check('an administrator makes one, by name, with nobody in it yet',
+    made.status === 201 && made.body.name === 'Reviewers' && made.body.members.length === 0 && typeof made.body.id === 'string', JSON.stringify(made.body));
+  const reviewers = made.body.id;
+  check('one group to a name, whatever its case', (await as(app, OWNER, 'POST', '/api/groups', { name: 'reviewers' })).status === 409);
+  check('and a group has to be called something', (await as(app, OWNER, 'POST', '/api/groups', { name: '   ' })).status === 400);
+  const joined = await as(app, OWNER, 'PUT', `/api/groups/${reviewers}/members/${carla.id}`);
+  check('an administrator puts someone from the list in it',
+    joined.status === 200 && joined.body.members.map((one) => one.name).join() === 'Carla Contributor', JSON.stringify(joined.body));
+  check('asked twice, they are in it once',
+    (await as(app, OWNER, 'PUT', `/api/groups/${reviewers}/members/${carla.id}`)).body.members.length === 1);
+  check('someone who is not on the list cannot be put in one',
+    (await as(app, OWNER, 'PUT', `/api/groups/${reviewers}/members/00000000-0000-4000-8000-000000000000`)).status === 404
+    && (await as(app, OWNER, 'PUT', `/api/groups/${reviewers}/members/not-an-id`)).status === 404);
+  check('nor anyone into a group that is not there',
+    (await as(app, OWNER, 'PUT', `/api/groups/00000000-0000-4000-8000-000000000000/members/${carla.id}`)).status === 404);
+  check('a contributor cannot rename a group, fill it, empty it or delete it',
+    (await as(app, CARLA, 'PATCH', `/api/groups/${reviewers}`, { name: 'Mine' })).status === 403
+    && (await as(app, CARLA, 'PUT', `/api/groups/${reviewers}/members/${dan.id}`)).status === 403
+    && (await as(app, CARLA, 'DELETE', `/api/groups/${reviewers}/members/${carla.id}`)).status === 403
+    && (await as(app, CARLA, 'DELETE', `/api/groups/${reviewers}`)).status === 403);
+  const listed = await as(app, DAN, 'GET', '/api/groups');
+  check('but everyone who works on the map sees the groups and who is in each',
+    listed.status === 200 && listed.body.groups.length === 1 && listed.body.groups[0].members[0].id === carla.id, JSON.stringify(listed.body));
+  check('a viewer does not', (await as(app, VIEWER, 'GET', '/api/groups')).status === 403);
+
+  const REWORK = '/api/versions/Pricing%20rework';
+  await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts', { document: mapText('Pricing rework'), name: 'Pricing rework' });
+  const narrow = await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts/Pricing%20rework/share', { audience: { groups: [reviewers] } });
+  check('a version is shared with a group and nobody else, and says with whom',
+    narrow.status === 200 && narrow.body.mine === true && narrow.body.audience?.groups[0]?.name === 'Reviewers'
+    && narrow.body.audience.people.length === 0, JSON.stringify(narrow.body).slice(0, 300));
+  check('one shared with everyone says so by saying nothing',
+    (await as(app, OWNER, 'GET', '/api/versions/v2')).body.audience === null);
+  const sees = async (user) => names((await as(app, user, 'GET', '/api/versions')).body.versions).includes('Pricing rework');
+  check('someone in the group sees it, opens it and may take a copy',
+    await sees(CARLA) && (await as(app, CARLA, 'GET', REWORK)).body.document === mapText('Pricing rework')
+    && (await as(app, CARLA, 'POST', `${REWORK}/copy`, {})).status === 201);
+  await as(app, CARLA, 'DELETE', '/api/drafts/Pricing%20rework');
+  check('whoever shared it sees it', await sees(OWNER_BY_EMAIL));
+  check('to someone it is not shared with it is not there: not in the list, not at its name, not to copy',
+    !(await sees(DAN)) && (await as(app, DAN, 'GET', REWORK)).status === 404
+    && (await as(app, DAN, 'POST', `${REWORK}/copy`, {})).status === 404);
+  check('nor to a publisher, who cannot rename, delete or publish what they are not shown',
+    !(await sees(PAULA)) && (await as(app, PAULA, 'GET', REWORK)).status === 404
+    && (await as(app, PAULA, 'PATCH', REWORK, { name: 'Seen' })).status === 404
+    && (await as(app, PAULA, 'DELETE', REWORK)).status === 404
+    && (await as(app, PAULA, 'PUT', '/api/published', { name: 'Pricing rework' })).status === 404);
+  check('an administrator sees every shared version, whoever it is shared with',
+    await sees(OWNER) && (await as(app, OWNER, 'GET', REWORK)).status === 200);
+  check('a viewer is told what a viewer is always told', (await as(app, VIEWER, 'GET', REWORK)).status === 403);
+
+  const toDan = await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { people: [dan.id] });
+  check('whoever shared it says who it is shared with: a person, by name',
+    toDan.status === 200 && toDan.body.audience.people[0].name === 'Dan Draftsman' && toDan.body.audience.groups.length === 0, JSON.stringify(toDan.body.audience));
+  check('which takes at once: the one named sees it, and the group no longer does', await sees(DAN) && !(await sees(CARLA)));
+  check('someone it is shared with cannot share it further',
+    (await as(app, DAN, 'PUT', `${REWORK}/audience`, { everyone: true })).status === 403);
+  check('nor can someone who cannot see it, who is told only that it is not there',
+    (await as(app, PAULA, 'PUT', `${REWORK}/audience`, { everyone: true })).status === 404);
+  check('who it is shared with has to be said in a form that can be read',
+    (await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, {})).status === 400
+    && (await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { people: ['dan'] })).status === 400
+    && (await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { everyone: false })).status === 400);
+  const stale = await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { people: ['00000000-0000-4000-8000-000000000000'] });
+  check('naming someone who is not on the list changes nothing', stale.status === 409 && await sees(DAN), JSON.stringify(stale.body));
+  const both = await as(app, OWNER, 'PUT', `${REWORK}/audience`, { people: [dan.id, paula.id], groups: [reviewers] });
+  check('an administrator may say it too: people and groups together',
+    both.status === 200 && both.body.audience.people.length === 2 && both.body.audience.groups.length === 1
+    && await sees(CARLA) && await sees(DAN) && await sees(PAULA));
+
+  const draftNow = (await as(app, OWNER_BY_EMAIL, 'GET', '/api/drafts/Pricing%20rework')).body;
+  await as(app, OWNER_BY_EMAIL, 'PUT', '/api/drafts/Pricing%20rework', { document: mapText('Pricing rework, fixed'), base: draftNow.updatedAt });
+  const fixed = await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts/Pricing%20rework/share', {});
+  check('shared again, a version keeps who it was shared with: a fix does not open it to everyone',
+    fixed.status === 200 && fixed.body.audience?.people.length === 2 && fixed.body.audience.groups.length === 1
+    && (await as(app, CARLA, 'GET', REWORK)).body.document === mapText('Pricing rework, fixed'), JSON.stringify(fixed.body.audience));
+  check('unless sharing it again says otherwise',
+    (await as(app, OWNER_BY_EMAIL, 'POST', '/api/drafts/Pricing%20rework/share', { audience: { groups: [reviewers] } })).body.audience.people.length === 0
+    && !(await sees(DAN)));
+
+  await as(app, OWNER, 'PUT', `${REWORK}/audience`, { people: [paula.id] });
+  const held = await as(app, PAULA, 'PUT', '/api/published', { name: 'Pricing rework' });
+  check('a publisher it is shared with still cannot publish it: the published map is everyone\'s',
+    held.status === 409 && /everyone/.test(held.body.error) && (await as(app, VIEWER, 'GET', '/api/published')).body.name === 'live', JSON.stringify(held.body));
+  const opened = await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { everyone: true });
+  check('shared with everyone again, everyone sees it', opened.body.audience === null && await sees(DAN) && await sees(CARLA));
+  check('and it can be published', (await as(app, PAULA, 'PUT', '/api/published', { name: 'Pricing rework' })).status === 200);
+  const closing = await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { groups: [reviewers] });
+  check('the published version cannot then be shared with fewer people',
+    closing.status === 409 && /published/.test(closing.body.error) && (await as(app, DAN, 'GET', REWORK)).status === 200, JSON.stringify(closing.body));
+  await as(app, OWNER, 'PUT', '/api/published', { name: 'live' });
+
+  await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { groups: [reviewers] });
+  check('a group renamed is the same group, under its new name',
+    (await as(app, OWNER, 'PATCH', `/api/groups/${reviewers}`, { name: 'Pricing reviewers' })).body.name === 'Pricing reviewers'
+    && (await as(app, CARLA, 'GET', REWORK)).body.audience.groups[0].name === 'Pricing reviewers');
+  check('someone taken out of a group no longer sees what was shared with it',
+    (await as(app, OWNER, 'DELETE', `/api/groups/${reviewers}/members/${carla.id}`)).body.members.length === 0 && !(await sees(CARLA)));
+  await as(app, OWNER, 'PUT', `/api/groups/${reviewers}/members/${carla.id}`);
+  check('a deleted group is gone', (await as(app, OWNER, 'DELETE', `/api/groups/${reviewers}`)).status === 204
+    && (await as(app, OWNER, 'GET', '/api/groups')).body.groups.length === 0);
+  const orphaned = (await as(app, OWNER_BY_EMAIL, 'GET', REWORK)).body;
+  check('and what was shared with it alone does not fall open to everyone: it is its sharer\'s and the administrators\'',
+    orphaned.audience && orphaned.audience.groups.length === 0 && orphaned.audience.people.length === 0
+    && !(await sees(CARLA)) && !(await sees(DAN)) && !(await sees(PAULA)) && await sees(OWNER), JSON.stringify(orphaned.audience));
+
+  await as(app, OWNER_BY_EMAIL, 'PUT', `${REWORK}/audience`, { people: [dan.id] });
+  await as(app, OWNER, 'DELETE', `/api/people/${dan.id}`);
+  check('someone taken off the list is taken off what was shared with them',
+    (await as(app, OWNER_BY_EMAIL, 'GET', REWORK)).body.audience.people.length === 0);
+  check('and coming back as someone new, they are not shown it', !(await sees(DAN)));
+  // Left as it was found: the lists below are counted.
+  await as(app, OWNER_BY_EMAIL, 'DELETE', REWORK);
+  await as(app, OWNER_BY_EMAIL, 'DELETE', '/api/drafts/Pricing%20rework');
+  }
 
   // --- a restart ---
   await app.stop();

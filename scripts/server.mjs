@@ -23,10 +23,11 @@ import { assistantSettings } from './assistant-settings.mjs';
 import { createAuth } from './auth.mjs';
 import { describeDatabase, migrate, openDatabase, waitForDatabase, withLock } from './database.mjs';
 import { fileStore } from './file-store.mjs';
+import { groupStore } from './group-store.mjs';
 import { peopleStore } from './people-store.mjs';
 import { ADMINISTRATOR, CONTRIBUTOR, PUBLISHER, atLeast, readOwners, roleOf } from './roles.mjs';
 import { readSeedVersions, seedStore } from './seed.mjs';
-import { versionStore } from './version-store.mjs';
+import { checkedAudience, versionStore } from './version-store.mjs';
 
 /** A path inside the package, wherever the package has been installed. */
 const packagePath = (path) => fileURLToPath(new URL(path, import.meta.url));
@@ -179,6 +180,7 @@ export function createDomainMapServer(options = {}) {
   const pool = openDatabase(databaseUrl);
   const versions = versionStore(pool);
   const people = peopleStore(pool);
+  const groups = groupStore(pool);
   // Sealed with the server's own secret, which is in the deployment and not in the database.
   const kept = assistantSettings(pool, { secret: env.AUTH_SESSION_SECRET });
 
@@ -437,6 +439,9 @@ export function createDomainMapServer(options = {}) {
     const contributorsOnly = () => sendJson(response, 403, { error: 'Only a contributor can do that.' });
     // A publisher renames and deletes what anyone shared; a contributor only their own.
     const force = may(who, PUBLISHER);
+    // An administrator sees every shared version, the ones shared with a few
+    // included: somebody has to be able to tidy up after a sharer who has gone.
+    const all = may(who, ADMINISTRATOR);
 
     if (path === '/api/me') {
       if (method !== 'GET') return notAllowed(response, 'GET');
@@ -472,7 +477,7 @@ export function createDomainMapServer(options = {}) {
         if (!may(who, PUBLISHER)) return sendJson(response, 403, { error: 'Only a publisher can publish.' });
         const { name } = await readJson(request);
         if (typeof name !== 'string' || !name) throw failure(400, 'Say which version to publish.');
-        return sendJson(response, 200, await versions.publish(name, me));
+        return sendJson(response, 200, await versions.publish(name, me, { all }));
       }
       return notAllowed(response, 'GET, PUT');
     }
@@ -480,7 +485,7 @@ export function createDomainMapServer(options = {}) {
     if (path === '/api/versions') {
       if (method !== 'GET') return notAllowed(response, 'GET');
       if (!contributes) return contributorsOnly();
-      return sendJson(response, 200, { versions: await versions.listShared(me) });
+      return sendJson(response, 200, { versions: await versions.listShared(me, { all }) });
     }
 
     if (path === '/api/drafts') {
@@ -496,23 +501,37 @@ export function createDomainMapServer(options = {}) {
 
     // `/api/versions/<name>` is a shared version and `/api/drafts/<name>` one
     // in this person's sandbox; `/share` and `/copy` after the name move a
-    // version from the one to the other.
+    // version from the one to the other, and `/audience` after a shared one
+    // says who it is shared with.
     const at = path.startsWith('/api/versions/') ? 'shared' : path.startsWith('/api/drafts/') ? 'sandbox' : null;
     const [name, action, ...more] = at
       ? path.slice(at === 'shared' ? '/api/versions/'.length : '/api/drafts/'.length).split('/').map(decodeURIComponent)
       : [];
-    if (!at || !name || more.length > 0 || (action !== undefined && action !== (at === 'shared' ? 'copy' : 'share'))) {
+    const actions = at === 'shared' ? ['copy', 'audience'] : ['share'];
+    if (!at || !name || more.length > 0 || (action !== undefined && !actions.includes(action))) {
       return sendJson(response, 404, { error: `Nothing at ${path}.` });
+    }
+
+    if (action === 'audience') {
+      if (method !== 'PUT') return notAllowed(response, 'PUT');
+      if (!contributes) return contributorsOnly();
+      return sendJson(response, 200, await versions.setAudience(name, me, checkedAudience(await readJson(request)), { all }));
     }
 
     if (action) {
       if (method !== 'POST') return notAllowed(response, 'POST');
       if (!contributes) return contributorsOnly();
       if (at === 'sandbox') {
-        const { name: as } = await readJson(request);
-        return sendJson(response, 200, await versions.share(name, me, by, { as: as == null ? null : checkVersionName(as) }));
+        // Who it is shared with is said with the share or not at all: left
+        // out, a first share is everyone's and a second keeps what the first said.
+        const { name: as, audience } = await readJson(request);
+        return sendJson(response, 200, await versions.share(name, me, by, {
+          as: as == null ? null : checkVersionName(as),
+          audience: audience == null ? null : checkedAudience(audience),
+          all,
+        }));
       }
-      return sendJson(response, 201, await versions.copyToSandbox(name, me, by));
+      return sendJson(response, 201, await versions.copyToSandbox(name, me, by, { all }));
     }
 
     if (method === 'GET') {
@@ -523,7 +542,7 @@ export function createDomainMapServer(options = {}) {
           ? sendJson(response, 200, draft)
           : sendJson(response, 404, { error: `There is no version "${name}" in your sandbox.` });
       }
-      const version = await versions.readShared(name, me);
+      const version = await versions.readShared(name, me, { all });
       // The same answer whether or not the version exists: a viewer is not told
       // which shared versions there are.
       if (!contributes && !version?.published) {
@@ -550,14 +569,56 @@ export function createDomainMapServer(options = {}) {
     // the version is called and nothing about what is in it.
     if (method === 'PATCH') {
       const { name: wanted } = await readJson(request);
-      return sendJson(response, 200, await versions.rename(at, name, checkVersionName(wanted), me, { force }));
+      return sendJson(response, 200, await versions.rename(at, name, checkVersionName(wanted), me, { force, all }));
     }
     if (method === 'DELETE') {
-      await versions.remove(at, name, me, { force });
+      await versions.remove(at, name, me, { force, all });
       response.writeHead(204).end();
       return;
     }
     return notAllowed(response, at === 'shared' ? 'GET, PATCH, DELETE' : 'GET, PUT, PATCH, DELETE');
+  }
+
+  // Groups: a name and its members, for sharing a version with fewer than
+  // everyone. Everyone who works on the map may see them — a version is shared
+  // with a group by whoever shares it, who has to be able to see what a group
+  // is — and only an administrator makes one, names it, or says who is in it.
+  async function handleGroups(request, response, url, who) {
+    const { method } = request;
+    const [id, part, personId, ...more] = url.pathname.slice('/api/groups'.length).split('/').filter(Boolean).map(decodeURIComponent);
+    const administratorOnly = () => sendJson(response, 403, { error: 'Only an administrator can change the groups.' });
+    if (more.length > 0 || (part !== undefined && part !== 'members') || (part === 'members' && !personId)) {
+      return sendJson(response, 404, { error: `Nothing at ${url.pathname}.` });
+    }
+
+    if (id === undefined) {
+      if (method === 'GET') {
+        if (!may(who, CONTRIBUTOR)) return sendJson(response, 403, { error: 'Only a contributor can see the groups.' });
+        return sendJson(response, 200, { groups: await groups.list() });
+      }
+      if (method !== 'POST') return notAllowed(response, 'GET, POST');
+      if (!may(who, ADMINISTRATOR)) return administratorOnly();
+      const { name } = await readJson(request);
+      return sendJson(response, 201, await groups.create(name));
+    }
+
+    if (part === 'members') {
+      if (method !== 'PUT' && method !== 'DELETE') return notAllowed(response, 'PUT, DELETE');
+      if (!may(who, ADMINISTRATOR)) return administratorOnly();
+      return sendJson(response, 200, method === 'PUT'
+        ? await groups.addMember(id, personId)
+        : await groups.removeMember(id, personId));
+    }
+
+    if (method !== 'PATCH' && method !== 'DELETE') return notAllowed(response, 'PATCH, DELETE');
+    if (!may(who, ADMINISTRATOR)) return administratorOnly();
+    if (method === 'DELETE') {
+      await groups.remove(id);
+      response.writeHead(204).end();
+      return;
+    }
+    const { name } = await readJson(request);
+    return sendJson(response, 200, await groups.rename(id, name));
   }
 
   // People: everyone who works on the map may see who else does and what each
@@ -843,6 +904,8 @@ export function createDomainMapServer(options = {}) {
         await handleAssistant(request, response, url, await identify(request));
       } else if (url.pathname === '/api/people' || url.pathname.startsWith('/api/people/')) {
         await handlePeople(request, response, url, await identify(request));
+      } else if (url.pathname === '/api/groups' || url.pathname.startsWith('/api/groups/')) {
+        await handleGroups(request, response, url, await identify(request));
       } else if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         await handleVersions(request, response, url, await identify(request));
       } else {

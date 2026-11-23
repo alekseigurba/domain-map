@@ -41,6 +41,51 @@ export const MEMBER_KINDS = ['domain', 'touchpoint', 'capability'];
 export const ENDPOINT_KINDS = ['domain', 'capability', 'feature', 'touchpoint', 'actor'];
 
 /**
+ * What a team may be on. A team is people, not a shape: it is drawn nowhere of
+ * its own, and is said to be on an area, a domain or a capability — a product
+ * area's team, a domain's, a capability's. One on several at once is what a
+ * team that works across them is: an enabling team, a mission team. It is on
+ * as many as it is on, of any of the three, and that is the whole model; what
+ * sort of team it is is its Type, which the map's owner names.
+ */
+export const TEAM_MEMBER_KINDS = ['area', 'domain', 'capability'];
+
+/**
+ * The people named on the map, by discipline: who leads a part of it for
+ * product, and who for engineering. Each is a person in a role — a product
+ * lead, a product manager; an engineering lead, a tech lead, an architect —
+ * and each discipline is a kind of its own, on a layer of its own, so that
+ * one can be shown without the other. What the roles are called is the map
+ * owner's to say: they are the kind's Type choices, typed in once and picked
+ * from after.
+ */
+export const ROLE_KINDS = ['productRole', 'engineeringRole'];
+
+/** What a person in a role may own: an area or a domain. Further down, a capability has a team, not a lead. */
+export const ROLE_ON_KINDS = ['area', 'domain'];
+
+/**
+ * Everything that carries a Type from a list of the map's own: the elements,
+ * a team, and a person in a role, whose Type is the role. A team and a person
+ * are not elements — neither has a shape or a position — but they are typed
+ * the same way, from lists kept the same way.
+ */
+export const TYPED_KINDS = [...ELEMENT_KINDS, 'team', ...ROLE_KINDS];
+
+/**
+ * What a slide shows of its shape, beside the words: the shape by itself, as
+ * the map draws it; the shape where it sits, with its neighbours and the
+ * lines that reach it; or a picture of the owner's own, uploaded for the
+ * slide — a screenshot, a photograph, a sketch of the thing the shape stands
+ * for. By itself is what a postcard is until it is told otherwise.
+ */
+export const POSTCARDS = ['shape', 'context', 'picture'];
+export const DEFAULT_POSTCARD = 'shape';
+
+/** The kinds that have a slide, and so a postcard: what the deck is made of. */
+export const SLIDE_KINDS = ['area', 'domain', 'capability'];
+
+/**
  * The kinds the terrain is made of, largest first: a domain holds capabilities
  * and a capability holds features. A line may join any two of them, in any
  * combination, which is what lets one part of a map be drawn down to its
@@ -59,11 +104,18 @@ export const TERRAIN_KINDS = ['domain', 'capability', 'feature'];
 // Bottom first, and the order is the paint order. Areas is under the
 // other two because an area is the ground the domains stand on: its wash tints
 // the paper, where painted over them it would tint every shape and title.
+// The two layers of roles are over all three because a person is not part of
+// the terrain: each is a badge hung on the area or the domain they own, and a
+// badge under the shape it names would be hidden by it. They are two layers
+// and not one so that the map can be read for product alone, or for
+// engineering alone.
 
 export const LAYERS = Object.freeze([
   Object.freeze({ key: 'areas', title: 'Areas' }),
   Object.freeze({ key: 'core', title: 'Domains' }),
   Object.freeze({ key: 'presentation', title: 'Presentation' }),
+  Object.freeze({ key: 'engineering', title: 'Engineering roles' }),
+  Object.freeze({ key: 'product', title: 'Product roles' }),
 ]);
 
 /**
@@ -86,6 +138,8 @@ export const LAYER_OF = Object.freeze({
   feature: 'core',
   touchpoint: 'presentation',
   actor: 'presentation',
+  productRole: 'product',
+  engineeringRole: 'engineering',
 });
 
 /** The kinds that may be added to a layer, in the order their buttons sit in. */
@@ -93,6 +147,8 @@ export const KINDS_ON = Object.freeze({
   areas: ['area'],
   core: ['domain', 'capability', 'feature'],
   presentation: ['touchpoint', 'actor'],
+  engineering: ['engineeringRole'],
+  product: ['productRole'],
 });
 
 /**
@@ -242,6 +298,14 @@ export const MAX_ICON_WEIGHT = 4;
 export const DEFAULT_ICON_WEIGHT = 1;
 export const MAX_ICON_BYTES = 512 * 1024;
 
+/**
+ * A picture uploaded for a slide. The same kinds of file an icon may be, and a
+ * good deal larger: an icon is a drawing a few strokes long, and a slide's
+ * picture may be a photograph.
+ */
+export const PICTURE_EXTENSIONS = ICON_EXTENSIONS;
+export const MAX_PICTURE_BYTES = 5 * 1024 * 1024;
+
 // --- defaults ----------------------------------------------------------------
 
 // What a record is when the caller or the file leaves a field out. These were
@@ -282,6 +346,10 @@ export const AREA_DEFAULTS = {
   fontSize: AREA_SHAPE.fontSize,
   titleScale: AREA_SHAPE.titleScale,
   opacity: AREA_SHAPE.opacity,
+  /** What its slide shows of it: one of POSTCARDS. */
+  postcard: DEFAULT_POSTCARD,
+  /** The picture uploaded for its slide: a file name in data/pictures/, or none. */
+  picture: null,
 };
 
 export const DOMAIN_DEFAULTS = {
@@ -301,6 +369,10 @@ export const DOMAIN_DEFAULTS = {
   titleScale: DOMAIN_SHAPE.titleScale,
   titleWidth: null,
   opacity: DOMAIN_SHAPE.opacity,
+  /** What its slide shows of it: one of POSTCARDS. */
+  postcard: DEFAULT_POSTCARD,
+  /** The picture uploaded for its slide: a file name in data/pictures/, or none. */
+  picture: null,
 };
 
 export const CAPABILITY_DEFAULTS = {
@@ -331,7 +403,51 @@ export const CAPABILITY_DEFAULTS = {
   icon: null,
   iconPlacement: DEFAULT_ICON_PLACEMENT,
   iconWeight: DEFAULT_ICON_WEIGHT,
+  /** What its slide shows of it: one of POSTCARDS. */
+  postcard: DEFAULT_POSTCARD,
+  /** The picture uploaded for its slide: a file name in data/pictures/, or none. */
+  picture: null,
 };
+
+/**
+ * A team: who works on a part of the map. It carries what every element does
+ * — a name, what it is, who leads it, a Type — and the list of what it is on,
+ * each a kind and an id. Nothing is drawn for it. It is seen by picking it,
+ * which lights up what it is on.
+ */
+export const TEAM_DEFAULTS = {
+  title: 'New team',
+  description: '',
+  owner: '',
+  ownerId: null,
+  type: '',
+  /** What it is on: `[{ kind, id }]`, each kind one of TEAM_MEMBER_KINDS. */
+  members: [],
+};
+
+/** How many teams a map may hold: more than any organisation the map is of has, and few enough to list. */
+export const MAX_TEAMS = 300;
+
+/**
+ * A person in a role: who leads an area or a domain, for product or for
+ * engineering. The title is their name, the Type is the role they hold, and
+ * the icon is theirs — picked from the library, so that a map's owner can
+ * draw a product lead and a product manager apart, or give everyone the same
+ * figure. What they own is a list of kinds and ids, as a team's is; unlike a
+ * team, a person is drawn, as a badge on each thing they own, so one who owns
+ * nothing is nowhere on the map and is not kept.
+ */
+export const ROLE_DEFAULTS = {
+  title: 'New person',
+  description: '',
+  type: '',
+  icon: null,
+  /** What they own: `[{ kind, id }]`, each kind one of ROLE_ON_KINDS. */
+  members: [],
+};
+
+/** How many people a map may name in each discipline. */
+export const MAX_ROLES = 300;
 
 /**
  * How a feature's bubble leans, on the scale a capability's oval leans on.
@@ -542,8 +658,16 @@ export function validateDomain(fields) {
         || fields.titleWidth > MAX_TITLE_WIDTH)
       ? `titleWidth must be between ${MIN_TITLE_WIDTH} and ${MAX_TITLE_WIDTH}.`
       : null)
-    ?? faded(fields.opacity);
+    ?? faded(fields.opacity)
+    ?? pictured(fields.postcard, fields.picture);
 }
+
+/** What a slide shows of its shape — one of the three there are — and the picture uploaded for it, if any. */
+const pictured = (postcard, picture) =>
+  (given(postcard) && !POSTCARDS.includes(postcard)
+    ? `postcard must be one of ${POSTCARDS.join(', ')}.`
+    : null)
+  ?? validatePicture(picture);
 
 /**
  * How solid a shape is drawn, on one scale for every kind that has one. It
@@ -568,7 +692,8 @@ export function validateArea(fields) {
       && !(fields.titleAngle >= 0 && fields.titleAngle < MAX_TITLE_ANGLE)
       ? `titleAngle must be from 0 up to ${MAX_TITLE_ANGLE}.`
       : null)
-    ?? faded(fields.opacity, 0);
+    ?? faded(fields.opacity, 0)
+    ?? pictured(fields.postcard, fields.picture);
 }
 
 /** Which side of the title an icon sits on. */
@@ -594,7 +719,61 @@ export function validateCapability(fields) {
     ?? (given(fields.lobeScale)
       && !(fields.lobeScale >= MIN_LOBE_SCALE && fields.lobeScale <= MAX_LOBE_SCALE)
       ? `lobe must be between ${MIN_LOBE_SCALE} and ${MAX_LOBE_SCALE}.`
-      : null);
+      : null)
+    ?? pictured(fields.postcard, fields.picture);
+}
+
+/** A team's words. What it is on is checked where the map is, since it names shapes. */
+export function validateTeam(fields) {
+  return text(fields.title, fields.description, fields.owner, fields.ownerId)
+    ?? typed(fields.type);
+}
+
+/** A person in a role: their name, the role, and the icon they wear. What they own is checked where the map is. */
+export function validateRole(fields) {
+  return text(fields.title, fields.description)
+    ?? typed(fields.type)
+    ?? validateIcon(fields.icon);
+}
+
+/**
+ * The figures the app carries for a person's card: a handful of people to pick
+ * from, there in every deployment whatever its icon library holds. They are
+ * the app's own files, under `icons/people/`, and a person names one exactly
+ * as they would name an icon from the library — so a map that uses them opens
+ * the same anywhere, and a library file is never given one of these names.
+ */
+export const FIGURES = Object.freeze(['female1.svg', 'female2.svg', 'female3.svg', 'male1.svg', 'male2.svg']);
+
+/** Where the figures are, from the page. */
+export const FIGURES_PATH = 'icons/people/';
+
+export const isFigure = (name) => FIGURES.includes(name);
+
+/** "female2.svg" → "Female 2": a figure as the picker names it. */
+export function figureLabel(name) {
+  const [, word = name, number = ''] = /^([a-z]+?)(\d*)\.[a-z]+$/i.exec(name) ?? [];
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}${number ? ` ${number}` : ''}`;
+}
+
+/**
+ * How far from its shape a person's card may be put, either way. Far enough to
+ * stand a card anywhere round the largest area a map is likely to hold, and
+ * near enough that a slip of the hand in a file cannot send one out of reach
+ * of Fit to screen.
+ */
+export const MAX_CARD_REACH = 20000;
+
+/** Is this where a card has been put — both ways given, and within reach? */
+export const cardPlaced = (at) =>
+  [at?.x, at?.y].every((value) => Number.isFinite(value) && Math.abs(value) <= MAX_CARD_REACH);
+
+/** Where a card has been put, measured from the shape it is on: nowhere, which is the map's own place for it, or a point within reach. */
+export function validateCardPlace(at) {
+  if (!given(at?.x) && !given(at?.y)) return null;
+  return cardPlaced(at)
+    ? null
+    : `A card's position must be an x and a y within ${MAX_CARD_REACH} either way of the shape it is on.`;
 }
 
 /** How a shape leans: one of the five steps between standing tall and lying wide. */
@@ -636,6 +815,9 @@ export const validatorFor = {
   feature: validateFeature,
   touchpoint: validateTouchpoint,
   actor: validateActor,
+  team: validateTeam,
+  productRole: validateRole,
+  engineeringRole: validateRole,
 };
 
 export function validateConnector(fields) {
@@ -694,7 +876,7 @@ export function validateTypes(types) {
   if (typeof types !== 'object' || Array.isArray(types)) return 'Types must be a record of lists.';
 
   for (const [kind, choices] of Object.entries(types)) {
-    if (!ELEMENT_KINDS.includes(kind))
+    if (!TYPED_KINDS.includes(kind))
       return `'${kind}' is not a kind of element that carries a Type.`;
     if (!Array.isArray(choices)) return `Types for ${kind} must be a list.`;
     if (choices.length > MAX_TYPE_CHOICES)
@@ -728,6 +910,17 @@ export function validateIcon(icon) {
   return ICON_EXTENSIONS.includes(extensionOf(icon))
     ? null
     : `An icon must be one of ${ICON_EXTENSIONS.join(', ')}.`;
+}
+
+/** A slide's picture is named as an icon is: a plain file name, of a kind a browser draws. */
+export function validatePicture(picture) {
+  if (!given(picture) || picture.length === 0) return null;
+  if (picture.length > 120) return 'A picture name must be at most 120 characters.';
+  if (picture !== safeIconName(picture))
+    return 'A picture must be a plain file name, with no folders in it.';
+  return PICTURE_EXTENSIONS.includes(extensionOf(picture))
+    ? null
+    : `A picture must be one of ${PICTURE_EXTENSIONS.join(', ')}.`;
 }
 
 /**

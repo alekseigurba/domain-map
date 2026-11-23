@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "title": "BNPL provider",
   "palette": [
     "#86a27b",
@@ -37,6 +37,12 @@
     },
     {
       "key": "presentation"
+    },
+    {
+      "key": "engineering"
+    },
+    {
+      "key": "product"
     }
   ],
   "areas": [

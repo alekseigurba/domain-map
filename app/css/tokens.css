@@ -122,6 +122,12 @@
   --line-quiet: var(--r-charcoal-200); /* an edge that says "only a note" */
   --selection: var(--r-focused-400);
   --selection-ink: var(--r-neutral-white); /* on a control filled with the selection */
+  /* Which of the two role layers a person's card is on: a band down its edge.
+     Warm against cool, the pair that stays two colours to nearly every eye,
+     and neither is the selection's blue, the brand's green or the orange that
+     says unsaved. */
+  --role-product: #d97a1f;
+  --role-engineering: #17938c;
   --selected-row: var(--r-brand-200); /* a step past the hover, which is sage too */
   --danger: var(--r-red-100);
   --error: var(--r-red-400);         /* a border or an edge on what went wrong */
@@ -289,6 +295,9 @@
      blue that reads there, and what is written on it turns dark instead. */
   --selection: #4a9bff;
   --selection-ink: var(--r-night-700);
+  /* The same two hues, lifted so they read as colour against dark paper. */
+  --role-product: #f0a24e;
+  --role-engineering: #45c2b8;
   /* Mixed from the brand colour rather than named: the light theme's row is
      brand-200, a tint a brand restates by hand, and this way a brand that has
      never heard of the dark theme still gets a selected row in its own colour. */

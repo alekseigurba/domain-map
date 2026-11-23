@@ -1122,6 +1122,18 @@ check('up to a handful, however many it holds', geo.featurePips(closed, 40).leng
 check('and none when it holds nothing', geo.featurePips(closed, 0).length === 0);
 check('the pips sit inside the oval, along its foot',
   geo.featurePips(closed, 40).every((pip) => pip.y > 0 && within(closed, { x: pip.x, y: pip.y, rx: pip.r, ry: pip.r })));
+check('a pip is large enough to be counted: about a twentieth of the oval’s height',
+  geo.featurePips(closed, 3)[0].r >= closed.ry * 0.04);
+check('however the oval leans, a full row stays inside it — drawn smaller where it stands tall',
+  geo.OVAL_STRETCHES.every((stretch) => {
+    const leant = geo.capabilitySize({ title: 'Pay', stretch });
+    const row = geo.featurePips(leant, 40);
+    return row.length > 0 && row.every((pip) => within(leant, { x: pip.x, y: pip.y, rx: pip.r, ry: pip.r }));
+  }));
+check('and the pips of a row never touch', (() => {
+  const row = geo.featurePips(geo.capabilitySize({ title: 'Pay', stretch: -2 }), 40);
+  return row.every((pip, at) => at === 0 || pip.x - row[at - 1].x > pip.r * 2);
+})());
 check('they stand down where the title reaches the foot of the oval', (() => {
   const full = geo.capabilitySize({
     title: 'One\ntwo\nthree\nfour\nfive\nsix\nseven\neight', fontSize: 24,
@@ -1417,6 +1429,103 @@ check('nor does a line ever become a maze: a few bends at most, however crowded 
   geo.routeAround(here, there, Array.from({ length: 12 }, (_, i) => square(80 + i * 75, (i % 2 ? 30 : -30), 30)), { clearance: 10 }).length <= 7);
 check('the same line is routed the same way every time',
   JSON.stringify(geo.routeAround(here, there, [inTheWay], { clearance: 40 })) === JSON.stringify(round));
+}
+
+// --- role cards: where a person's card hangs, how several stack, and one put somewhere ---
+{
+const anchor = { x: 100, y: 50, grows: 1 };
+const ada = { name: 'Ada Example', role: 'Product lead' };
+const ben = { name: 'Ben Sample', role: 'Tech lead' };
+const [alone] = geo.badgeStack(anchor, [ada]);
+check('a card is centred on where it hangs', Math.abs(alone.x + alone.width / 2 - 100) < 1e-9);
+check('and clear of the shape it hangs off', alone.y > anchor.y);
+check('the icon is on the left, and the name and the role beside it, inside the card',
+  alone.icon.x >= alone.x && alone.icon.x + alone.icon.size < alone.text.x && alone.text.x === alone.roleText.x
+  && alone.text.x < alone.x + alone.width && alone.icon.y >= alone.y && alone.icon.y + alone.icon.size <= alone.y + alone.height);
+check('the role is under the name, and set smaller',
+  alone.role === 'Product lead' && alone.roleText.y > alone.text.y && alone.roleFontSize < alone.fontSize);
+check('the icon is as tall as the name, the role and the air between them',
+  Math.abs(alone.icon.size - alone.fontSize * geo.BADGE_ICON_SHARE) < 1e-9
+  && alone.icon.size > alone.fontSize + alone.roleFontSize);
+check('the band of the layer’s colour is down the leading edge, and the icon stands clear of it',
+  alone.mark > 0 && alone.icon.x >= alone.x + alone.mark + alone.fontSize * 0.2);
+const markNumbers = geo.badgeMarkPath(alone).match(/-?\d+(\.\d+)?/g).map(Number);
+check('and is drawn inside the card: from its left side, no wider than itself, top to foot',
+  geo.badgeMarkPath(alone).startsWith(`M ${alone.x + alone.mark} `) && geo.badgeMarkPath(alone).endsWith('Z')
+  && markNumbers.every((n) => Number.isFinite(n)) && geo.badgeMarkPath(alone).includes(`V ${alone.y + alone.height - alone.radius} `));
+check('a band wider than the corner is round runs square along the top and the foot',
+  geo.badgeMarkPath({ ...alone, mark: alone.radius * 2 }).includes(` H ${alone.x + alone.radius} `));
+check('with one top and one foot: the name starts where the icon does, and the role ends where it ends',
+  Math.abs((alone.text.y - alone.fontSize / 2) - alone.icon.y) < 1e-9
+  && Math.abs((alone.roleText.y + alone.roleFontSize / 2) - (alone.icon.y + alone.icon.size)) < 1e-9);
+check('a name is set larger than a capability’s title and smaller than a domain’s', geo.BADGE_FONT > 32 && geo.BADGE_FONT < 72);
+
+const [first, second] = geo.badgeStack(anchor, [ada, { name: 'Bartholomew Longer-Sample', role: 'Tech lead' }]);
+check('a second person’s card is further from the shape, and clear of the first', second.y >= first.y + first.height);
+check('the cards of one shape are one width, so the icons stand in a column',
+  first.width === second.width && first.icon.x === second.icon.x && first.width > alone.width);
+
+const [unsaid, said] = geo.badgeStack(anchor, [{ name: 'Cy Nobody', role: '' }, ada]);
+check('someone with no role has no line for one, and their name is level with the middle of the icon',
+  unsaid.roleText === null && Math.abs(unsaid.text.y - (unsaid.icon.y + unsaid.icon.size / 2)) < 1e-9);
+check('but their icon and their card are the size of anyone’s', unsaid.icon.size === said.icon.size && unsaid.height === said.height);
+
+const [up] = geo.badgeStack({ ...anchor, grows: -1 }, [ada]);
+check('hung over a shape, a card stands wholly above where it hangs', up.y + up.height < anchor.y);
+const [long] = geo.badgeStack(anchor, [{ name: 'A name that goes on a good deal longer than any card has the room for', role: 'A role worded at such length that it would be wider than the domain' }]);
+check('a long name is cut, and says so', long.label.length === geo.MAX_BADGE_NAME && long.label.endsWith('…'), long.label);
+check('and so is a long role', long.role.length === geo.MAX_BADGE_NAME && long.role.endsWith('…'), long.role);
+
+const put = geo.badgeAt({ x: 900, y: -400 }, ada);
+check('a card that was put somewhere has its middle where it was put',
+  Math.abs(geo.badgeCentre(put).x - 900) < 1e-9 && Math.abs(geo.badgeCentre(put).y + 400) < 1e-9);
+check('and is the card it was when the map hung it', put.width === alone.width && put.height === alone.height && put.label === alone.label);
+const carried = geo.badgeMovedBy(alone, 30, -70);
+check('a card moved takes its icon, its name and its role with it',
+  ['icon', 'text', 'roleText'].every((part) => Math.abs((carried[part].x - carried.x) - (alone[part].x - alone.x)) < 1e-9
+    && Math.abs((carried[part].y - carried.y) - (alone[part].y - alone.y)) < 1e-9)
+  && carried.x === alone.x + 30 && carried.y === alone.y - 70);
+
+const beside = { x: 100 + alone.width / 2, y: 50, grows: 1 };
+const [near, far] = geo.badgesClear([
+  { grows: 1, badges: geo.badgeStack(anchor, [ada]) },
+  { grows: 1, badges: geo.badgeStack(beside, [ben]) },
+]);
+check('the first shape’s card stays where it hangs', near[0].y === alone.y);
+check('a neighbour’s card that would land on it moves further from its own shape, until the two are clear',
+  far[0].y >= near[0].y + near[0].height && far[0].x === geo.badgeStack(beside, [ben])[0].x);
+const [[lifted]] = geo.badgesClear([{ grows: -1, badges: geo.badgeStack({ ...anchor, grows: -1 }, [ada]) }],
+  [{ x: 0, y: -40, width: 200, height: 60 }]);
+check('a card hung over a shape is lifted over an area’s name that is in its way', lifted.y + lifted.height < -40);
+const [[apartAlready]] = geo.badgesClear([{ grows: 1, badges: geo.badgeStack(anchor, [ada]) }],
+  [{ x: 5000, y: 50, width: 200, height: 60 }]);
+check('and what is in nobody’s way is left alone', apartAlready.y === alone.y);
+
+const square = { x: 10, y: 20, size: 200 };
+const whole = geo.badgeIconBox(square);
+check('an icon with no margin is drawn the size of the square kept for it',
+  whole.x === 10 && whole.y === 20 && whole.width === 200 && whole.height === 200);
+const margined = geo.badgeIconBox(square, { x: 0.25, y: 0.25, width: 0.5, height: 0.5, aspect: 1 });
+check('one drawn with a margin is scaled until its ink fills the square, the margin left to hang outside',
+  margined.width === 400 && margined.x === -90 && margined.y === -80);
+const tall = geo.badgeIconBox(square, { x: 0.25, y: 0, width: 0.5, height: 1, aspect: 1 });
+check('a tall drawing fills the height and is centred across', tall.height === 200 && tall.y === 20 && tall.x + tall.width / 2 === 110);
+
+const children = [{ id: 'c1', title: 'One', lobeX: -140, lobeY: 60 }, { id: 'c2', title: 'Two', lobeX: 140, lobeY: 60 }];
+const blob = geo.layoutDomain({ id: 'd', title: 'Invoicing' }, children);
+const onBlob = geo.badgeAnchorOnBlob(blob);
+check('a domain’s cards hang off its edge, not inside it',
+  !blob.contains(onBlob.x, onBlob.y + onBlob.grows * 4), JSON.stringify(onBlob));
+check('on the side its title sits, growing away from the blob',
+  Math.sign(onBlob.y - blob.body.y) === Math.sign(blob.titleLobe.y - blob.body.y) && onBlob.grows === (onBlob.y < blob.body.y ? -1 : 1));
+
+const band = geo.layoutArea({ id: 'a', title: 'Payments' }, [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }]]);
+const over = geo.badgeAnchorOnBand(band);
+check('an area’s cards hang beyond its title: over one that rides the top of the border',
+  over.grows === -1 && over.x === band.title.x && over.y === band.gap.minY);
+const under = geo.badgeAnchorOnBand(geo.layoutArea({ id: 'a', title: 'Payments', titleAngle: 90 },
+  [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }]]));
+check('and under one that rides the foot of it', under.grows === 1);
 }
 
 console.log(failures === 0 ? '\nAll geometry checks passed.' : `\n${failures} check(s) failed.`);

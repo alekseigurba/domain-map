@@ -26,6 +26,12 @@ for less — or export `AUTH_TENANT_ID`,
 `AUTH_CLIENT_ID` and `AUTH_CLIENT_SECRET` to try Microsoft sign-in locally.
 Anything already set in the shell wins over the file.
 
+The page's files are read afresh on every load, and the server's are not. The
+server checks a map before saving it with the page's own
+[`document.js`](../app/js/document.js) and [`rules.js`](../app/js/rules.js),
+loaded once when it starts — so after a change to what a map file may hold,
+restart it, or the page will write what the server still refuses.
+
 Roles are rows in Postgres, seeded once from `OWNER_EMAILS` and managed in
 *Users & access* after that. For a database whose administrators have all
 gone, `npm run make-administrator -- someone@example.com` makes someone an
@@ -36,7 +42,7 @@ To try the Assistant with a model behind it, export `ASSISTANT_API_URL` and
 `http://localhost:11434/v1/chat/completions` wants any key at all — and the
 startup lines say what it is connected to. Without them the Assistant writes
 prompts to copy, which is what the tests and the demo run with. With the URL
-alone, the key can be given in the page instead: the avatar, then **Assistant
+alone, the key can be given in the page instead: the gear, then **Assistant
 model**. `dev.env` carries an `AUTH_SESSION_SECRET` for that — a key set in the
 page is sealed with it, and a server with no secret will not keep one — which is
 a laptop's, and no deployment's.
@@ -68,8 +74,8 @@ node tests/geometry.test.mjs
 | `app/` | The whole client: no build step, no framework, ES modules the browser loads as they are. |
 | `app/js/store.js` | The single source of truth. Menu, details and diagram all read from it, and every change to the map is a change here. |
 | `app/js/diagram.js` | The SVG: rendering, hit-testing, dragging, connectors. |
-| `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points, the band an area draws round what it holds, how a capability's features are packed into its oval, the points a line hangs off round a domain's blob, and the bends that take a line round a shape in its way. Also the palette: `PALETTE` as the map holds it, `COLORS` as it is drawn, and the dark counterpart that makes the second from the first on a dark map. |
-| `app/js/theme.js` | Light or dark, and who decides: the choice the browser keeps, following the system as it turns, the three buttons in the profile popup, and telling `main.js` when the theme changes so the map is redrawn for the other paper. |
+| `app/js/geometry.js` | The maths behind the shapes — blob outlines, lobe placement, snap points, the band an area draws round what it holds, how a capability's features are packed into its oval, the points a line hangs off round a domain's blob, the bends that take a line round a shape in its way, and a person's card — what is on it, where it hangs off an area or a domain, how several stack, how the cards of two shapes are kept clear of each other, and one that was put somewhere by hand. Also the palette: `PALETTE` as the map holds it, `COLORS` as it is drawn, and the dark counterpart that makes the second from the first on a dark map. |
+| `app/js/theme.js` | Light or dark, and who decides: the choice the browser keeps, following the system as it turns, the three buttons in Settings, and telling `main.js` when the theme changes so the map is redrawn for the other paper. |
 | `app/js/theme-first.js` | The theme, said before the first paint: the one script loaded the old way, in the head of both pages, so a dark page does not open white. It writes `data-theme` on the root, which is all `tokens.css` reads. Served before sign-in, so it is listed with the sign-in screen's files in `scripts/auth.mjs`. |
 | `app/js/viewport.js` | The pan and zoom maths: where a view puts a point, zooming about the pointer, centring, and fitting a box to the stage. Pure, so `tests/viewport.test.mjs` runs it headless, and the one module under `app/js/` a consumer's own page is promised to be able to import. |
 | `app/js/zoom.js` | How much of the map's lines is spelt out: the three levels a line may be drawn at, where each end of a line is lifted to at a level, how lifted lines fold into one and which of those the domain level keeps, when a capability opens onto its features, how far in the map may go and where a glide stops. Pure, so `tests/zoom.test.mjs` runs it headless; `diagram.js` reads it after every layout and draws what it says. |
@@ -85,9 +91,13 @@ node tests/geometry.test.mjs
 | `scripts/roles.mjs` | The four roles, lowest first, and what each may do. |
 | `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, someone taken off the list, never the last administrator, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
 | `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made an administrator from outside the app. |
-| `app/js/people.js` | Users & access: the roster a page at a time, the look-up and the two filters over it, and what the administrator can do on it — a role, a person added or removed, and the clear-out of whoever has not been back. |
+| `app/js/people.js` | Users & access: the roster a page at a time, the look-up and the two filters over it, and what the administrator can do on it — a role, a person added or removed, and the clear-out of whoever has not been back. Its other view is the groups: who is in each, and an administrator's making and filling of them. |
+| `scripts/group-store.mjs` | Groups in Postgres (`006-groups.sql`): a name and its members, the app's own, for sharing a version with fewer than everyone. |
+| `app/js/teams.js` | The legend of the map's teams on the stage, under their Types, and the pressing of a team or a Type in it. Which teams are lit is the diagram's to hold, since it is how the diagram draws; the legend asks it, and tells `main.js` what was pressed. A team's own fields, and what it is on, are the details panel's. |
+| `app/js/slideshow.js` | The slideshow: the deck made of the map — a slide an area, then one a domain in it, then one a capability in that, in the order `slideDeck` in `store.js` reads them — its two views, the keys that step through it, the path over a slide and what a postcard says. The words are the details panel's own fields (`wordFields`) and the picture is the diagram's (`picture`) or a file of the owner's under `data/pictures/`, so a slide holds nothing the map does not. |
+| `app/js/audience.js` | The dialog that asks who a version is shared with — everyone, or the people and groups ticked — when it is shared and when that is changed, and the few words a row says it in. |
 | `scripts/assistant-settings.mjs` | What an administrator sets about the Assistant's model from the app: on or off, and a key of the app's own, sealed with a key derived from `AUTH_SESSION_SECRET` before it is written and never read back out to a person. One row in Postgres (`005-assistant.sql`). |
-| `app/js/assistant-settings.js` | The **Assistant model** dialog an administrator opens from the profile popup: the switch, the box a new key is typed into, and trying the key out. |
+| `app/js/assistant-settings.js` | The **Assistant model** dialog an administrator opens from Settings: the switch, the box a new key is typed into, and trying the key out. |
 | `scripts/serve.mjs` | The CLI over it, for running the stock app from this checkout. |
 | `scripts/create-app.mjs` | `create-domain-map-app`: writes a consumer repo from `scaffold/`. |
 | `scripts/migrations/` | Numbered `.sql`, applied in name order at startup and recorded in a table of their own. There is nothing to run by hand. |

@@ -102,8 +102,8 @@ async function act(work, done) {
 }
 
 /**
- * Wire the dialog to who is looking. main.js opens it from the button in the
- * profile popup, which only an administrator is shown.
+ * Wire the dialog to who is looking. main.js opens it from the button in
+ * Settings, which only an administrator is shown.
  */
 export function initAssistantSettings(who, { onChange: changed } = {}) {
   if (changed) onChange = changed;
@@ -111,7 +111,7 @@ export function initAssistantSettings(who, { onChange: changed } = {}) {
   const opener = el('assistant-model');
   opener.hidden = who.role !== ADMINISTRATOR;
   opener.addEventListener('click', async () => {
-    el('profile-dialog').close();
+    el('settings-dialog').close();
     el('model-new-key').value = '';
     say('Reading the settings…');
     try {

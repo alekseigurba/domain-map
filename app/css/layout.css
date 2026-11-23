@@ -823,6 +823,37 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   text-overflow: ellipsis;
 }
 
+/* A chip with a way off it: a team on a shape, a shape a team is on. The name
+   is the chip, pressed to go and look; the × after it takes it away, and is
+   quiet until pointed at, as the one on a group's member is. */
+.details__pick {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.details__out,
+.roster__out {
+  padding: 0 var(--gap-1);
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.details__out:hover,
+.details__out:focus-visible { color: var(--error-ink); }
+
+/* A team a shape has through what holds it: its domain's, its area's. Said
+   more quietly than the ones put on the shape itself, and with no way off —
+   it is not this shape's to take off. */
+.details__pick--through .details__member {
+  border-style: dashed;
+  color: var(--ink-soft);
+}
+
 .details__meta {
   margin-top: var(--gap-4);
   padding-top: var(--gap-3);
@@ -1120,6 +1151,352 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   box-shadow: 0 2px 8px rgb(40 40 40 / calc(12% * var(--shadow-weight)));
 }
 
+/* --- the slideshow ---------------------------------------------------------- */
+
+/* The map as a deck, over the whole page: a bar, and under it the slides in a
+   column and the one in hand. A native <dialog>, so the page behind is inert —
+   but its own frame rather than `.dialog`'s, since it is not a box floating
+   over the map: it is the window, for as long as it is open. */
+.slideshow {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: var(--chrome);
+  color: var(--ink);
+  font-size: var(--fs-200);
+}
+
+.slideshow[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* It takes the focus so that keys reach it, and is the whole window: a ring
+   round the window says nothing about where the focus is. */
+.slideshow:focus { outline: none; }
+
+.slideshow__bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--gap-4);
+  padding: var(--space-050) var(--space-075);
+  border-bottom: 1px solid var(--line);
+  background: var(--chrome);
+}
+
+/* Edit or Present: the two views, the width of their words. */
+.slideshow__views .toggle__chip { flex: 0 0 auto; min-width: 5rem; }
+
+/* Where in the deck, between the two ways through it; pushed to the far end
+   with Close, so the views sit by the title they are views of. */
+.slideshow__steps {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  margin-left: auto;
+}
+
+.slideshow__at {
+  min-width: 4.5rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.slideshow__body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* The deck: a row a slide, in the order the map is read — an area, the
+   domains in it, and each domain's capabilities, every row set in by how deep
+   its shape sits. An area and a domain are in semibold; the one in hand takes
+   the selected row's fill, as the tree's does. */
+.slideshow__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--gap-2);
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+}
+
+.slideshow__row {
+  --depth: 0;
+  flex: none;
+  padding: var(--space-025) var(--gap-2);
+  padding-left: calc(var(--gap-2) + var(--depth) * var(--space-075));
+  overflow: hidden;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.slideshow__row--area,
+.slideshow__row--domain { font-weight: var(--fw-semibold); }
+.slideshow__row--area:not(:first-child) { margin-top: var(--gap-3); }
+.slideshow__row--domain:not(:first-child) { margin-top: var(--gap-2); }
+.slideshow__row:hover { background: var(--paper); }
+.slideshow__row[aria-current="true"] { background: var(--selected-row); }
+
+/* The room the slide has. It is a container, so the slide can be sized by the
+   room's width and its height at once: the largest 16:9 card that fits. */
+.slideshow__stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  container-type: size;
+}
+
+/* A postcard: where the shape sits across the top, and under that the shape
+   at the left and its words at the right, on paper. Its type is set in shares
+   of its own width, so a slide reads the same in the deck's corner of the
+   window and across the whole of a projector. */
+.slide {
+  --slide-pad: 3.2cqi;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0 3cqi;
+  width: min(100cqw - 48px, (100cqh - 48px) * 16 / 9);
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--paper);
+  box-shadow: 0 8px 28px rgb(0 0 0 / calc(14% * var(--shadow-weight)));
+  container-type: inline-size;
+}
+
+/* The path: /area/domain/capability, across the top of the card. Quiet, on
+   one line, and cut at its end where it runs out — it says what the slide is
+   a part of, and the slide's own name is said again, large, in its words. */
+.slide__path {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: calc(var(--slide-pad) * 0.7) var(--slide-pad) 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: max(11px, 1.35cqi);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slide__slash { margin: 0 0.35em; opacity: 0.6; }
+.slide__slash:first-child { margin-left: 0; }
+.slide__step--here { color: var(--ink); font-weight: var(--fw-semibold); }
+
+/* The picture has the whole of its half, to the card's own edge on two sides:
+   a shape drawn small in a frame of paper is a diagram of the shape, and this
+   is meant to be the shape. Nothing in it takes the pointer. */
+.slide__picture {
+  min-width: 0;
+  min-height: 0;
+  padding: calc(var(--slide-pad) * 0.5) 0 var(--slide-pad) var(--slide-pad);
+}
+
+.slide__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* A picture uploaded for the slide: the whole of it, as large as its half of
+   the card allows, and never cropped — it is the owner's, and what it shows at
+   its edges is theirs to decide. */
+.slide__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.slide__words {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5cqi;
+  min-width: 0;
+  min-height: 0;
+  padding: calc(var(--slide-pad) * 0.5) var(--slide-pad) var(--slide-pad) 0;
+  overflow-y: auto;
+}
+
+/* Read, the words stand level with the middle of the picture beside them,
+   rather than hanging from the top of the card with the foot of it empty. By
+   margins and not by centring the column, so that words too many for the card
+   still start at its top and scroll. Worked on, the fields start at the top,
+   as a form does. */
+.slide__words:not(:has(.slide__fields)) > :first-child { margin-top: auto; }
+.slide__words:not(:has(.slide__fields)) > :last-child { margin-bottom: auto; }
+
+/* What kind of thing it is, and its Type: said small and wide over the name. */
+.slide__kind {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: max(10px, 1.15cqi);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.slide__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: max(18px, 3.5cqi);
+  font-weight: var(--fw-semibold);
+  line-height: 1.12;
+}
+
+.slide__says {
+  margin: 0;
+  font-size: max(12px, 1.65cqi);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* The facts: a name for each against what it says, as the role key sets a role
+   against its sentence. What is a list of names is a row of chips, wrapping. */
+.slide__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 1cqi 2cqi;
+  align-items: baseline;
+  margin: 0;
+  font-size: max(11px, 1.3cqi);
+  line-height: 1.4;
+}
+
+.slide__facts dt { color: var(--ink-soft); }
+.slide__facts dd { margin: 0; }
+
+.slide__names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5cqi;
+}
+
+.slide__name {
+  padding: 0.1em 0.7em;
+  border-radius: 99px;
+  background: var(--chrome);
+  white-space: nowrap;
+}
+
+/* Worked on, the words are the details panel's fields, at the panel's own
+   size: a field set in shares of the slide would be too small to type into in
+   the deck and too large on a wide screen. */
+.slide__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-3);
+  font-size: var(--fs-200);
+}
+
+.slide__fields .field { margin: 0; }
+
+/* Under the Picture toggle: the file uploaded for the slide by name, cut where
+   it runs out, and the button that uploads one or puts another in its place. */
+.slide__upload {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  margin-top: var(--gap-1);
+}
+
+.slide__file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Presenting: the slide and nothing else. The deck goes, the card loses its
+   frame and takes the whole of the room, and the room is the card's own paper,
+   so a screen that is not 16:9 shows more paper and not a frame. The bar is
+   still there for a pointer that goes looking for it at the top, and unseen
+   until it does: the keys are the way through a presentation. */
+.slideshow[data-view="present"] { background: var(--paper); }
+.slideshow[data-view="present"] .slideshow__list { display: none; }
+.slideshow[data-view="present"] .slideshow__body { grid-template-columns: minmax(0, 1fr); }
+
+.slideshow[data-view="present"] .slide {
+  width: min(100cqw, 100cqh * 16 / 9);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.slideshow[data-view="present"] .slide__words { overflow: hidden; }
+
+.slideshow[data-view="present"] .slideshow__bar {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  left: 0;
+  opacity: 0;
+  transition: opacity 120ms linear;
+}
+
+.slideshow[data-view="present"] .slideshow__bar:hover,
+.slideshow[data-view="present"] .slideshow__bar:focus-within { opacity: 1; }
+
+/* A map with nothing to show has one sentence where the slide would be. */
+.slideshow[data-empty="true"] .slide { grid-template-columns: minmax(0, 1fr); }
+.slideshow[data-empty="true"] .slide__picture { display: none; }
+.slideshow[data-empty="true"] .slide__words { padding-left: var(--slide-pad); justify-content: center; }
+
+/* On a phone the deck's list goes — the arrows are the way through — and the
+   postcard stands on end: the picture over the words, as tall as the screen. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .slideshow__body { grid-template-columns: minmax(0, 1fr); }
+  .slideshow__list { display: none; }
+  .slideshow__bar { flex-wrap: wrap; gap: var(--gap-2); }
+
+  .slide,
+  .slideshow[data-view="present"] .slide {
+    --slide-pad: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 40%) minmax(0, 1fr);
+    gap: 0;
+    width: calc(100cqw - 16px);
+    height: calc(100cqh - 16px);
+    aspect-ratio: auto;
+  }
+
+  .slide__path { padding: 12px var(--slide-pad) 0; }
+  .slide__picture { padding: 8px var(--slide-pad) 0; }
+  .slide__words { padding: var(--slide-pad); gap: 12px; }
+  .slide__title { font-size: 22px; }
+  .slide__says { font-size: 14px; }
+  .slide__facts { gap: 6px 12px; font-size: 13px; }
+  .slide__names { gap: 4px; }
+}
+
 /* --- a line's shape, beside the line ---------------------------------------- */
 
 /* Hangs off the handle on the selected line; main.js positions it. The same
@@ -1219,7 +1596,7 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
 .dialog__foot--end { justify-content: flex-end; }
 
 /* The profile popup hangs in the top right corner, under the avatar, like
-   About: narrow, since it holds a name and a handful of buttons. */
+   About: narrow, since it holds a name, a role and the way out. */
 .dialog--profile {
   inset: var(--dialog-inset) var(--dialog-inset) auto auto;
   width: min(300px, calc(100vw - 2 * var(--dialog-inset)));
@@ -1256,23 +1633,50 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--ink-invert);
 }
 
-/* Light or dark: a label and three chips on one row, the chips sharing what
-   the label leaves, as the palette's sizes do. The one in force is filled in
-   with the selection for the same reason theirs is — among identical chips a
-   border alone does not say which you are on. */
-.profile__theme {
-  display: flex;
+/* Close keeps the right-hand end whether or not Sign out is there. */
+.dialog--profile .dialog__foot > :last-child { margin-left: auto; }
+
+/* Settings hangs in the same corner, under the gear, and is a little wider:
+   every row says what its button is for. Two columns, the buttons in the
+   first and all one width, so the sentences beside them start on one line and
+   the eye runs down the names. */
+.dialog--settings {
+  inset: var(--dialog-inset) var(--dialog-inset) auto auto;
+  width: min(400px, calc(100vw - 2 * var(--dialog-inset)));
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: var(--gap-3);
+  gap: var(--gap-2) var(--gap-3);
 }
 
-.profile__label { color: var(--ink-soft); }
+.settings__label,
+.settings__says { color: var(--ink-soft); }
 
-.profile__choices {
+.settings__says { line-height: var(--lh-m); }
+
+/* A button nobody here may press is not shown, and what it would have done is
+   not said either. */
+.settings__do[hidden] + .settings__says { display: none; }
+
+/* One that is only waiting — Import, outside Edit mode — stays, greyed, with
+   its sentence saying what it waits for. */
+.settings__do:disabled + .settings__says { opacity: 0.6; }
+
+/* Light or dark: three chips sharing the row, as the palette's sizes do. The
+   one in force is filled in with the selection for the same reason theirs is
+   — among identical chips a border alone does not say which you are on. The
+   row stands a little apart from the buttons under it: it is the one thing
+   here that is chosen, not pressed. */
+.settings__choices {
   display: flex;
-  flex: 1;
   gap: var(--gap-1);
+  margin-bottom: var(--gap-2);
 }
+
+.settings__label { margin-bottom: var(--gap-2); }
 
 .theme-choice { flex: 1 1 0; }
 
@@ -1282,11 +1686,75 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   color: var(--selection-ink);
 }
 
-/* Close keeps the right-hand end whether or not Sign out is there. With an
-   administrator's two buttons before it the row is too long for the popup, so
-   it wraps, and Close is still the last thing in it. */
-.dialog--profile .dialog__foot { flex-wrap: wrap; }
-.dialog--profile .dialog__foot > :last-child { margin-left: auto; }
+/* Who a version is shared with: centred over the Versions dialog it was asked
+   from, and narrow — a choice of two, and under one of them two short lists to
+   tick. The lists scroll inside themselves, so the choice and the button stay
+   in sight however many people there are. */
+.dialog--audience {
+  inset: 0;
+  margin: auto;
+  width: min(440px, calc(100vw - 2 * var(--dialog-inset)));
+  height: fit-content;
+}
+
+.audience__says {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: var(--lh-m);
+}
+
+.audience__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-2);
+  min-height: 0;
+}
+
+.audience__pick .versions__heading { margin: var(--gap-1) 0 0; }
+
+.audience__list {
+  display: flex;
+  flex-direction: column;
+  max-height: 10.5rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+/* A row is its whole width to press, not only the box at its head. */
+.audience__row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  padding: var(--gap-1) var(--gap-2);
+  cursor: pointer;
+}
+
+.audience__row + .audience__row { border-top: 1px solid var(--line); }
+.audience__row:hover { background: var(--chrome); }
+
+.audience__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: var(--lh-m);
+}
+
+.audience__name { font-weight: var(--fw-semibold); }
+
+.audience__detail {
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.audience__empty {
+  margin: 0;
+  padding: var(--gap-2);
+  color: var(--ink-soft);
+}
+
+.dialog--audience .field--inline .toggle { flex: 0 0 60%; }
+.dialog--audience .dialog__foot { justify-content: flex-end; }
 
 /* The Assistant's model: centred, like the dialogs that are about the whole
    map, and narrow — it is one switch and one box. What it says about the model
@@ -1327,12 +1795,14 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
    as one line: the name, when and by whom, and what can be done with it. The
    width has followed the row out twice — for Rename in 2.1, and for the column
    saying who saved or shared a version, which put a publisher's Publish and
-   Delete behind a scroll bar at 760px. A shared row with all five actions and
-   all three tags is what it is measured against. */
+   Delete behind a scroll bar at 760px. It has followed it out a third time,
+   for the column saying who a shared version is shared with. A shared row with
+   all five actions, all three tags and a group and a person named is what it
+   is measured against. */
 .dialog--versions {
   inset: 0;
   margin: auto;
-  width: min(920px, calc(100vw - 2 * var(--dialog-inset)));
+  width: min(1100px, calc(100vw - 2 * var(--dialog-inset)));
 }
 
 .versions__note {
@@ -1460,6 +1930,25 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   gap: var(--gap-1);
 }
 
+/* Who a shared version is shared with: "Everyone", or a name or two and how
+   many more. The names can be any length and the column cannot, so they are
+   cut where it ends; the whole of it is on the pointer. For whoever may change
+   it the words are a chip, and the chip is what opens the choosing. */
+.versions__with {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.versions__audience {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  line-height: calc(var(--chip-h) - 2px);
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
 /* Shrink-to-fit, and never wrapped: what can be done with a version is the one
    thing in the row that holds its shape whatever else is in it. */
 .versions th:last-child,
@@ -1486,6 +1975,66 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
    name or an address too long for its share of the row wraps inside it, where
    it used to hold the whole row on one line and push the buttons out of sight. */
 .roster td:first-child { white-space: normal; }
+
+/* People or Groups: the dialog's two views, on a toggle under its title. The
+   chips keep to their words rather than share the dialog's width, so the
+   toggle reads as a choice of two and not as a bar across the top. */
+.roster__views { align-self: flex-start; }
+.roster__views .toggle__chip { flex: 0 0 auto; min-width: 5.5rem; }
+
+/* A view is everything under the toggle but the key: a column of its own,
+   spaced as the dialog spaces its own, and able to shrink so that the list
+   inside it is what scrolls. */
+.roster__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-4);
+  min-height: 0;
+}
+
+.roster__says {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: var(--lh-m);
+}
+
+/* Who is in a group: a chip a member, wrapping onto as many lines as there are
+   members, with the list that adds one after the last. */
+.roster td.roster__in { white-space: normal; }
+
+.roster__members {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-1);
+}
+
+.roster__member {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--chip-h);
+  padding: 0 var(--gap-2);
+  border: 1px solid var(--line);
+  border-radius: var(--chip-radius);
+  background: var(--chrome);
+  white-space: nowrap;
+}
+
+/* The way out of a group, on the member's own chip: quiet until it is
+   pointed at, since a row of people should read as people. Drawn as the × on a
+   team's chip in the details panel is, which is where its rules are. */
+.roster__out { margin-right: calc(-1 * var(--gap-1)); }
+
+.roster__out:hover,
+.roster__out:focus-visible { color: var(--error-ink); }
+
+.roster__join {
+  width: auto;
+  min-height: var(--chip-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
 
 /* Finding someone: the look-up takes the room, and the two filters keep the
    width of what they say. On a phone they wrap under it. */
