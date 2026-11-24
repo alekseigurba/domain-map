@@ -39,13 +39,19 @@
 // a picture uploaded for it. The number moved for the teams and the people: an
 // app from before would read past the lists and write the map back without
 // them, and neither is a detail of how something is drawn. Versions 1 to 5
-// still read, as a map with no teams and nobody named. Writing is always
-// version 6.
+// still read, as a map with no teams and nobody named.
+//
+// Version 7 let a person own a capability as well as an area or a domain:
+// a `capabilities` list beside a person's `areas` and `domains`, by the
+// capabilities' keys, and a card moved by hand there as anywhere else. The
+// number moved because an app from before would drop those entries without a
+// word — and drop a person who led only capabilities altogether. Versions 1 to
+// 6 still read. Writing is always version 7.
 
 import { slugify } from './store.js';
 import * as rules from './rules.js';
 
-export const CURRENT_VERSION = 6;
+export const CURRENT_VERSION = 7;
 
 /** A position as the file writes it: two whole numbers, "x,y". */
 export const position = (x, y) => `${Math.round(x)},${Math.round(y)}`;

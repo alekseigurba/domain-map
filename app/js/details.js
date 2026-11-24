@@ -269,6 +269,16 @@ export async function reloadPeople() {
   await loadPeople();
 }
 
+/**
+ * The people list, for a view outside the panel that names people — the
+ * Roles grid. It is the same list the Owner box offers, read once for both,
+ * and fills the one datalist the page keeps for it.
+ */
+export async function peopleList() {
+  await loadPeople();
+  return people ?? [];
+}
+
 /** The names behind every Owner box: one datalist in the page, filled here. */
 function fillPeopleOptions() {
   const list = document.getElementById('people-options');
@@ -964,10 +974,17 @@ const ROLE_NAMES = {
 /** A person as a chip names them: their name, and the role they hold when they have been given one. */
 const roleSays = (role) => (role.type ? `${oneLine(role.title)} — ${role.type}` : oneLine(role.title));
 
+/** A shape as a list names it. Two capabilities may share a name, in two domains: the domain tells them apart. */
+const shapeNamed = (kind, record) => {
+  const home = kind === 'capability' ? find('domain', record.domainId) : null;
+  return home ? `${oneLine(record.title)} — ${oneLine(home.title)}` : oneLine(record.title);
+};
+
 /**
- * The people of one discipline who own an area or a domain: each a chip that
- * picks them, and in Edit mode a × that takes the shape from them and a list
- * that gives it to someone already on the map, or names someone new on it.
+ * The people of one discipline who own an area, a domain or a capability:
+ * each a chip that picks them, and in Edit mode a × that takes the shape from
+ * them and a list that gives it to someone already on the map, or names
+ * someone new on it.
  * Browsing, a shape nobody leads says nothing about who leads it.
  */
 function rolesSection(roleKind, kind, record) {
@@ -1008,8 +1025,8 @@ function rolesSection(roleKind, kind, record) {
 
 /**
  * What a person owns, as names to press — each shows its shape on the map —
- * and in Edit mode a × on each and a list of the areas and domains they do not
- * own yet. The last thing they own has no ×: a person who owns nothing is
+ * and in Edit mode a × on each and a list of the areas, domains and
+ * capabilities they do not own yet. The last thing they own has no ×: a person who owns nothing is
  * nowhere on the map, and is taken off it with Remove instead.
  */
 function roleOwnsField(roleKind, role) {
@@ -1017,7 +1034,7 @@ function roleOwnsField(roleKind, role) {
   const row = document.createElement('div');
   row.className = 'details__members';
   for (const { kind, record } of owned) {
-    row.append(chipWithOut(oneLine(record.title), `Show this ${kind} on the map`,
+    row.append(chipWithOut(shapeNamed(kind, record), `Show this ${kind} on the map`,
       () => handlers.onShow?.(kind, record.id),
       owned.length > 1
         ? {
@@ -1044,7 +1061,7 @@ function roleOwnsField(roleKind, role) {
     for (const record of free) {
       const option = document.createElement('option');
       option.value = `${kind}:${record.id}`;
-      option.textContent = oneLine(record.title);
+      option.textContent = shapeNamed(kind, record);
       group.append(option);
     }
     picker.append(group);
@@ -1078,7 +1095,11 @@ function roleSection(roleKind, role) {
   const name = liveText(roleKind, role, 'title', {
     onInput: () => { label.textContent = slugOf(roleKind, role); }, shown: oneLine,
   });
-  if (people?.length) name.setAttribute('list', 'people-options');
+  // Asked for here as the Owner box asks for it. A person is often the first
+  // thing picked in a session, before any Owner box has been drawn, and a name
+  // box that waited for one to load the list never offered anybody.
+  if (people === null) loadPeople();
+  name.setAttribute('list', 'people-options');
   return section(ROLE_NAMES[roleKind].one, [
     field('Label', label),
     field('Name', name),
@@ -1297,6 +1318,7 @@ export function renderDetails() {
         memberChips(held.map((feature) => ({ kind: 'feature', record: feature }))),
       ], 'Holds'));
     }
+    for (const roleKind of ROLE_KINDS) nodes.push(rolesSection(roleKind, type, record));
     nodes.push(teamsSection(type, record));
     nodes.push(section('Shape', [
       fontSizeField(type, record),

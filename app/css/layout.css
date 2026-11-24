@@ -2036,6 +2036,128 @@ button.avatar:focus-visible { border-color: var(--ink-soft); }
   padding-bottom: 0;
 }
 
+/* Roles: who leads every area, domain and capability, as a grid — a row a
+   shape and a column a role, one discipline at a time. Centred and as wide as
+   Versions, since a row holds the shape and three or four columns of names.
+   The grid is the one thing in it that scrolls, down and — on a narrow screen,
+   where its columns are the point and cannot become cards — sideways, with
+   the roles' names and the shapes' names held in view as it does. */
+.dialog--roles {
+  inset: 0;
+  margin: auto;
+  width: min(1100px, calc(100vw - 2 * var(--dialog-inset)));
+  height: calc(100vh - 2 * var(--dialog-inset));
+}
+
+.roles-grid__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-2);
+}
+
+.roles-grid__bar .roster__views { align-self: auto; }
+.roles-grid__bar .field__input { flex: 1 1 14rem; }
+
+.roles-grid__scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+
+.roles-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-200);
+  line-height: var(--lh-m);
+}
+
+.roles-grid th,
+.roles-grid td {
+  padding: var(--gap-1) var(--gap-2);
+  text-align: left;
+  vertical-align: middle;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.roles-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-top: var(--gap-2);
+  padding-bottom: var(--gap-2);
+  border-top: none;
+  border-bottom: 1px solid var(--line-strong);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.roles-grid tbody tr:first-child > * { border-top: none; }
+
+/* The shape's name, indented by how deep it sits — an area at the margin, its
+   domains a step in, their capabilities a step further — and held at the left
+   while the roles scroll past it. */
+.roles-grid th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 14rem;
+  border-right: 1px solid var(--line);
+}
+
+.roles-grid thead th:first-child { z-index: 3; }
+
+.roles-grid th.roles-grid__shape {
+  padding-left: calc(var(--gap-2) + var(--depth, 0) * 1.25rem);
+  font-weight: var(--fw-regular);
+  color: var(--ink);
+}
+
+.roles-grid__name { display: block; }
+
+.roles-grid__kind {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* An area or a domain heads what is under it, so it reads a little stronger
+   and its row wears the chrome: a long grid is read in its sections. */
+.roles-grid tr[data-kind="area"] > *,
+.roles-grid tr[data-kind="domain"] > * { background: var(--chrome); }
+
+.roles-grid tr[data-kind="area"] .roles-grid__name,
+.roles-grid tr[data-kind="domain"] .roles-grid__name { font-weight: var(--fw-semibold); }
+
+.roles-grid td { min-width: 10rem; }
+
+/* The box a name is typed into: the height of the chips beside it, and only
+   as wide as a name needs, so a cell full of people still reads as people.
+   It has no rim until its row is pointed at or it has the focus — a box in
+   every cell of every row would read as a form to fill in, not as who leads
+   what. */
+.roles-grid__add {
+  width: 8rem;
+  min-height: var(--chip-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.roles-grid tbody .roles-grid__add:not(:focus) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.roles-grid tbody tr:hover .roles-grid__add:not(:focus) { border-color: var(--line); }
+
+.roles-grid__new .roles-grid__add { width: 9rem; }
+
 /* Finding someone: the look-up takes the room, and the two filters keep the
    width of what they say. On a phone they wrap under it. */
 .roster__find {

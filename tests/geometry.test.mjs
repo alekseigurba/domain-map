@@ -1513,11 +1513,42 @@ check('a tall drawing fills the height and is centred across', tall.height === 2
 
 const children = [{ id: 'c1', title: 'One', lobeX: -140, lobeY: 60 }, { id: 'c2', title: 'Two', lobeX: 140, lobeY: 60 }];
 const blob = geo.layoutDomain({ id: 'd', title: 'Invoicing' }, children);
-const onBlob = geo.badgeAnchorOnBlob(blob);
-check('a domain’s cards hang off its edge, not inside it',
-  !blob.contains(onBlob.x, onBlob.y + onBlob.grows * 4), JSON.stringify(onBlob));
-check('on the side its title sits, growing away from the blob',
-  Math.sign(onBlob.y - blob.body.y) === Math.sign(blob.titleLobe.y - blob.body.y) && onBlob.grows === (onBlob.y < blob.body.y ? -1 : 1));
+const onBlob = geo.badgeAnchorOnBlob(blob, [ada]);
+const [overDomain] = geo.badgeStack(onBlob, [ada]);
+const meets = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const words = { x: blob.title.x - blob.title.boxWidth, y: blob.title.y - blob.title.boxHeight,
+  width: blob.title.boxWidth * 2, height: blob.title.boxHeight * 2 };
+check('and clear of the title’s words', !meets(overDomain, words), JSON.stringify([overDomain, words]));
+const capabilityBoxes = blob.slots.map((slot) => ({ x: slot.x - slot.rx, y: slot.y - slot.ry, width: slot.rx * 2, height: slot.ry * 2 }));
+check('and of its capabilities, where there is room', !capabilityBoxes.some((box) => meets(overDomain, box)));
+const [usual] = geo.badgeStack(onBlob, [ada]);
+const nameInTheWay = { x: usual.x, y: usual.y, width: usual.width, height: usual.height };
+const [elsewhere] = geo.badgeStack(geo.badgeAnchorOnBlob(blob, [ada], geo.BADGE_FONT, [nameInTheWay]), [ada]);
+const shared = (a, b) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x))
+  * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+check('an area’s name where the card would go sends it to another side of the title',
+  shared(elsewhere, nameInTheWay) < shared(usual, nameInTheWay) * 0.1 && !meets(elsewhere, words), JSON.stringify(elsewhere));
+const roomyBlob = geo.layoutDomain({ id: 'd', title: 'Invoicing' }, [{ id: 'c1', title: 'One', lobeX: 0, lobeY: 260 }]);
+const [roomy] = geo.badgeStack(geo.badgeAnchorOnBlob(roomyBlob, [ada]), [ada]);
+const roomyMiddle = geo.badgeCentre(roomy);
+check('where the domain has room by its title, the card lies over the domain', roomyBlob.contains(roomyMiddle.x, roomyMiddle.y),
+  JSON.stringify(roomyMiddle));
+check('the same domain hangs its cards in the same place every time',
+  JSON.stringify(geo.badgeAnchorOnBlob(blob, [ada])) === JSON.stringify(onBlob));
+
+const oval = { x: 500, y: 300, rx: 130, ry: 84 };
+const capSize = geo.capabilitySize({ title: 'Invoicing and dunning' });
+const underWords = geo.badgeAnchorUnderWords(oval, capSize);
+const [overCap] = geo.badgeStack(underWords, [ada], geo.CAPABILITY_BADGE_FONT);
+check('a capability’s cards start over its oval, under its title, and grow down',
+  underWords.grows === 1 && overCap.y < oval.y + oval.ry && overCap.y >= oval.y + capSize.textY + capSize.height / 2,
+  JSON.stringify([overCap.y, capSize.textY, capSize.height]));
+const withIcon = geo.capabilitySize({ title: 'Invoicing', icon: 'bill.svg' });
+const [overIcon] = geo.badgeStack(geo.badgeAnchorUnderWords(oval, withIcon), [ada], geo.CAPABILITY_BADGE_FONT);
+check('and under its icon as well, when it has one',
+  overIcon.y >= oval.y + Math.max(withIcon.textY + withIcon.height / 2, withIcon.iconY + withIcon.iconHeight / 2));
+check('a card over a capability is set smaller than its title, so it is no wider than the oval',
+  geo.CAPABILITY_BADGE_FONT < 32 && overCap.width <= oval.rx * 2, String(overCap.width));
 
 const band = geo.layoutArea({ id: 'a', title: 'Payments' }, [[{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }]]);
 const over = geo.badgeAnchorOnBand(band);

@@ -2344,14 +2344,16 @@ export function layoutArea(area, outlines, sliding = null) {
 // --- role cards ---------------------------------------------------------------
 
 // A person in a role has no shape, so the layer of their discipline hangs a
-// card for them on each area and domain they own: a band in the layer's colour
-// down its leading edge, their icon, and beside it their name with their role
-// under it. A card is hung outside the
-// shape, by its name, so that it covers nothing of the shape it is on — beyond
-// a domain's edge where its title sits, beyond an area's title on the border —
-// and several people on one shape stack away from it, the first the nearest.
-// That is only where a card starts: it can be taken hold of and put anywhere,
-// and from then on it stays where it was put, measured from its shape.
+// card for them on each area, domain and capability they own: a band in the
+// layer's colour down its leading edge, their icon, and beside it their name
+// with their role under it. A card is hung by the shape's name and clear of
+// it — over a domain beside its title, under a capability's title and icon,
+// beyond an area's title on the border — so it covers no words; a map is
+// mostly read with its shapes let through, and a card over the edge of one
+// hides nothing that matters. Several people on one shape stack away from it,
+// the first the nearest. That is only where a card starts: it can be taken
+// hold of and put anywhere, and from then on it stays where it was put,
+// measured from its shape.
 
 /**
  * How large a name on a card is, in the map's own units: between a
@@ -2360,6 +2362,13 @@ export function layoutArea(area, outlines, sliding = null) {
  * the thing they lead.
  */
 export const BADGE_FONT = 56;
+
+/**
+ * The name on a card over a capability. Smaller than a capability's own title,
+ * since the card lies over the oval and among its neighbours: at a domain's
+ * size one card would be wider than the capability it names.
+ */
+export const CAPABILITY_BADGE_FONT = 24;
 
 /** How large the role under a name is, as a share of the name: the smaller of the two, since it is the name that is looked for. */
 export const BADGE_ROLE_SHARE = 0.7;
@@ -2390,18 +2399,84 @@ const badgeName = (name) => {
 };
 
 /**
- * Where a domain's cards hang: outside its edge, on the side its title sits,
- * growing away from the blob. `layout` is `layoutDomain`'s, in the domain's own
- * coordinates, and so is the answer. A title in the very middle of the body
- * points nowhere, and the cards go over the top, where a title starts.
+ * Where a domain's cards hang: over the domain, by its title, in whichever of
+ * four places round the title covers least of what matters — over it, to
+ * either side of it, or under it. No one place suits every domain: over the
+ * title is clear on a domain whose title sits low, and out past the edge — on
+ * to an area's name — on one whose title rides the top; under it is clear
+ * only where the capabilities leave room. So each place is weighed by what
+ * its cards would lie on: the title's words most of all, then an area's name
+ * or a capability — whose own title is in it — and last how much of the
+ * cards would hang off the domain altogether, since a card over the shape it names is read as that
+ * shape's. A map is mostly read with its lower layers let through, so a card
+ * over the edge of a shape hides nothing that matters.
+ *
+ * `layout` is `layoutDomain`'s, in the domain's own coordinates, and so is the
+ * answer and every box in `avoid` — boxes as `{ x, y, width, height }`.
+ * `people` is the cards' `{ name, role }`, nearest first. The answer is an
+ * anchor for `badgeStack` with the same people and size.
  */
-export function badgeAnchorOnBlob(layout) {
-  const dx = layout.titleLobe.x - layout.body.x;
-  const dy = layout.titleLobe.y - layout.body.y;
-  const degrees = Math.hypot(dx, dy) < 1 ? DEFAULT_TITLE_ANGLE : (Math.atan2(dy, dx) * 180) / Math.PI;
-  const at = rimPoint(layout.outline, layout.body, degrees);
-  return { x: at.x, y: at.y, grows: at.y < layout.body.y ? -1 : 1 };
+export function badgeAnchorOnBlob(layout, people = [{ name: '', role: '' }], fontSize = BADGE_FONT, avoid = []) {
+  const { title } = layout;
+  const laid = badgeStack({ x: 0, y: 0, grows: 1 }, people, fontSize);
+  const width = laid[0]?.width ?? 0;
+  const height = laid.length ? laid.at(-1).y + laid.at(-1).height - laid[0].y : 0;
+  // badgeStack keeps its first card this far off the anchor.
+  const clear = fontSize * 0.25;
+  const gap = fontSize * 0.25;
+  // The title's words with their padding, at the scale they are drawn.
+  const words = { x: title.x - title.boxWidth, y: title.y - title.boxHeight, width: title.boxWidth * 2, height: title.boxHeight * 2 };
+  const beside = title.y - height / 2;
+
+  // Each place as the box its cards would fill, and the anchor that fills it.
+  // Over the title they grow upward, so the nearest card is the first named.
+  const places = [
+    { box: { x: title.x - width / 2, y: words.y - gap - height }, anchor: { x: title.x, y: words.y - gap + clear, grows: -1 } },
+    { box: { x: words.x + words.width + gap, y: beside } },
+    { box: { x: words.x - gap - width, y: beside } },
+    { box: { x: title.x - width / 2, y: words.y + words.height + gap } },
+  ].map((place) => {
+    const box = { ...place.box, width, height };
+    return { box, anchor: place.anchor ?? { x: box.x + width / 2, y: box.y - clear, grows: 1 } };
+  });
+
+  const capabilities = layout.slots.map((slot) => ({
+    x: slot.x - slot.rx, y: slot.y - slot.ry, width: slot.rx * 2, height: slot.ry * 2,
+  }));
+  const covered = (box, boxes) => boxes.reduce((sum, other) => sum + overlapOf(box, other), 0);
+  const offTheDomain = (box) => {
+    let off = 0;
+    const across = 6;
+    const down = 4;
+    for (let i = 0; i < across; i += 1) {
+      for (let j = 0; j < down; j += 1) {
+        const x = box.x + ((i + 0.5) / across) * box.width;
+        const y = box.y + ((j + 0.5) / down) * box.height;
+        if (!layout.contains(x, y)) off += 1;
+      }
+    }
+    return (off / (across * down)) * box.width * box.height;
+  };
+  const cost = ({ box }) => overlapOf(box, words) * 4 + (covered(box, avoid) + covered(box, capabilities)) * 3
+    + offTheDomain(box) * 0.5;
+
+  // The first of two that cost the same wins, so the answer never wobbles.
+  let best = places[0];
+  let least = cost(best);
+  for (const place of places.slice(1)) {
+    const price = cost(place);
+    if (price < least - 1e-6) {
+      best = place;
+      least = price;
+    }
+  }
+  return best.anchor;
 }
+
+/** How much of two boxes is the same ground. */
+const overlapOf = (a, b) =>
+  Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x))
+  * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
 
 /**
  * Where an area's cards hang: beyond its title, on the side of it that is
@@ -2413,6 +2488,19 @@ export function badgeAnchorOnBand(layout) {
   return outward < -0.3
     ? { x: layout.title.x, y: layout.gap.minY, grows: -1 }
     : { x: layout.title.x, y: layout.gap.maxY, grows: 1 };
+}
+
+/**
+ * Where a capability's cards hang: over the oval, under its title and its
+ * icon, growing down — over the lower part of the shape and past it, where a
+ * capability's words are not. `at` is the oval as the layout gives it, by its
+ * middle; `size` is `capabilitySize`'s, whose title and icon are measured from
+ * that middle. The answer is in the map's own space.
+ */
+export function badgeAnchorUnderWords(at, size) {
+  const words = (size.textY ?? 0) + (size.height ?? 0) / 2;
+  const icon = size.iconSize ? size.iconY + size.iconHeight / 2 : -Infinity;
+  return { x: at.x, y: at.y + Math.max(words, icon), grows: 1 };
 }
 
 /** What a card says and how much room that takes, before it is put anywhere. */

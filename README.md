@@ -93,18 +93,25 @@ seen by lighting up what it is on.
 **Who leads what.** Two layers at the top of the stack name people: **Product
 roles** — a product lead, a product manager — and **Engineering roles** — an
 engineering lead, a tech lead, an architect. Pick one of the two in the layer
-control, select an area or a domain, and *Add a product role* or *Add an
-engineering role* hangs a card on it; or name someone from the lists of who
-leads it in the shape's own details. Give them a name, a **Role** and an icon.
+control, select an area, a domain or a capability, and *Add a product role* or
+*Add an engineering role* puts a card on it; or name someone from the lists of
+who leads it in the shape's own details. Give them a name, a **Role** and an icon.
 The roles are yours to word: type one into the box and it is on that layer's
 list from then on, to be picked for the next person. The icon is one of the
 five figures the app carries, or anything from the icon library, where your
 own are added, and someone given a role
 takes the icon the others in that role wear until you pick another for them. A
-person may own several areas and domains, and has a card on each. A card
-starts by the name of what it is on; drag it to wherever it reads better and
+person may own several areas, domains and capabilities, and has a card on
+each. A card starts over the shape, by its name and clear of it — beside a
+domain's title, under a capability's; drag it to wherever it reads better and
 it stays there, going with its shape when the shape is moved. **Put cards
 back**, in the person's details, hands them back to the map.
+
+**Roles**, in the header, is the same people as a grid: a row for every area,
+domain and capability, a column for every role, on a tab for each discipline.
+It is where a gap shows — an empty cell rather than a card that is not there.
+In Edit mode type a name into a cell: someone already on the map in that role
+is given the shape too, and anyone else is added to the map.
 
 **Connectors.** Point at a domain, a capability or a feature and its connection
 points appear. Drag from one to a point on another shape — or click one, then

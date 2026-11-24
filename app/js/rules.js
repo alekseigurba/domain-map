@@ -61,8 +61,13 @@ export const TEAM_MEMBER_KINDS = ['area', 'domain', 'capability'];
  */
 export const ROLE_KINDS = ['productRole', 'engineeringRole'];
 
-/** What a person in a role may own: an area or a domain. Further down, a capability has a team, not a lead. */
-export const ROLE_ON_KINDS = ['area', 'domain'];
+/**
+ * What a person in a role may own: an area, a domain or a capability. A
+ * capability is often where a product manager and a tech lead are actually
+ * named, and a map that stopped at the domain left them nowhere to stand. A
+ * feature is too small to have a lead of its own: it is its capability's.
+ */
+export const ROLE_ON_KINDS = ['area', 'domain', 'capability'];
 
 /**
  * Everything that carries a Type from a list of the map's own: the elements,
@@ -429,9 +434,9 @@ export const TEAM_DEFAULTS = {
 export const MAX_TEAMS = 300;
 
 /**
- * A person in a role: who leads an area or a domain, for product or for
- * engineering. The title is their name, the Type is the role they hold, and
- * the icon is theirs — picked from the library, so that a map's owner can
+ * A person in a role: who leads an area, a domain or a capability, for
+ * product or for engineering. The title is their name, the Type is the role
+ * they hold, and the icon is theirs — picked from the library, so that a map's owner can
  * draw a product lead and a product manager apart, or give everyone the same
  * figure. What they own is a list of kinds and ids, as a team's is; unlike a
  * team, a person is drawn, as a badge on each thing they own, so one who owns

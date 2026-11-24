@@ -26,6 +26,7 @@ import { initPeople, listPeople } from './people.js';
 import { initAssistantSettings } from './assistant-settings.js';
 import { audienceSays, chooseAudience } from './audience.js';
 import { initTeams, renderTeams, showTeams, setTeamsEditMode } from './teams.js';
+import { initRolesGrid, renderRolesGrid, setRolesGridEditMode, rolesGridOpen } from './roles-grid.js';
 import { initSlideshow, renderSlideshow, setSlideshowEditMode, slideshowOpen } from './slideshow.js';
 import { diagramSvg } from './svg-export.js';
 import {
@@ -42,7 +43,7 @@ import { initThemeChoice, onTheme } from './theme.js';
 import { renderMenu, collapseAll } from './menu.js';
 import {
   initDetails, renderDetails, fitAreas, setEditMode as setDetailsEditMode,
-  freshenOwners, reloadPeople, lineShapeFields,
+  freshenOwners, reloadPeople, lineShapeFields, peopleList,
 } from './details.js';
 import { initPalette, openPalette, renderPalette, paletteOpen } from './palette.js';
 import {
@@ -222,6 +223,7 @@ function setEditMode(next) {
   setDetailsEditMode(editMode);
   setTeamsEditMode(editMode);
   setSlideshowEditMode(editMode);
+  setRolesGridEditMode(editMode);
   applyEditMode();
   keepSession();
 }
@@ -1329,7 +1331,7 @@ function addOfKind(kind) {
 }
 
 /**
- * What a new person would own: the area or the domain that is picked — or, with
+ * What a new person would own: the area, domain or capability picked — or, with
  * a person picked, what they own, so that a lead's deputy is added from the
  * lead. A person owns something or is nowhere on the map, so with none of
  * those picked there is nobody to add yet.
@@ -2118,7 +2120,7 @@ async function addRole(roleKind, owned) {
 }
 
 /**
- * Give a person an area or a domain to own, or take it from them. Someone left
+ * Give a person an area, a domain or a capability to own, or take it from them. Someone left
  * owning nothing is drawn nowhere and could never be picked again, so taking
  * the last thing from them takes them off the map — as one step, which undo
  * puts back whole.
@@ -2169,6 +2171,44 @@ function withRoleIcon(type, role, body) {
   return worn ? { ...body, icon: worn } : body;
 }
 
+/**
+ * A name typed into a cell of the Roles grid: someone in that role, owning
+ * that shape. Whoever of that name already holds that role on the map is given
+ * the shape as well, so a person is one card a shape and one entry in the
+ * file, however many cells they are typed into; anyone else is named on the
+ * map, in that role, wearing the icon the others in it wear — or the one they
+ * wear in a role of their own already — and with one Ctrl+Z to take them off.
+ */
+async function nameInRole(roleKind, kind, id, name, type) {
+  const wanted = name.trim();
+  if (!wanted) return null;
+  const called = (role) => role.title.trim().toLowerCase() === wanted.toLowerCase();
+  const people = roleKind === 'productRole' ? store.productRoles : store.engineeringRoles;
+  const held = people.find((role) => called(role) && (role.type || '') === type);
+  if (held) {
+    if (held.members.some((member) => member.kind === kind && member.id === id)) return held;
+    return roleMember(roleKind, held.id, kind, id, true);
+  }
+  const label = `Adding a ${ROLE_SAYS[roleKind]}`;
+  const icon = (type && iconForRole(roleKind, type)) || people.find(called)?.icon || null;
+  const created = await run(label, () => createRole(roleKind, { title: wanted, type, icon, members: [{ kind, id }] }));
+  if (!created) return null;
+  undoStack.record(label, [undoDelete(roleKind, created.id)]);
+  if (!isVisible(roleKind, created)) changeLayer(layerOf(roleKind, created), { hidden: false });
+  status(`Added ${wanted}`);
+  return created;
+}
+
+/** A Type added to a kind's list, and given to an element when one is named — one step for undo. */
+async function addType(kind, choice, id) {
+  const before = [...typesFor(kind)];
+  const added = addTypeChoice(kind, choice);
+  if (!added) return;
+  undoStack.record('Adding a type', [{ op: 'types', kind, choices: before }]);
+  if (id) await patch(kind, id, { type: added }, 'Adding a type');
+  else status(`Added the type "${added}"`);
+}
+
 /** Put a team on a shape, or take it off. What it was on before is what undo puts back. */
 function teamMember(teamId, kind, id, on) {
   const team = find('team', teamId);
@@ -2185,6 +2225,15 @@ initSlideshow({
   onPictureUpload: files.savePicture,
   pictureUrl: files.pictureUrl,
   onStatus: status,
+});
+
+initRolesGrid({
+  mayEdit,
+  onEdit: () => setEditMode(true),
+  people: peopleList,
+  onName: nameInRole,
+  onRemove: (roleKind, roleId, kind, id) => roleMember(roleKind, roleId, kind, id, false),
+  onAddRole: (roleKind, choice) => addType(roleKind, choice),
 });
 
 initTeams({
@@ -2404,6 +2453,7 @@ function renderAll(reason) {
   renderLayerControl();
   renderTeams();
   renderSlideshow(); // after render(): a slide's picture is the diagram's, as it was just drawn
+  renderRolesGrid();
   statsBar.textContent = [
     ...(store.areas.length ? [counted('area', store.areas.length)] : []),
     `${store.domains.length} domains`,
@@ -2533,14 +2583,7 @@ initDetails({
   iconUrl: files.iconUrl,
   // Naming a new Type and giving it to the selection are one gesture: what you
   // have just named is what you meant this element to be.
-  onAddType: async (kind, choice, id) => {
-    const before = [...typesFor(kind)];
-    const added = addTypeChoice(kind, choice);
-    if (!added) return;
-    undoStack.record('Adding a type', [{ op: 'types', kind, choices: before }]);
-    if (id) await patch(kind, id, { type: added }, 'Adding a type');
-    else status(`Added the type "${added}"`);
-  },
+  onAddType: addType,
   // A choice in use stays. Nothing is cleared behind the author's back; the
   // count is the thing to go and change first.
   onRemoveType: (kind, choice) => {
@@ -2887,7 +2930,7 @@ window.addEventListener('keydown', async (event) => {
   // Behind the palette editor, Getting around or About the map takes no keys
   // but undo: Esc belongs to the dialog, and Delete must not reach a selection
   // that cannot be seen.
-  if (paletteOpen() || textDialogOpen() || slideshowOpen()) return;
+  if (paletteOpen() || textDialogOpen() || slideshowOpen() || rolesGridOpen()) return;
 
   if (event.key === 'Escape') {
     closeKebab();

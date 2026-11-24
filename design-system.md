@@ -282,7 +282,8 @@ holds `--selected-row` and a marker is in hand over a locked map. It leaves the
 row while Edit is on, since the two are never on together. **Teams** is the
 next switch, and holds `--selected-row` while its legend is on the stage; it
 stays in Edit mode, where the legend is also where a team is added.
-**Slideshow** beside it is an action: it opens the deck over the page.
+**Roles** beside it is an action: it opens the grid of who leads what over the
+page. **Slideshow** after it is an action too: it opens the deck over the page.
 **Assistant** comes next, and is the other chip in the row that is a switch rather
 than an action: it swaps the details column for the Assistant and back. Unpressed
 it keeps its ink like the chips beside it — it is still a thing to press — and
@@ -366,6 +367,41 @@ the administrators see it as well.* Viewers are not offered, since a viewer
 sees the published map and nothing else, nor is whoever is asking. In the
 foot, at the right, Cancel and the action — **Share**, **Share again** or
 **Save**.
+
+### Roles
+
+Who leads every area, domain and capability, as a grid: centred, 1100px like
+Versions, and the height of the window less its inset, so that switching
+discipline or narrowing the rows does not make the dialog jump. Under the
+title a bar: the two disciplines as a toggle — **Product** and
+**Engineering**, the two layers of people, the chips the width of their words
+— a look-up box that takes the rest of the row, *Find an area, domain or
+capability*, and, for a contributor outside Edit mode, **Edit**, which turns
+editing on for the page as the slideshow's does. A sentence in `--ink-soft`
+under the bar says how the cells are filled in Edit mode, or that Edit is the
+way to fill them.
+
+The grid is the one thing that scrolls, inside a `--line` rim: a row an area,
+a domain or a capability, in the order the slideshow reads them, and a column
+a role — the discipline's Type choices in their order, then any role someone
+holds that is off the list, then **No role yet** while anybody is in it. The
+shape's cell is a `<th>` held at the left as the roles scroll past, its name
+over its kind in small `--ink-soft` capitals, indented 1.25rem a level deep:
+an area at the margin, its domains a step in, their capabilities a step
+further. An area's and a domain's rows wear `--chrome` and a semibold name —
+a long grid is read in its sections. The roles' names are held at the top as
+it scrolls. A look-up keeps the rows a found row sits in, so a capability is
+still read under its domain.
+
+A cell is the people of that role who own that shape, as the roster's member
+chips. In Edit mode each chip has its quiet **×**, and after the last a box
+the height of a chip, *Add…*, with no rim until its row is pointed at or it
+has the focus — a box in every cell would read as a form to fill in, not as
+who leads what. It has the names already on the map and the people list
+behind it. Enter, or a name picked from the list, puts them in the cell. In
+the head, after the last role, *Add a role…* adds a column. The cells are
+rebuilt as the map changes, and a box that had the focus has it back, with
+what was half typed in it. Close is alone in the foot.
 
 ### Users & access
 
@@ -547,7 +583,7 @@ group's member is; and a list under the chips puts another team on the shape,
 or makes a new one that starts there. Browsing, a shape with no team has no
 Teams section.
 
-An area and a domain also say who leads them, in two sections over Teams —
+An area, a domain and a capability also say who leads them, in two sections over Teams —
 **Product roles** and **Engineering roles** — each a row of the same chips,
 reading *name — role* and pressed to pick the person. In Edit mode a chip's ×
 takes the shape from them, and a list under the row gives it to someone
@@ -559,8 +595,9 @@ box has; **Role**, which is the Type picker under another word — the list,
 the − that takes a role nobody holds off it, and the box that adds one; the
 **Icon** picker a capability has; and a description. There is no Shape
 section: a card has no colour or size of its own to set, and where it is, is
-set by moving it. **Owns** lists the areas and domains they own as chips, each
-showing its shape on the map; the last of them has no ×, because a person who
+set by moving it. **Owns** lists the areas, domains and capabilities they own
+as chips — a capability as *name — its domain*, since two domains may each have
+one of a name — each showing its shape on the map; the last of them has no ×, because a person who
 owns nothing is nowhere on the map and is taken off it with **Remove**
 instead. Once a card of theirs has been moved, a **Put cards back** chip
 stands under the list — beside what it changes, and only while there is a
@@ -764,9 +801,17 @@ the orange that says unsaved. The two layers' rows in the layer control wear
 the same band at their head, 3px, which is where the colours are learnt; the
 other layers have no colour and no band.
 
-A card starts where the map hangs it: outside the shape it is on, by the
-shape's name, so that it covers nothing of it — beyond an area's title, on the
-side away from the band, and off a domain's edge on the side its title sits.
+A card starts where the map hangs it: by the shape's name and clear of it —
+over a domain beside its title, under a capability's title and icon, and
+beyond an area's title, on the side away from the band. A map is mostly read
+with its lower layers let through, so a card lying over the edge of a shape
+hides nothing that matters, and reads as that shape's. A domain's cards go to
+whichever of four places round its title covers least — over it, either side
+of it, or under it — weighing the title's words most, then an area's name or
+a capability, then how much of the cards would hang off the domain; no one
+place suits every domain, since a title that rides the top of the body has an
+area's name just over it. A card over a **capability** is set at 24, under
+the capability's own title, so that it is no wider than the oval it names.
 Several people on one shape are one column stacked away from it, **Product
 roles** nearest and **Engineering roles** after, all as wide as the widest so
 that the icons stand in a line, and a layer that is hidden gives up its places

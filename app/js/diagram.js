@@ -615,9 +615,17 @@ function cardPutAt(holder) {
  * — product nearest the shape — and each layer then draws its own. A layer
  * that is hidden gives up its places, so the other closes up to the shape.
  *
- * The domains are placed first and the areas after: a domain's people stay
- * hard by the domain, and an area — which is the larger thing, drawn round the
- * domains — is the one whose people step further out when the two would meet.
+ * The cards lie over the shapes, clear of their words: a domain's beside its
+ * title, wherever round it they cover least, a capability's under its title
+ * and icon. The map is mostly read
+ * with its lower layers let through, so a card over the edge of a shape hides
+ * nothing that matters, and a card beside the shape would be further from
+ * what it names. The domains are placed first, then the capabilities, and the
+ * areas last: a domain's people stay hard by its title, a capability's step
+ * down past a domain's when the two would meet, and an area — the larger
+ * thing, drawn round the domains — is the one whose people step further out
+ * still. A capability's cards are smaller than the rest, since the oval they
+ * lie over is: at a domain's size one would be wider than the capability.
  * An area's name is kept clear as well, since it rides the border just where
  * a domain inside it hangs its own.
  *
@@ -625,37 +633,54 @@ function cardPutAt(holder) {
  * it leaves the column — which closes up behind it — and nothing the map hangs
  * steps out of its way, since whoever put it there can see what it is over.
  */
-function badgePlaces(domainsLaid = domainViews, areasLaid = areaViews) {
+function badgePlaces(domainsLaid = domainViews, areasLaid = areaViews, placesLaid = positions) {
   const shown = [...ROLE_KINDS].filter((roleKind) => !isHidden(layerForKind(roleKind)));
   const person = (role) => ({ name: oneLine(role.title), role: oneLine(role.type) });
   const stacks = [];
   const put = [];
-  const hang = (kind, id, anchor, shapeAt) => {
+  // The anchor may be worked out from the people who are to hang there, as a
+  // domain's is: where they go depends on how much room their cards take.
+  const hang = (kind, id, anchorFor, shapeAt, fontSize = geo.BADGE_FONT) => {
     const on = { kind, id };
     const hung = [];
     for (const roleKind of shown) {
       for (const role of rolesOn(roleKind, kind, id)) {
         const holder = { roleKind, role, on, shapeAt };
         const centre = cardPutAt(holder);
-        if (centre) put.push({ ...holder, pill: geo.badgeAt(centre, person(role)) });
+        if (centre) put.push({ ...holder, pill: geo.badgeAt(centre, person(role), fontSize) });
         else hung.push(holder);
       }
     }
     if (hung.length === 0) return;
-    stacks.push({ holders: hung, grows: anchor.grows, badges: geo.badgeStack(anchor, hung.map(({ role }) => person(role))) });
+    const people = hung.map(({ role }) => person(role));
+    const anchor = typeof anchorFor === 'function' ? anchorFor(people) : anchorFor;
+    stacks.push({ holders: hung, grows: anchor.grows, badges: geo.badgeStack(anchor, people, fontSize) });
   };
 
-  for (const { domain, layout } of domainsLaid) {
-    const at = geo.badgeAnchorOnBlob(layout);
-    hang('domain', domain.id, { ...at, x: at.x + domain.x, y: at.y + domain.y }, { x: domain.x, y: domain.y });
-  }
   // An area whose layer is hidden has nothing drawn to hang a card on, and no name to keep clear.
   const areasShown = isHidden(layerForKind('area')) ? [] : areasLaid;
+  const names = areasShown.map(({ layout: { gap } }) =>
+    ({ x: gap.minX, y: gap.minY, width: gap.maxX - gap.minX, height: gap.maxY - gap.minY }));
+
+  for (const { domain, layout } of domainsLaid) {
+    hang('domain', domain.id, (people) => {
+      const near = names.map((name) => ({ ...name, x: name.x - domain.x, y: name.y - domain.y }));
+      const at = geo.badgeAnchorOnBlob(layout, people, geo.BADGE_FONT, near);
+      return { ...at, x: at.x + domain.x, y: at.y + domain.y };
+    }, { x: domain.x, y: domain.y });
+  }
+  // A capability whose layer is hidden is not drawn, and has nothing to hang a card on.
+  if (!isHidden(layerForKind('capability'))) {
+    for (const capability of store.capabilities) {
+      const at = placesLaid.get(capability.id);
+      if (!at) continue;
+      hang('capability', capability.id, geo.badgeAnchorUnderWords(at, geo.capabilitySize(capability)),
+        { x: at.x, y: at.y }, geo.CAPABILITY_BADGE_FONT);
+    }
+  }
   for (const { area, layout } of areasShown) {
     hang('area', area.id, geo.badgeAnchorOnBand(layout), { x: layout.title.x, y: layout.title.y });
   }
-  const names = areasShown.map(({ layout: { gap } }) =>
-    ({ x: gap.minX, y: gap.minY, width: gap.maxX - gap.minX, height: gap.maxY - gap.minY }));
 
   const places = new Map();
   const place = (card) => places.set(card.roleKind, [...(places.get(card.roleKind) ?? []), card]);
@@ -3021,7 +3046,7 @@ export function contentBounds() {
   // somewhere may stand well away from all of them: Fit to screen has to hold
   // the cards too, or the ones round the edge of the map are cut off by the
   // stage.
-  for (const placed of badgePlaces(views, areas).values()) {
+  for (const placed of badgePlaces(views, areas, map).values()) {
     for (const { pill } of placed) {
       boxes.push({ minX: pill.x, minY: pill.y, maxX: pill.x + pill.width, maxY: pill.y + pill.height });
     }

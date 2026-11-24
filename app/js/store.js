@@ -29,7 +29,7 @@ export const store = {
   connectors: [],
   /** Who works on what: each team names the areas, domains and capabilities it is on. Nothing is drawn for one. */
   teams: [],
-  /** Who leads what, for product: each a person in a role, on the areas and domains they own. */
+  /** Who leads what, for product: each a person in a role, on the areas, domains and capabilities they own. */
   productRoles: [],
   /** The same for engineering: the leads, the tech leads, the architects. */
   engineeringRoles: [],
@@ -1229,7 +1229,7 @@ export function updateMap(changes = {}) {
 // --- people in roles -----------------------------------------------------------
 
 // Who leads what. A person in a role — a product lead, an architect — is on the
-// areas and the domains they own, named by kind and id as a team's shapes are,
+// areas, the domains and the capabilities they own, named by kind and id as a team's shapes are,
 // and is drawn there: a badge on each, on the layer of their discipline. There
 // are two disciplines and so two kinds, `productRole` and `engineeringRole`,
 // each with a list of its own; everything below takes the kind and is the same
@@ -1307,7 +1307,7 @@ export function updateRole(roleKind, id, changes = {}) {
   return role;
 }
 
-/** Give a person an area or a domain to own, or take it from them. Asked twice, they own it once. */
+/** Give a person an area, a domain or a capability to own, or take it from them. Asked twice, they own it once. */
 export function setRoleMember(roleKind, roleId, kind, id, on = true) {
   const role = isRoleKind(roleKind) ? find(roleKind, roleId) : null;
   if (!role || !rules.ROLE_ON_KINDS.includes(kind) || !find(kind, id)) return null;

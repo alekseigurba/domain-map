@@ -250,7 +250,7 @@ check('and only what was chosen: the touchpoint wrote no weight',
 // not: read past, they would be lost on the next save, so the number moved --
 // and again for the owner's id, which is dropped the same way, and again for
 // the features a capability holds, and again for the teams.
-check('every save writes version 6', dressedOut.version === 6 && CURRENT_VERSION === 6);
+check('every save writes version 7', dressedOut.version === 7 && CURRENT_VERSION === 7);
 check('a map with no areas writes no list of them', !('areas' in dressedOut));
 
 // --- what a file may not say -------------------------------------------------
@@ -1075,7 +1075,7 @@ const led = {
 check('a file that says who leads what is valid', validate(led) === null, validate(led) ?? '');
 check('a role is the Type of a person, typed in and picked from like any other',
   rules.ROLE_KINDS.every((kind) => rules.TYPED_KINDS.includes(kind) && !rules.ELEMENT_KINDS.includes(kind)));
-check('a person owns an area or a domain, and nothing smaller', rules.ROLE_ON_KINDS.join(',') === 'area,domain');
+check('a person owns an area, a domain or a capability, and nothing smaller', rules.ROLE_ON_KINDS.join(',') === 'area,domain,capability');
 
 // --- the figures the app carries for a person's card ---
 const { readdir, readFile: readFigure } = await import('node:fs/promises');
@@ -1117,6 +1117,30 @@ check('they are written as they were read',
   JSON.stringify(ledOut.productRoles) === JSON.stringify(led.productRoles)
   && JSON.stringify(ledOut.engineeringRoles) === JSON.stringify(led.engineeringRoles),
   JSON.stringify([ledOut.productRoles, ledOut.engineeringRoles]));
+const onCapabilities = structuredClone(led);
+onCapabilities.version = 7;
+onCapabilities.productRoles[1].capabilities = ['invoicing', { key: 'dunning', x: 10, y: 20 }];
+onCapabilities.capabilities.push({ key: 'dunning', domain: 'billing', title: 'Dunning' });
+onCapabilities.engineeringRoles.push({ key: 'di-only', title: 'Di Only', type: 'Tech lead', capabilities: ['invoicing'] });
+check('a file may give a person capabilities, a card on one moved by hand as anywhere',
+  validate(onCapabilities) === null, validate(onCapabilities) ?? '');
+const capMap = fromDocument(onCapabilities);
+store_.setMap(capMap);
+check('and they are read as theirs, after the domains',
+  owns('productRole', 'Ben Sample') === 'domain:Billing,domain:Lending,capability:Invoicing,capability:Dunning'
+  && JSON.stringify(store_.roleCardPlace(titled(capMap.productRoles, 'Ben Sample'), 'capability',
+    titled(capMap.capabilities, 'Dunning').id)) === JSON.stringify({ x: 10, y: 20 }));
+check('someone who leads only capabilities is read, not let go', owns('engineeringRole', 'Di Only') === 'capability:Invoicing');
+const capOut = toDocument({ ...capMap, palette: [] });
+check('and written as they were read',
+  JSON.stringify(capOut.productRoles) === JSON.stringify(onCapabilities.productRoles)
+  && JSON.stringify(capOut.engineeringRoles) === JSON.stringify(onCapabilities.engineeringRoles),
+  JSON.stringify([capOut.productRoles, capOut.engineeringRoles]));
+const strayCap = structuredClone(onCapabilities);
+strayCap.productRoles[1].capabilities = ['gone'];
+check('a person cannot own a capability that is not in the file', (validate(strayCap) ?? '').includes("owns capability 'gone'"));
+store_.setMap(ledMap);
+
 check('a map that names nobody says nothing of roles',
   !('productRoles' in toDocument({ ...ledMap, productRoles: [], engineeringRoles: [], palette: [] })));
 
@@ -1152,7 +1176,7 @@ refusesRole('a moved card still has to be on a shape in the file',
 // --- people in the store ---
 const billing = titled(store_.store.domains, 'Billing');
 const lending = titled(store_.store.domains, 'Lending');
-const dee = store_.createRole('productRole', { title: 'Dee Model', members: [{ kind: 'domain', id: billing.id }, { kind: 'capability', id: 'x' }] });
+const dee = store_.createRole('productRole', { title: 'Dee Model', members: [{ kind: 'domain', id: billing.id }, { kind: 'feature', id: 'x' }] });
 check('a person is added owning what they were added on, and only what a person may own',
   owns('productRole', 'Dee Model') === 'domain:Billing' && dee.members.length === 1);
 check('someone new to a role starts with the icon the last holder of it wears',
@@ -1186,7 +1210,13 @@ store_.updateRole('productRole', dee.id, { members: store_.membersWithCard(dee, 
 check('and a card can be handed back to the map', store_.roleCardPlace(dee, 'domain', lending.id) === null && dee.members.length === 2);
 store_.updateRole('productRole', dee.id, { members: [{ kind: 'domain', id: billing.id }, { kind: 'domain', id: lending.id, x: 9e9, y: 0 }] });
 check('a place out of reach is no place: the card is hung by the name', store_.roleCardPlace(dee, 'domain', lending.id) === null);
-check('a capability is not theirs to own', store_.setRoleMember('productRole', dee.id, 'capability', titled(store_.store.capabilities, 'Invoicing').id) === null);
+const invoicing = titled(store_.store.capabilities, 'Invoicing');
+check('a feature is not theirs to own', store_.setRoleMember('productRole', dee.id, 'feature', 'x') === null);
+store_.setRoleMember('productRole', dee.id, 'capability', invoicing.id);
+check('a capability is, and comes after the domains in what they own',
+  owns('productRole', 'Dee Model-Example') === 'domain:Billing,domain:Lending,capability:Invoicing'
+  && store_.rolesOn('productRole', 'capability', invoicing.id).map((role) => role.id).join() === dee.id);
+store_.setRoleMember('productRole', dee.id, 'capability', invoicing.id, false);
 
 const goneDee = store_.deleteRole('productRole', dee.id);
 check('taken off the map, they are gone and what they owned is not', store_.find('productRole', dee.id) === null && store_.find('domain', billing.id) !== null);

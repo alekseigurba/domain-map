@@ -7,6 +7,51 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+People can lead a capability, and the people who lead a map have a view of
+their own. Map files move to version 7. Notes:
+[docs/releases/2.8.0.md](docs/releases/2.8.0.md).
+
+### Added
+
+- **A capability can have its leads.** A product manager, a tech lead, an
+  architect — whoever a map names for a capability is a card on it, as for an
+  area or a domain, on the same two layers. Select a capability and *Add a
+  product role* or *Add an engineering role*, or name someone from the lists
+  in its details, which now say who leads it as an area's and a domain's do.
+  A person's **Owns** lists their capabilities after their domains, each with
+  the domain it is in, since two domains may each have a capability of one
+  name.
+- **Roles, a grid of who leads what.** A button in the header opens every
+  area, domain and capability as a row and every role as a column, with
+  **Product** and **Engineering** as two tabs. The cards on the map show who
+  leads a part of it; the grid shows the whole of it at once, and a gap is an
+  empty cell rather than a card that is not there. In Edit mode type a name
+  into a cell — the names already on the map and the people list are offered
+  as you type — and press Enter: someone already on the map in that role is
+  given the shape too, so a person stays one card a shape, and anyone else is
+  added to the map in that role. The × on a name takes the shape from them,
+  *Add a role…* adds a column, and **Find** narrows the rows while keeping a
+  capability under its domain. Ctrl+Z undoes any of it, as it does in the
+  details.
+
+### Changed
+
+- **A person's card lies over the shape it names.** It used to hang outside
+  the shape, off a domain's edge, which put it further from what it named and
+  out on to an area's name. Now a capability's cards lie over the lower part
+  of its oval, under its title and its icon, and a domain's beside its title,
+  wherever round it — over, to either side, or under — they cover least of
+  the title, the capabilities and an area's name. A map is mostly read with
+  its shapes let through, so a card over the edge of one hides nothing that
+  matters. A card you have moved stays where you put it.
+
+### Fixed
+
+- **A person's Name box offers the people list again.** It only did once an
+  Owner box had been opened somewhere first, so picking a person on the map
+  and typing their name offered nobody — the people who sign in through Entra
+  ID included.
+
 ## 2.7.0 — 2026-11-23
 
 Who leads what, as two layers of people over the map; teams, and the map lit

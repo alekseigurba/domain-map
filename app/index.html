@@ -68,6 +68,12 @@
       <button class="btn btn--chip" id="teams-toggle" aria-pressed="false"
               aria-controls="teams-panel"
               title="Teams: who works on what. Pick one to light up what it is on">Teams</button>
+      <!-- Who leads what, as a grid: a row an area, a domain or a capability,
+           a column a role, one discipline at a time. Everyone's: a viewer
+           reads who leads what as anyone does; the cells take names in Edit
+           mode. -->
+      <button class="btn btn--chip" id="roles-toggle" aria-haspopup="dialog" aria-controls="roles-dialog"
+              title="Roles: who leads every area, domain and capability, for product and for engineering">Roles</button>
       <!-- The map as a deck: a postcard a domain, and one a capability. It
            opens over the page, to be worked on or presented. Everyone's: a
            viewer presents the published map as anyone does. -->
@@ -585,6 +591,35 @@
        each time it opens, shows it a page at a time under the look-up and the
        two filters, and writes the key at the foot from the role words in
        identity.js. -->
+  <!-- Roles: everyone who leads a part of the map, as a grid. roles-grid.js
+       fills it from the map each time the map changes while it is open. -->
+  <dialog class="dialog dialog--roles" id="roles-dialog" aria-labelledby="roles-title">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="roles-title">Roles</h2>
+      <div class="roles-grid__bar">
+        <!-- The two disciplines, as the two layers of people are: a toggle,
+             since it is a choice of two. -->
+        <span class="toggle roster__views" id="roles-tabs" role="tablist" aria-label="Discipline">
+          <button class="btn btn--chip toggle__chip" type="button" role="tab" data-kind="productRole"
+                  aria-pressed="true" aria-selected="true">Product</button>
+          <button class="btn btn--chip toggle__chip" type="button" role="tab" data-kind="engineeringRole"
+                  aria-pressed="false" aria-selected="false">Engineering</button>
+        </span>
+        <input class="field__input" id="roles-find" type="search" placeholder="Find an area, domain or capability"
+               aria-label="Find an area, domain or capability" maxlength="200" autocomplete="off" spellcheck="false">
+        <button class="btn btn--chip" type="button" id="roles-edit" hidden title="Turn on editing, to name who leads what">Edit</button>
+      </div>
+      <p class="versions__note" id="roles-note" role="status" hidden></p>
+      <div class="versions__scroll roles-grid__scroll">
+        <table class="roles-grid" id="roles-grid"></table>
+      </div>
+      <datalist id="roles-names"></datalist>
+      <div class="dialog__foot dialog__foot--end">
+        <button class="btn btn--chip" type="button" id="roles-close">Close</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="dialog dialog--people" id="people-dialog" aria-labelledby="people-title">
     <div class="dialog__body">
       <h2 class="dialog__title" id="people-title">Users &amp; access</h2>
