@@ -7,9 +7,11 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.8.0 — 2026-11-24
+
 People can lead a capability, and the people who lead a map have a view of
-their own. Map files move to version 7. Notes:
-[docs/releases/2.8.0.md](docs/releases/2.8.0.md).
+their own: Roles, a grid of who leads what. No migration; map files move to
+version 7. Full notes: [docs/releases/2.8.0.md](docs/releases/2.8.0.md).
 
 ### Added
 
