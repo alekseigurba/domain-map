@@ -7,6 +7,12 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+## 2.9.0 — 2026-11-24
+
+Name boxes look people up in Entra ID as they are typed. No migration and no
+map-file change; the app registration needs the application permission
+`User.ReadBasic.All`. Full notes: [docs/releases/2.9.0.md](docs/releases/2.9.0.md).
+
 ### Added
 
 - **Anyone in the organisation is offered by name.** The Owner box, a
