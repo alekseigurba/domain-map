@@ -7,6 +7,22 @@ say than fits here has a page of its own under [docs/releases/](docs/releases/).
 
 ## Unreleased
 
+### Added
+
+- **Anyone in the organisation is offered by name.** The Owner box, a
+  person's Name box and the cells of the Roles grid used to offer only the
+  people who had already signed in to the map. With Microsoft sign-in set up,
+  two letters typed now also bring up whoever in Entra ID has a name or an
+  address that matches — so a product manager can be named on a capability
+  before they have ever opened the map. It needs one application permission
+  on the app registration, with a tenant administrator's consent:
+  `User.ReadBasic.All`. That reads names and addresses only, so the names
+  offered are the whole organisation's, not only the people who may sign in.
+  Without it the server's log says what to grant, and the boxes offer what
+  they did before. A name picked this way is a name, as a typed one is: it
+  gives that person nothing and puts nobody on Users & access.
+  `AUTH_DIRECTORY=false` turns it off.
+
 ## 2.8.0 — 2026-11-24
 
 People can lead a capability, and the people who lead a map have a view of

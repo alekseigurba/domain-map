@@ -200,12 +200,18 @@ try {
   check('but cannot change a role', (await as(app, CAROL, 'PATCH', `/api/people/${bob.body.id}`, { role: 'viewer' })).status === 403);
   check('nor add anyone', (await as(app, CAROL, 'POST', '/api/people', { email: 'x@contoso.example' })).status === 403);
   check('nor take anyone off it', (await as(app, CAROL, 'DELETE', `/api/people/${bob.body.id}`)).status === 403);
+  const directory = await as(app, CAROL, 'GET', '/api/people/directory');
+  check('a contributor is offered the directory, which is off without Microsoft sign-in, and empty',
+    directory.status === 200 && directory.body.enabled === false && directory.body.people.length === 0, JSON.stringify(directory.body));
+  check('and is not taken for someone on the list called "directory"',
+    (await as(app, ALICE, 'DELETE', '/api/people/directory')).status === 405);
 
   // --- what each role may do, and how soon ---
   const toViewer = await as(app, ALICE, 'PATCH', `/api/people/${carol.body.id}`, { role: 'viewer' });
   check('the administrator makes a contributor a viewer', toViewer.status === 200 && toViewer.body.role === 'viewer', JSON.stringify(toViewer.body));
   check('which takes at once, on the session they already have', (await as(app, CAROL, 'GET', '/api/me')).body.role === 'viewer');
   check('a viewer is not shown the list', (await as(app, CAROL, 'GET', '/api/people')).status === 403);
+  check('nor the directory', (await as(app, CAROL, 'GET', '/api/people/directory')).status === 403);
   check('nor the versions', (await as(app, CAROL, 'GET', '/api/versions')).status === 403);
   check('but sees the published map', (await as(app, CAROL, 'GET', '/api/published')).status === 200);
 

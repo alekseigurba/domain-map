@@ -12,6 +12,7 @@
 
 import { store, find, oneLine, typesFor, rolesOn, slideDeck, pathOf, listOf } from './store.js';
 import { ROLE_KINDS } from './rules.js';
+import { fillNames, offerAsTyped } from './name-lookup.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -20,7 +21,7 @@ let editMode = false;
 /** Which discipline is on show: one of ROLE_KINDS. */
 let showing = ROLE_KINDS[0];
 let finding = '';
-/** The names on the people list: whoever signs in to the map, to be offered as they are typed. */
+/** The names on the people list: whoever has signed in to the map, offered before anything is typed. */
 let people = [];
 
 /** What each discipline is called on its tab and in a sentence. */
@@ -92,7 +93,8 @@ function personChip(role, row) {
 
 /**
  * The box a name is typed into, in Edit mode. It has the names the map
- * already holds and the people list behind it, and takes anyone: Enter, or a
+ * already holds and the people list behind it, and anyone in the
+ * organisation's directory who matches what is typed; it takes anyone: Enter, or a
  * name picked from the list, puts them in the cell. Someone already on the map
  * in that role is given the shape as well; anyone else is named on the map,
  * in that role.
@@ -102,6 +104,7 @@ function nameBox(row, roleName) {
   input.className = 'field__input roles-grid__add';
   input.maxLength = 200;
   input.setAttribute('list', 'roles-names');
+  offerAsTyped(input, 'roles-names', knownNames);
   input.placeholder = 'Add…';
   input.dataset.cell = cellKey(row.kind, row.record.id, roleName);
   input.setAttribute('aria-label',
@@ -188,21 +191,14 @@ function head(roles) {
   return tr;
 }
 
-/** Every name worth offering as one is typed: the people of both disciplines already on the map, and the people list. */
-function fillNames() {
-  const seen = new Map();
-  const offer = (name, label) => {
-    const said = oneLine(name ?? '').trim();
-    if (said && !seen.has(said.toLowerCase())) seen.set(said.toLowerCase(), { said, label });
-  };
-  for (const kind of ROLE_KINDS) for (const role of listOf(kind)) offer(role.title, role.type);
-  for (const person of people) offer(person.name, person.email !== person.name ? person.email : '');
-  el('roles-names').replaceChildren(...[...seen.values()].map(({ said, label }) => {
-    const option = document.createElement('option');
-    option.value = said;
-    if (label) option.label = label;
-    return option;
-  }));
+/**
+ * Every name worth offering before anything is typed: the people of both
+ * disciplines already on the map, with the role they hold, then the people
+ * list. The directory's matches are added as a name is typed.
+ */
+function knownNames() {
+  const onMap = ROLE_KINDS.flatMap((kind) => listOf(kind).map((role) => ({ name: oneLine(role.title), label: role.type })));
+  return [...onMap, ...people];
 }
 
 /** Fill the grid from the map as it stands. Nothing is drawn while it is shut. */
@@ -227,7 +223,7 @@ export function renderRolesGrid() {
   const active = document.activeElement?.closest?.('#roles-grid') ? document.activeElement : null;
   const keep = active?.dataset.cell ? { cell: active.dataset.cell, value: active.value } : null;
 
-  fillNames();
+  fillNames('roles-names', knownNames());
   const roles = columns();
   const shown = rows();
   const table = el('roles-grid');

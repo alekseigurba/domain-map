@@ -26,6 +26,17 @@ for less — or export `AUTH_TENANT_ID`,
 `AUTH_CLIENT_ID` and `AUTH_CLIENT_SECRET` to try Microsoft sign-in locally.
 Anything already set in the shell wins over the file.
 
+With Microsoft sign-in set up, the name boxes — an Owner, a person's Name, a
+cell of the Roles grid — also offer anyone in the organisation whose name or
+address matches what is typed, once two letters are in: the server looks them
+up in Microsoft Graph as the application itself, with the same client id and
+secret. It needs one **application** permission on the app registration, with
+a tenant administrator's consent: `User.ReadBasic.All`. That permission reads
+names and addresses and nothing else — not who is assigned to the app, nor
+who is in a group — so what is offered is the whole tenant, not only whoever
+may sign in. Without it the server warns once, naming what to grant, and the
+boxes offer the people list alone. `AUTH_DIRECTORY=false` turns it off.
+
 The page's files are read afresh on every load, and the server's are not. The
 server checks a map before saving it with the page's own
 [`document.js`](../app/js/document.js) and [`rules.js`](../app/js/rules.js),
@@ -89,11 +100,13 @@ node tests/geometry.test.mjs
 | `app/skills/` | One folder per skill, each a `SKILL.md` in the agent-skills form, with the two formats a prompt writes in. [Its README](../app/skills/README.md) says what a skill file holds. |
 | `scripts/server.mjs` | The server a consumer repo imports as `createDomainMapServer`, with `routes` for requests of the consumer's own. `tests/consumer.test.mjs` checks what BRANDING.md promises a consumer. |
 | `scripts/roles.mjs` | The four roles, lowest first, and what each may do. |
+| `scripts/directory.mjs` | Anyone in the organisation, looked up by name or address in Microsoft Graph with the app's own credentials, for the name boxes to offer as they are typed; answers are kept for a few minutes. Only offered — it puts nobody on the people list and grants nothing. `app/js/name-lookup.js` is the page's side of it. |
 | `scripts/people-store.mjs` | The people and their logins in Postgres: who a sign-in turns out to be, a role given, someone taken off the list, never the last administrator, the seed from `OWNER_EMAILS`. `tests/people.test.mjs` runs it through the real server. |
 | `scripts/make-administrator.mjs` | `npm run make-administrator`: someone made an administrator from outside the app. |
 | `app/js/people.js` | Users & access: the roster a page at a time, the look-up and the two filters over it, and what the administrator can do on it — a role, a person added or removed, and the clear-out of whoever has not been back. Its other view is the groups: who is in each, and an administrator's making and filling of them. |
 | `scripts/group-store.mjs` | Groups in Postgres (`006-groups.sql`): a name and its members, the app's own, for sharing a version with fewer than everyone. |
 | `app/js/teams.js` | The legend of the map's teams on the stage, under their Types, and the pressing of a team or a Type in it. Which teams are lit is the diagram's to hold, since it is how the diagram draws; the legend asks it, and tells `main.js` what was pressed. A team's own fields, and what it is on, are the details panel's. |
+| `app/js/name-lookup.js` | The names a box offers as they are typed, for every box that names a person: the ones the page knows, and — after two letters and a pause — whoever in the organisation's directory matches, asked of `/api/people/directory` and kept for the visit. It only fills the box's datalist. |
 | `app/js/roles-grid.js` | **Roles**: who leads every area, domain and capability as a grid, a row a shape and a column a role, one discipline at a time. It holds nothing of its own: a cell is read from the store, and a name typed into one is handed to `main.js`, which makes the same change the details panel would, with the same undo. |
 | `app/js/slideshow.js` | The slideshow: the deck made of the map — a slide an area, then one a domain in it, then one a capability in that, in the order `slideDeck` in `store.js` reads them — its two views, the keys that step through it, the path over a slide and what a postcard says. The words are the details panel's own fields (`wordFields`) and the picture is the diagram's (`picture`) or a file of the owner's under `data/pictures/`, so a slide holds nothing the map does not. |
 | `app/js/audience.js` | The dialog that asks who a version is shared with — everyone, or the people and groups ticked — when it is shared and when that is changed, and the few words a row says it in. |

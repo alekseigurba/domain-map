@@ -1,6 +1,7 @@
 // The details sidebar: properties of whatever is selected, wherever it was
 // selected. Two sections — what the thing *is* (metadata), then how it *looks*.
 
+import { fillNames, offerAsTyped } from './name-lookup.js';
 import {
   store, selected, find, patchLocal, connectorLabel, slugFor, oneLine, withBreaks,
   typesFor, layerOf, layerTitle, connectorScope, CONNECTOR_NAMES,
@@ -245,7 +246,12 @@ function liveText(type, record, key, {
  * a domain's owner is as often a viewer of the map as an editor of it. Read
  * once and kept, since the panel is rebuilt on every selection; Users & access
  * asks for it again when it changes someone. A viewer is not shown the list,
- * and gets a plain box.
+ * and gets a plain box. As a name is typed, the organisation's directory is
+ * asked as well (name-lookup.js), for people who have not signed in yet.
+ *
+ * Only someone on the list has an id for an owner to carry; a name from the
+ * directory is offered, and picked it is a name like any typed one, until its
+ * person signs in and is on the list.
  */
 let people = null;
 let loadingPeople = null;
@@ -269,26 +275,21 @@ export async function reloadPeople() {
   await loadPeople();
 }
 
+/** The people list as a name box offers it, before anything is typed. */
+const offered = () => people ?? [];
+
 /**
  * The people list, for a view outside the panel that names people — the
- * Roles grid. It is the same list the Owner box offers, read once for both,
- * and fills the one datalist the page keeps for it.
+ * Roles grid. It is what the Owner box offers, read once for both.
  */
 export async function peopleList() {
   await loadPeople();
-  return people ?? [];
+  return offered();
 }
 
-/** The names behind every Owner box: one datalist in the page, filled here. */
+/** The names behind every Owner box and Name box: one datalist in the page, filled here. */
 function fillPeopleOptions() {
-  const list = document.getElementById('people-options');
-  if (!list) return;
-  list.replaceChildren(...people.map((person) => {
-    const option = document.createElement('option');
-    option.value = person.name;
-    if (person.email && person.email !== person.name) option.label = person.email;
-    return option;
-  }));
+  fillNames('people-options', offered());
 }
 
 const personById = (id) => (id ? (people ?? []).find((person) => person.id === id) ?? null : null);
@@ -340,7 +341,8 @@ function ownerField(type, record) {
   const input = document.createElement('input');
   input.className = 'field__input';
   input.maxLength = 200;
-  if (people?.length) input.setAttribute('list', 'people-options');
+  input.setAttribute('list', 'people-options');
+  offerAsTyped(input, 'people-options', offered);
   input.value = shown();
 
   const hint = document.createElement('p');
@@ -1100,6 +1102,7 @@ function roleSection(roleKind, role) {
   // box that waited for one to load the list never offered anybody.
   if (people === null) loadPeople();
   name.setAttribute('list', 'people-options');
+  offerAsTyped(name, 'people-options', offered);
   return section(ROLE_NAMES[roleKind].one, [
     field('Label', label),
     field('Name', name),

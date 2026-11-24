@@ -21,6 +21,7 @@ import { validateVersionName } from '../app/js/rules.js';
 import { createAssistant } from './assistant.mjs';
 import { assistantSettings } from './assistant-settings.mjs';
 import { createAuth } from './auth.mjs';
+import { createDirectory } from './directory.mjs';
 import { describeDatabase, migrate, openDatabase, waitForDatabase, withLock } from './database.mjs';
 import { fileStore } from './file-store.mjs';
 import { groupStore } from './group-store.mjs';
@@ -119,6 +120,11 @@ function readBody(request) {
  *                                        the provider's own id for them, and without them the email
  *                                        stands in. `createAuth(env, { onSignIn })` is the package's
  *                                        own, and the hook is what records a sign-in as it happens.
+ * @param {object}   [options.directory]  A `{ search }` of your own, for a directory that is not
+ *                                        Entra ID. `search(query)` answers with `{ enabled, people,
+ *                                        error }`, `people` as `{ subject, name, email }`: whoever
+ *                                        matches what was typed into a name box, offered there.
+ *                                        `createDirectory(env)` is the package's own.
  * @param {object}   [options.assistant]  A `{ chat, host, model }` of your own, for a model that
  *                                        speaks neither chat completions nor Anthropic's Messages
  *                                        API. `chat({ system, messages }, { signal })` answers with
@@ -219,6 +225,9 @@ export function createDomainMapServer(options = {}) {
   }
 
   const auth = options.auth ?? createAuth(env, { onSignIn: recordSignIn });
+  // Anyone in the organisation, found by name in Entra ID: what the name boxes
+  // offer beside the people who have signed in. Off without Microsoft sign-in.
+  const directory = options.directory ?? createDirectory(env, { warn });
 
   // The model behind the Assistant, if there is one. One of the consumer's own
   // is connected by being given; the environment's says so itself.
@@ -642,6 +651,16 @@ export function createDomainMapServer(options = {}) {
         return sendJson(response, 201, await people.add({ name, email, role: role ?? CONTRIBUTOR }));
       }
       return notAllowed(response, 'GET, POST');
+    }
+
+    // Anyone in the organisation whose name or address matches `q`, for the
+    // name boxes to offer: from the directory, not the list, so it finds people
+    // who have not signed in yet. Whoever may see the list may look, and it
+    // changes nobody's access.
+    if (path === '/api/people/directory') {
+      if (method !== 'GET') return notAllowed(response, 'GET');
+      if (!may(who, CONTRIBUTOR)) return sendJson(response, 403, { error: 'Only a contributor can see who else is here.' });
+      return sendJson(response, 200, await directory.search(url.searchParams.get('q') ?? ''));
     }
 
     // The clear-out: everyone not seen since a day, and of one role if one is
